@@ -143,7 +143,7 @@ export function MeetExecutive() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">RAIŌ</p>
             <p className="truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Autonomous AI Business Executive™
+              AI Autonomous Business Executive™
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -173,7 +173,7 @@ export function MeetExecutive() {
           ref={logRef}
           role="log"
           aria-live="polite"
-          aria-label="Conversation with RAIŌ, UMRAIO's Autonomous AI Business Executive"
+          aria-label="Conversation with RAIŌ, UMRAIO's AI Autonomous Business Executive"
 
           className="mt-4 flex max-h-[52vh] min-h-[280px] flex-col gap-3 overflow-y-auto pr-1"
         >

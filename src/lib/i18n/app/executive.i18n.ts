@@ -11,7 +11,7 @@
  * Consumes the single locale context in src/lib/i18n/locale.tsx via
  * createDict/useCopy from src/lib/i18n/dict.ts. Brand/technical terms are
  * kept identical in both languages: UMRAIO®, RAIŌ, RÉNAIO.CORE™,
- * UMRAVERSE®, Autonomous AI Business Executive, AI WhatsApp Executive,
+ * UMRAVERSE®, AI Autonomous Business Executive, AI WhatsApp Executive,
  * AI Marketing Executive, AI Content Executive, AI Lead Intelligence,
  * Islamic Implementation Layer™, WhatsApp, AI, API, CRM, Dashboard,
  * Knowledge Base, HITL, Umrah.

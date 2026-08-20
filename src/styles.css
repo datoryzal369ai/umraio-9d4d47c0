@@ -51,6 +51,13 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-gold: var(--gold);
+  --color-gold-glow: var(--gold-glow);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-emerald: var(--emerald);
+  --color-platinum: var(--platinum);
+  --color-chrome: var(--chrome);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -99,6 +106,45 @@
   --chart-3: #7ef7ff;
   --chart-4: #4aa8ff;
   --chart-5: #9fd8ff;
+
+  /* Executive material system — chrome / champagne gold / emerald */
+  --gold: #d8b678;
+  --gold-glow: #f2ddb0;
+  --gold-foreground: #1a1206;
+  --emerald: #37cf9d;
+  --platinum: #dbe3ec;
+  --chrome: #b9c6d4;
+
+  --gradient-chrome: linear-gradient(
+    135deg,
+    rgba(219, 227, 236, 0.92) 0%,
+    rgba(148, 165, 182, 0.7) 28%,
+    rgba(240, 246, 252, 0.95) 52%,
+    rgba(126, 247, 255, 0.35) 74%,
+    rgba(174, 190, 206, 0.8) 100%
+  );
+  --gradient-gold: linear-gradient(
+    120deg,
+    #f2ddb0 0%,
+    #d8b678 42%,
+    #a9854a 68%,
+    #f2ddb0 100%
+  );
+  --shadow-executive:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 26px 60px -34px rgba(0, 0, 0, 0.95);
+  --shadow-executive-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 1px rgba(219, 227, 236, 0.32),
+    0 30px 70px -30px rgba(0, 215, 255, 0.35);
+  --shadow-elite:
+    inset 0 1px 0 rgba(242, 221, 176, 0.14),
+    0 24px 60px -34px rgba(0, 0, 0, 0.95);
+  --shadow-elite-hover:
+    inset 0 1px 0 rgba(242, 221, 176, 0.24),
+    0 0 0 1px rgba(216, 182, 120, 0.42),
+    0 28px 64px -28px rgba(216, 182, 120, 0.4);
+
 
   --sidebar: #071a27;
   --sidebar-foreground: #ffffff;
@@ -409,4 +455,103 @@
   .umr-signal-line {
     animation: none !important;
   }
+}
+
+/* ── Executive interaction system ─────────────────────────────────
+   Additive utilities. Existing `panel` / `panel-hover` are untouched. */
+
+@utility card-interactive {
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms ease-out,
+    box-shadow 220ms ease-out,
+    background-color 220ms ease-out;
+  will-change: transform;
+  &:hover {
+    border-color: color-mix(in oklab, var(--color-primary) 38%, transparent);
+    background-color: color-mix(in oklab, var(--color-card) 96%, white);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-3px);
+  }
+  &:active {
+    transform: translateY(0) scale(0.985);
+  }
+}
+
+/* Level 3 — AI AUTONOMOUS BUSINESS EXECUTIVE™ (liquid chrome / platinum) */
+@utility panel-executive {
+  position: relative;
+  border: 1px solid rgba(219, 227, 236, 0.18);
+  border-radius: var(--radius-2xl);
+  background-image:
+    linear-gradient(160deg, rgba(219, 227, 236, 0.1) 0%, transparent 42%),
+    radial-gradient(120% 90% at 82% -20%, rgba(0, 215, 255, 0.1), transparent 62%),
+    linear-gradient(180deg, #122c3d 0%, #0b1f2e 100%);
+  background-color: #0b1f2e;
+  box-shadow: var(--shadow-executive);
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 240ms ease-out,
+    box-shadow 240ms ease-out;
+  &:hover {
+    border-color: rgba(219, 227, 236, 0.4);
+    box-shadow: var(--shadow-executive-hover);
+    transform: translateY(-3px);
+  }
+  &:active {
+    transform: translateY(0) scale(0.99);
+  }
+}
+
+/* Level 3 — AI SALES ELITE™ (obsidian + champagne gold) */
+@utility panel-elite {
+  position: relative;
+  border: 1px solid rgba(216, 182, 120, 0.26);
+  border-radius: var(--radius-2xl);
+  background-image:
+    linear-gradient(160deg, rgba(242, 221, 176, 0.07) 0%, transparent 48%),
+    radial-gradient(120% 90% at 85% -20%, rgba(216, 182, 120, 0.12), transparent 62%),
+    linear-gradient(180deg, #0c1a22 0%, #070f14 100%);
+  background-color: #070f14;
+  box-shadow: var(--shadow-elite);
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 240ms ease-out,
+    box-shadow 240ms ease-out;
+  &:hover {
+    border-color: rgba(242, 221, 176, 0.55);
+    box-shadow: var(--shadow-elite-hover);
+    transform: translateY(-3px);
+  }
+  &:active {
+    transform: translateY(0) scale(0.99);
+  }
+}
+
+@utility text-gradient-chrome {
+  background-image: var(--gradient-chrome);
+  background-clip: text;
+  color: transparent;
+}
+
+@utility text-gradient-gold {
+  background-image: var(--gradient-gold);
+  background-clip: text;
+  color: transparent;
+}
+
+@utility status-breathe {
+  animation: umr-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes umr-breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-breathe { animation: none !important; }
+  .card-interactive:hover,
+  .panel-executive:hover,
+  .panel-elite:hover { transform: none !important; }
 }

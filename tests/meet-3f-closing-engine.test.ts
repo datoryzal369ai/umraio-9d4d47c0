@@ -141,7 +141,7 @@ describe("STEP 3F — full conversion journey", () => {
   it("reaches the real CTA without repeating discovery", () => {
     const journey: DemoMessage[] = [
       v("Salam"),
-      e("Waalaikumsalam. Saya RAIŌ — Autonomous AI Business Executive™ daripada UMRAIO. Boleh saya tahu dengan siapa saya bercakap?"),
+      e("Waalaikumsalam. Saya RAIŌ — AI Autonomous Business Executive™ daripada UMRAIO. Boleh saya tahu dengan siapa saya bercakap?"),
       v("Nama saya Rizal, saya owner agency Umrah."),
       e("Baik Rizal."),
       v("Sales saya slow."),
