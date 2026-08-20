@@ -36,6 +36,7 @@ import {
   type WorkerStatus,
 } from "@/lib/executive";
 import { myr } from "@/lib/dashboard";
+import { ACTIVE_STATUSES, fetchEngineTasks } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/executive/")({
@@ -91,6 +92,9 @@ function ExecutiveCenter() {
   });
   const tasks = useQuery({ queryKey: ["ai-tasks", "all"], queryFn: () => fetchTasks(undefined, 8) });
   const activity = useQuery({ queryKey: ["ai-activity"], queryFn: () => fetchAiActivity(20) });
+  const engineTasksQuery = useQuery({ queryKey: ["engine-tasks"], queryFn: () => fetchEngineTasks(120) });
+  const engineTasks = engineTasksQuery.data ?? [];
+  const tasksLoading = engineTasksQuery.isLoading;
 
   const m = metrics.data;
 
@@ -167,6 +171,26 @@ function ExecutiveCenter() {
               const Icon = workerIcon[worker.worker_key] ?? Bot;
               const status = (worker.is_enabled ? worker.status : "idle") as WorkerStatus;
               const isElite = worker.worker_key === "sales_elite";
+              const workerTasks = engineTasks.filter((t) => t.worker_key === worker.worker_key);
+              const running = workerTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
+              const queued = workerTasks.filter((t) => t.status === "queued").length;
+              const awaiting = workerTasks.filter((t) => t.status === "waiting_approval").length;
+              const nextTask =
+                workerTasks.find((t) => t.status === "waiting_approval") ??
+                workerTasks.find((t) => ACTIVE_STATUSES.includes(t.status)) ??
+                workerTasks.find((t) => t.status === "queued") ??
+                null;
+              const liveState = !worker.is_enabled
+                ? copy.stateIdle
+                : running > 0
+                  ? copy.stateRunning(running)
+                  : awaiting > 0
+                    ? copy.stateWaitingApproval(awaiting)
+                    : queued > 0
+                      ? copy.stateQueued(queued)
+                      : tasksLoading
+                        ? copy.syncing
+                        : copy.stateReady;
               return (
                 <article
                   key={worker.id}
@@ -194,13 +218,43 @@ function ExecutiveCenter() {
                       {STATUS_LABEL[status]}
                     </Badge>
                   </div>
+
+                  <div
+                    className={cn(
+                      "rounded-xl border px-3 py-2",
+                      isElite ? "border-gold/30 bg-gold/[0.06]" : "border-border/60 bg-surface/60",
+                    )}
+                  >
+                    <p
+                      className={cn(
+                        "text-[11px] font-semibold uppercase tracking-[0.14em]",
+                        isElite ? "text-gold" : "text-primary",
+                      )}
+                    >
+                      {liveState}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {nextTask
+                        ? `${copy.nextPriority}: ${nextTask.title}`
+                        : copy.noLiveTasks}
+                    </p>
+                  </div>
+
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="min-w-0 text-xs text-muted-foreground">
                       {worker.last_run_at ? copy.lastRun(relative(worker.last_run_at)) : copy.notRunYet}
                       {" · "}
                       {worker.autonomy === "auto" ? copy.autonomous : copy.approvalRequired}
                     </p>
-                    <Button asChild size="sm" variant="outline">
+                    <Button
+                      asChild
+                      size="sm"
+                      variant="outline"
+                      className={cn(
+                        isElite &&
+                          "border-gold/50 bg-gold/10 text-gold hover:bg-gold/20 hover:text-gold",
+                      )}
+                    >
                       {WORKER_ROUTES[worker.worker_key] ? (
                         <Link to={WORKER_ROUTES[worker.worker_key]!}>{copy.openWorker}</Link>
                       ) : (

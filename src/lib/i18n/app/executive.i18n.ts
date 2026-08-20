@@ -52,6 +52,13 @@ type ExecutiveCopy = {
     minAgo: (n: number) => string;
     hAgo: (n: number) => string;
     dAgo: (n: number) => string;
+    stateRunning: (n: number) => string;
+    stateQueued: (n: number) => string;
+    stateWaitingApproval: (n: number) => string;
+    stateReady: string;
+    stateIdle: string;
+    noLiveTasks: string;
+    nextPriority: string;
   };
   workerDetail: {
     backToExecutiveCenter: string;
@@ -231,6 +238,13 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
       minAgo: (n) => `${n}m ago`,
       hAgo: (n) => `${n}h ago`,
       dAgo: (n) => `${n}d ago`,
+      stateRunning: (n) => `Running ${n} task${n === 1 ? "" : "s"}`,
+      stateQueued: (n) => `${n} queued`,
+      stateWaitingApproval: (n) => `${n} awaiting approval`,
+      stateReady: "Ready",
+      stateIdle: "Paused",
+      noLiveTasks: "No live tasks",
+      nextPriority: "Next priority",
     },
     workerDetail: {
       backToExecutiveCenter: "AI Executive Center",
@@ -416,6 +430,13 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
       minAgo: (n) => `${n}m lalu`,
       hAgo: (n) => `${n}j lalu`,
       dAgo: (n) => `${n}h lalu`,
+      stateRunning: (n) => `${n} tugasan sedang berjalan`,
+      stateQueued: (n) => `${n} dalam barisan`,
+      stateWaitingApproval: (n) => `${n} menunggu kelulusan`,
+      stateReady: "Sedia",
+      stateIdle: "Dijeda",
+      noLiveTasks: "Tiada tugasan aktif",
+      nextPriority: "Keutamaan seterusnya",
     },
     workerDetail: {
       backToExecutiveCenter: "AI Executive Center",
