@@ -21,8 +21,8 @@ export function WorkerLink({
 }: {
   workerKey: string;
   children: React.ReactNode;
-  className?: string;
-  "aria-label"?: string;
+  className?: string | undefined;
+  "aria-label"?: string | undefined;
 }) {
   const dedicated = WORKER_ROUTES[workerKey];
   if (dedicated) {
@@ -55,8 +55,8 @@ export function WorkforceNavigator({
   className,
 }: {
   workerKey: string;
-  currentName?: string;
-  className?: string;
+  currentName?: string | undefined;
+  className?: string | undefined;
 }) {
   const copy = useCopy(EXECUTIVE_CENTER_DICT);
   const workers = useQuery({ queryKey: ["ai-workers"], queryFn: fetchWorkers });
