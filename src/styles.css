@@ -471,10 +471,11 @@
 @utility panel-elite {
   position: relative;
   background-image: var(--gradient-obsidian);
-  border: 1px solid rgba(230, 198, 132, 0.42);
+  border: 1px solid rgba(255, 171, 76, 0.5);
   border-radius: var(--radius-2xl);
   box-shadow:
-    0 1px 0 0 rgba(255, 233, 184, 0.16) inset,
+    0 1px 0 0 rgba(255, 208, 138, 0.2) inset,
+    0 0 34px -16px rgba(255, 122, 60, 0.55),
     0 22px 56px -34px rgba(0, 0, 0, 0.92);
   transition:
     border-color 220ms ease-out,
