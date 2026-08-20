@@ -45,17 +45,17 @@ export const decideExecutiveTask = createServerFn({ method: "POST" })
 
     const { data: task, error } = await supabase
       .from("ai_tasks")
-      .select("id, agency_id, title, worker_key")
+      .select("id, agency_id, title, worker_key, kind")
       .eq("id", data.taskId)
       .maybeSingle();
     if (error) throw error;
     if (!task) throw new Error("Task not found");
 
-    const status = data.decision === "approve" ? "completed" : "rejected";
+    // Record the human decision first — approval state is persistent.
     await supabase
       .from("ai_tasks")
       .update({
-        status,
+        status: data.decision === "approve" ? "running" : "rejected",
         approved_at: data.decision === "approve" ? new Date().toISOString() : null,
         approved_by: data.decision === "approve" ? userId : null,
       })
@@ -67,8 +67,33 @@ export const decideExecutiveTask = createServerFn({ method: "POST" })
       action: `${data.decision === "approve" ? "Approved" : "Rejected"} AI output: ${task.title}`,
       entity: "ai_task",
       entity_id: task.id,
-      meta: { worker_key: task.worker_key },
+      meta: { worker_key: task.worker_key, kind: task.kind },
     });
+
+    let status = data.decision === "approve" ? "completed" : "rejected";
+
+    if (data.decision === "approve") {
+      const { EXECUTIVE_ACTION_KIND, executeApprovedExecutiveAction } = await import(
+        "./executive/execution.server"
+      );
+      if (task.kind === EXECUTIVE_ACTION_KIND) {
+        // Real execution: the task only completes if the side effect succeeded.
+        const outcome = await executeApprovedExecutiveAction(
+          supabase,
+          task.agency_id as string,
+          task.id as string,
+          userId,
+        );
+        status = outcome.status;
+        if (outcome.status === "failed") throw new Error(outcome.detail);
+      } else {
+        // Document output: approval publishes the already-produced result.
+        await supabase
+          .from("ai_tasks")
+          .update({ status: "completed", completed_at: new Date().toISOString() })
+          .eq("id", task.id);
+      }
+    }
 
     const { count } = await supabase
       .from("ai_tasks")

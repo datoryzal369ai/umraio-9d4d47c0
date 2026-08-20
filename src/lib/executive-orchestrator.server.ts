@@ -21,6 +21,15 @@ import {
 import type { Lead } from "./leads";
 import { APPROVAL_REQUIRED_KINDS, createTask, notify } from "./task-engine.server";
 import { TASK_KINDS } from "./executive-ai.server";
+import {
+  assessSituation,
+  decideFor,
+  type AutonomyBoundary,
+  type EscalationBrief,
+  type PriorityBand,
+  type SituationReport,
+} from "./executive/decision.core";
+import { monitorExecutedDecisions, type MonitorFinding } from "./executive/execution.server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -69,6 +78,15 @@ export type ExecutiveDecision = {
   worker: string | null;
   result: ExecutiveActionResult;
   detail: string;
+  /* Orchestration intelligence (optional so older records still parse). */
+  objective?: string;
+  priority?: PriorityBand;
+  boundary?: AutonomyBoundary;
+  confidence?: number;
+  booking_probability?: number | null;
+  expected_outcome?: string;
+  worker_reason?: string;
+  escalation?: EscalationBrief | null;
 };
 
 export type ExecutiveCycleResult = {
@@ -82,6 +100,10 @@ export type ExecutiveCycleResult = {
   actionsExecuted: number;
   limitReached: boolean;
   decisions: ExecutiveDecision[];
+  /** UNDERSTAND output: fact / signal / interpretation / unknown. */
+  situation?: SituationReport;
+  /** MONITOR output: what actually happened after earlier executed actions. */
+  monitoring?: MonitorFinding[];
 };
 
 /* ------------------------------------------------------------------ */
@@ -243,6 +265,84 @@ function buildExecutiveRegistry() {
         return { queued: true, task_id: taskId, worker: TASK_KINDS[kind]!.worker };
       },
     },
+
+    {
+      name: "executive_request_approval",
+      description:
+        "Persist an executive decision that requires human authorisation as a real ai_tasks record in waiting_approval. Never executes anything itself.",
+      permission: "write",
+      deterministicSafe: true,
+      inputSchema: z.object({
+        lead_id: z.string(),
+        objective: z.string(),
+        worker_key: z.string(),
+        title: z.string(),
+        reason: z.string(),
+        expected_outcome: z.string(),
+        priority: z.enum(["low", "medium", "high"]),
+        decision_confidence: z.number(),
+        booking_probability: z.number().nullable(),
+      }),
+      validate: async (input, tctx) => {
+        const { data: lead } = await tctx.supabase
+          .from("leads")
+          .select("id")
+          .eq("agency_id", tctx.agencyId)
+          .eq("id", input.lead_id)
+          .maybeSingle();
+        if (!lead) return "Lead does not belong to this agency.";
+        const { data: worker } = await tctx.supabase
+          .from("ai_workers")
+          .select("worker_key")
+          .eq("agency_id", tctx.agencyId)
+          .eq("worker_key", input.worker_key)
+          .maybeSingle();
+        if (!worker) return `Worker "${input.worker_key}" is not available for this agency.`;
+        // Idempotency: one open executive action per (lead, objective).
+        const { data: open } = await tctx.supabase
+          .from("ai_tasks")
+          .select("id, input")
+          .eq("agency_id", tctx.agencyId)
+          .eq("kind", "executive_action")
+          .eq("lead_id", input.lead_id)
+          .in("status", ["queued", "analysing", "planning", "running", "waiting_approval"])
+          .limit(20);
+        if (
+          (open ?? []).some((row: any) => (row.input?.objective ?? "") === input.objective)
+        )
+          return "An equivalent executive action for this lead and objective is already awaiting a decision.";
+        return null;
+      },
+      execute: async (input, tctx) => {
+        const { createApprovalRequest } = await import("./executive/execution.server");
+        const result = await createApprovalRequest(tctx.supabase, tctx.agencyId, {
+          leadId: input.lead_id,
+          objective: input.objective,
+          workerKey: input.worker_key,
+          title: input.title,
+          reason: input.reason,
+          expectedOutcome: input.expected_outcome,
+          priority: input.priority,
+          decisionConfidence: input.decision_confidence,
+          bookingProbability: input.booking_probability,
+          correlationId: tctx.correlationId,
+        });
+        if (result.status === "duplicate") throw new Error(result.reason);
+        await tctx.supabase.from("activity_log").insert({
+          agency_id: tctx.agencyId,
+          actor: "ai",
+          action: `Autonomous AI Business Executive requested approval: ${input.title}`,
+          entity: "ai_task",
+          entity_id: result.taskId,
+          meta: {
+            lead_id: input.lead_id,
+            objective: input.objective,
+            correlation_id: tctx.correlationId,
+          },
+        });
+        return { approval_requested: true, task_id: result.taskId };
+      },
+    },
   ];
 
   return createToolRegistry(tools);
@@ -297,72 +397,10 @@ export async function loadOpportunities(supabase: Db, agencyId: string): Promise
 }
 
 /* ------------------------------------------------------------------ */
-/* Decision selection (deterministic)                                  */
+/* Decision selection — delegated to the pure decision core            */
 /* ------------------------------------------------------------------ */
-
-type PlannedAction =
-  | { tool: "executive_escalate_to_human"; input: Record<string, unknown>; worker: string; decision: string }
-  | { tool: "executive_schedule_followup"; input: Record<string, unknown>; worker: string; decision: string }
-  | { tool: null; decision: string; detail: string };
-
-function planFor(opp: SalesOpportunity): PlannedAction {
-  const lead = opp.lead;
-
-  if (opp.aiPaused || opp.humanAttention) {
-    return {
-      tool: "executive_escalate_to_human",
-      worker: "Human team",
-      decision: "Escalate to a human colleague",
-      input: {
-        lead_id: lead.id,
-        conversation_id: opp.conversationId,
-        reason: opp.aiPaused
-          ? `${lead.full_name} asked for a human — AI replies are paused on this conversation.`
-          : `${lead.full_name} was flagged for human attention by the WhatsApp worker.`,
-      },
-    };
-  }
-
-  if (opp.reasons.includes("followup_due")) {
-    return {
-      tool: null,
-      decision: "Leave the due follow-up with its owner",
-      detail:
-        "A follow-up job is already pending and due; duplicating it would double-contact the customer.",
-    };
-  }
-
-  if (opp.reasons.includes("no_contact") || opp.reasons.includes("awaiting_reply")) {
-    return {
-      tool: "executive_schedule_followup",
-      worker: "AI WhatsApp Executive",
-      decision: "Schedule a follow-up for this lead",
-      input: {
-        lead_id: lead.id,
-        title: opp.reasons.includes("no_contact")
-          ? `First contact: qualify ${lead.full_name}`
-          : `Re-engage ${lead.full_name} — no reply in 24h+`,
-        hours_from_now: opp.intent === "high" ? 1 : 4,
-      },
-    };
-  }
-
-  if (opp.reasons.includes("missing_info")) {
-    return {
-      tool: null,
-      decision: "Collect missing qualification details",
-      detail:
-        "Sending a customer-facing qualification message autonomously is not a permitted capability. Recorded as capability_unavailable — handled by the WhatsApp worker on the next inbound message, or by a human.",
-    };
-  }
-
-  return {
-    tool: null,
-    decision: "Recommend a package and push for a decision",
-    detail:
-      "Autonomous outbound package pitching is not a permitted capability. Recorded for human action.",
-  };
-}
+// See ./executive/decision.core.ts: UNDERSTAND → PRIORITISE → DECIDE →
+// COORDINATE, all deterministic so no outcome can be fabricated.
 
 /* ------------------------------------------------------------------ */
 /* Orchestration cycle                                                 */
@@ -409,10 +447,50 @@ export async function runExecutiveOrchestration(
   const opportunities = await loadOpportunities(supabase, agencyId);
   const candidates = opportunities.slice(0, MAX_CANDIDATES);
 
+  // UNDERSTAND — fact / signal / interpretation / unknown, from real data only.
+  const { data: workerRows } = await supabase
+    .from("ai_workers")
+    .select("worker_key, is_enabled")
+    .eq("agency_id", agencyId);
+  const situation = assessSituation(opportunities, {
+    enabled: (workerRows ?? []).filter((w: any) => w.is_enabled).length,
+    total: (workerRows ?? []).length,
+  });
+
+  // MONITOR — action completed is not the same as business outcome achieved.
+  let monitoring: MonitorFinding[] = [];
+  try {
+    monitoring = await monitorExecutedDecisions(supabase, agencyId);
+  } catch {
+    monitoring = [];
+  }
+
   const decisions: ExecutiveDecision[] = [];
   let executed = 0;
   let attempted = 0;
   let limitReached = false;
+
+  for (const finding of monitoring) {
+    decisions.push({
+      at: new Date().toISOString(),
+      lead_id: finding.leadId,
+      subject: finding.subject,
+      decision: "Review the outcome of a previously executed action",
+      why: finding.detail,
+      action: null,
+      worker: "Autonomous AI Business Executive",
+      result: finding.outcome === "no_response" ? "escalated" : "capability_unavailable",
+      detail: finding.nextAction,
+      objective: "Verify whether the business outcome was achieved",
+      priority: finding.outcome === "no_response" ? "high" : "low",
+      boundary: "human_only",
+      confidence: 90,
+      booking_probability: null,
+      expected_outcome: finding.nextAction,
+      worker_reason: "Outcome verification is the orchestrator's own responsibility.",
+      escalation: null,
+    });
+  }
 
   for (const [index, opp] of candidates.entries()) {
     if (executed >= MAX_ACTIONS_PER_CYCLE) {
@@ -431,21 +509,38 @@ export async function runExecutiveOrchestration(
       break;
     }
 
+    const envelope = decideFor(opp);
+    const why = `${envelope.priority.reason} (${envelope.priority.band.toUpperCase()} priority · ${opp.reasons.join(", ") || "no signal"} · decision confidence ${envelope.decisionConfidence}%${
+      envelope.bookingProbability === null
+        ? " · booking probability unknown"
+        : ` · booking probability ${envelope.bookingProbability}%`
+    })`;
 
-    const plan = planFor(opp);
-    const why = `${opp.reasons.join(", ")} · score ${opp.lead.score}/100 · ${opp.intent} intent`;
+    const common = {
+      at: new Date().toISOString(),
+      lead_id: opp.lead.id,
+      subject: opp.lead.full_name,
+      decision: envelope.objective,
+      why,
+      objective: envelope.objective,
+      priority: envelope.priority.band,
+      boundary: envelope.boundary,
+      confidence: envelope.decisionConfidence,
+      booking_probability: envelope.bookingProbability,
+      expected_outcome: envelope.expectedOutcome,
+      worker_reason: envelope.workerReason,
+      escalation: envelope.escalation,
+    };
 
-    if (plan.tool === null) {
+    if (envelope.tool === null) {
       decisions.push({
-        at: new Date().toISOString(),
-        lead_id: opp.lead.id,
-        subject: opp.lead.full_name,
-        decision: plan.decision,
-        why,
+        ...common,
         action: null,
-        worker: null,
+        worker: envelope.worker,
         result: "capability_unavailable",
-        detail: plan.detail,
+        detail:
+          envelope.unavailableReason ??
+          "No governed capability exists for this action. Nothing was executed.",
       });
       continue;
     }
@@ -453,13 +548,9 @@ export async function runExecutiveOrchestration(
     if (advisoryOnly) {
       // ASSISTED mode: recommend only. No governed side effect is performed.
       decisions.push({
-        at: new Date().toISOString(),
-        lead_id: opp.lead.id,
-        subject: opp.lead.full_name,
-        decision: plan.decision,
-        why,
-        action: plan.tool,
-        worker: plan.worker,
+        ...common,
+        action: envelope.tool,
+        worker: envelope.worker,
         result: "approval_required",
         detail:
           "Assisted autonomy mode — recommendation recorded. A human must approve before this action runs.",
@@ -468,12 +559,27 @@ export async function runExecutiveOrchestration(
     }
 
     attempted += 1;
-    const outcome: ToolOutcome = await registry.invoke(plan.tool, plan.input, toolCtx);
+    const toolInput =
+      envelope.tool === "executive_request_approval"
+        ? {
+            ...(envelope.toolInput ?? {}),
+            expected_outcome: envelope.expectedOutcome,
+            priority: envelope.priority.band,
+            decision_confidence: envelope.decisionConfidence,
+            booking_probability: envelope.bookingProbability,
+          }
+        : (envelope.toolInput ?? {});
+    const outcome: ToolOutcome = await registry.invoke(envelope.tool, toolInput, toolCtx);
 
     let result: ExecutiveActionResult;
     let detail: string;
     if (outcome.status === "executed") {
-      result = plan.tool === "executive_escalate_to_human" ? "escalated" : "executed";
+      result =
+        envelope.tool === "executive_escalate_to_human"
+          ? "escalated"
+          : envelope.tool === "executive_request_approval"
+            ? "approval_required"
+            : "executed";
       detail = JSON.stringify(outcome.result);
       executed += 1;
     } else if (outcome.status === "rejected") {
@@ -485,17 +591,14 @@ export async function runExecutiveOrchestration(
     }
 
     decisions.push({
-      at: new Date().toISOString(),
-      lead_id: opp.lead.id,
-      subject: opp.lead.full_name,
-      decision: plan.decision,
-      why,
-      action: plan.tool,
-      worker: plan.worker,
+      ...common,
+      action: envelope.tool,
+      worker: envelope.worker,
       result,
       detail,
     });
   }
+
 
   // Workforce coordination: keep Lead Intelligence scoring fresh when the
   // pipeline has unattended priorities. Queued only — the existing task engine
@@ -557,6 +660,8 @@ export async function runExecutiveOrchestration(
     actionsExecuted: executed,
     limitReached,
     decisions,
+    situation,
+    monitoring,
   };
 
   // Append-only audit record for the whole cycle (UI reads this).
