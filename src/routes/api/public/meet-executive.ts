@@ -261,7 +261,14 @@ export const Route = createFileRoute("/api/public/meet-executive")({
             })),
           });
           reply = result.ok && result.data ? result.data : null;
-        } catch {
+          if (!reply) {
+            console.error("[meet-executive] gateway returned no reply", {
+              ok: result.ok,
+              error: result.error ?? null,
+            });
+          }
+        } catch (error) {
+          console.error("[meet-executive] gateway threw", error);
           reply = null;
         }
 
