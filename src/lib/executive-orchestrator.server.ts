@@ -660,6 +660,8 @@ export async function runExecutiveOrchestration(
     actionsExecuted: executed,
     limitReached,
     decisions,
+    situation,
+    monitoring,
   };
 
   // Append-only audit record for the whole cycle (UI reads this).
