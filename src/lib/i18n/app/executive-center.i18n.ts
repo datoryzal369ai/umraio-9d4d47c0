@@ -162,7 +162,7 @@ export const EXECUTIVE_CENTER_DICT = createDict<CenterCopy>({
     autonomousNote: "This worker may execute governed actions without asking first.",
     pausedNote: "This worker is paused and will not execute anything.",
   },
-  ms: {
+  bm: {
     heroEyebrow: "Bilik Kawalan Manusia + AI",
     heroTitle: "AI Executive Center",
     heroSubtitle: "Pusat Arahan Tenaga Kerja AI Anda",
