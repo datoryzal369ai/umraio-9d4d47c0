@@ -52,6 +52,13 @@ type ExecutiveCopy = {
     minAgo: (n: number) => string;
     hAgo: (n: number) => string;
     dAgo: (n: number) => string;
+    stateRunning: (n: number) => string;
+    stateQueued: (n: number) => string;
+    stateWaitingApproval: (n: number) => string;
+    stateReady: string;
+    stateIdle: string;
+    noLiveTasks: string;
+    nextPriority: string;
   };
   workerDetail: {
     backToExecutiveCenter: string;
