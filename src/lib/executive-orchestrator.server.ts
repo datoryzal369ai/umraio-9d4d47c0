@@ -78,6 +78,15 @@ export type ExecutiveDecision = {
   worker: string | null;
   result: ExecutiveActionResult;
   detail: string;
+  /* Orchestration intelligence (optional so older records still parse). */
+  objective?: string;
+  priority?: PriorityBand;
+  boundary?: AutonomyBoundary;
+  confidence?: number;
+  booking_probability?: number | null;
+  expected_outcome?: string;
+  worker_reason?: string;
+  escalation?: EscalationBrief | null;
 };
 
 export type ExecutiveCycleResult = {
@@ -91,6 +100,10 @@ export type ExecutiveCycleResult = {
   actionsExecuted: number;
   limitReached: boolean;
   decisions: ExecutiveDecision[];
+  /** UNDERSTAND output: fact / signal / interpretation / unknown. */
+  situation?: SituationReport;
+  /** MONITOR output: what actually happened after earlier executed actions. */
+  monitoring?: MonitorFinding[];
 };
 
 /* ------------------------------------------------------------------ */
