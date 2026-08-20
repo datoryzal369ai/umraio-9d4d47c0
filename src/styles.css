@@ -66,6 +66,9 @@
   --color-chrome: var(--chrome);
   --color-platinum: var(--platinum);
   --color-emerald: var(--emerald);
+  --color-amber-energy: var(--amber-energy);
+  --color-violet: var(--violet);
+  --color-electric: var(--electric);
 }
 
 :root,
@@ -126,8 +129,11 @@
   --shadow-glow: 0 0 0 1px rgba(0, 215, 255, 0.28), 0 18px 50px -20px rgba(0, 215, 255, 0.5);
 
   /* ── Brand-architecture accents (additive, no existing token changed) ── */
-  --gold: #e6c684;
-  --gold-bright: #ffe9b8;
+  --gold: #ffab4c;
+  --gold-bright: #ffd08a;
+  --amber-energy: #ff6a3d;
+  --violet: #a68bff;
+  --electric: #4aa8ff;
   --chrome: #c9d3dc;
   --platinum: #eef3f7;
   --emerald: #35d6a4;
@@ -140,7 +146,7 @@
   --shadow-exec:
     0 1px 0 0 rgba(255, 255, 255, 0.10) inset,
     0 26px 60px -34px rgba(0, 0, 0, 0.95);
-  --shadow-gold: 0 0 0 1px rgba(230, 198, 132, 0.46), 0 18px 46px -22px rgba(230, 198, 132, 0.5);
+  --shadow-gold: 0 0 0 1px rgba(255, 171, 76, 0.55), 0 18px 52px -20px rgba(255, 122, 60, 0.6);
 }
 
 
@@ -475,7 +481,7 @@
     box-shadow 220ms ease-out,
     transform 220ms ease-out;
   &:hover {
-    border-color: rgba(242, 221, 166, 0.55);
+    border-color: rgba(255, 171, 76, 0.6);
     box-shadow: var(--shadow-gold);
     transform: translateY(-3px);
   }
@@ -505,7 +511,7 @@
     box-shadow 220ms ease-out,
     transform 220ms ease-out;
   &:hover {
-    border-color: rgba(242, 221, 166, 0.55);
+    border-color: rgba(255, 171, 76, 0.6);
     box-shadow: var(--shadow-gold);
     transform: translateY(-3px);
   }
