@@ -58,15 +58,16 @@ const priorityTone: Record<string, string> = {
 
 function Metric({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/60 bg-surface p-4">
+    <div className="card-interactive-gold rounded-xl border border-gold/25 bg-surface p-4">
       <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="size-3.5 text-primary" aria-hidden="true" />
+        <Icon className="size-3.5 text-gold" aria-hidden="true" />
         <span className="text-[11px] uppercase tracking-[0.14em]">{label}</span>
       </div>
       <p className="mt-2 text-xl font-semibold tabular-nums">{value}</p>
     </div>
   );
 }
+
 
 function DeskRow({ item }: { item: EliteDeskItem }) {
   const p = item.read.psychology;
@@ -152,10 +153,13 @@ function SalesElitePage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <PageHeader
+        backTo="/executive"
+        backLabel="Back to Command Center"
         eyebrow="AI Workforce"
-        title="AI SALES ELITE™"
+        title={<span className="text-champagne">AI SALES ELITE™</span>}
         description="Elite autonomous sales & closing intelligence — live from your own pipeline, never estimated."
       />
+
 
       {desk.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

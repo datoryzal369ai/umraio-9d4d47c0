@@ -7,16 +7,15 @@ import { BrandArchitecture } from "@/components/brand/BrandArchitecture";
 import { AutomationShowcase } from "@/components/marketing/AutomationShowcase";
 import { PricingSection } from "@/components/marketing/PricingSection";
 import { WorkforceMetrics } from "@/components/marketing/WorkforceMetrics";
+import { IntelligenceArchitecture } from "@/components/marketing/IntelligenceArchitecture";
 import {
   BuiltForUmrah,
   ClosingStatement,
   CustomerTrust,
   DifferentiationLadder,
-  EcosystemRelationship,
   GovernedAutonomy,
-  IntelligenceLoop,
-  IslamicImplementationLayer,
 } from "@/components/marketing/PositioningSections";
+
 
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { LanguageSelector } from "@/components/app/LanguageSelector";
@@ -227,13 +226,13 @@ function Index() {
 
           <AutomationShowcase />
 
+          <IntelligenceArchitecture />
+
           <BuiltForUmrah />
-          <IslamicImplementationLayer />
-          <IntelligenceLoop />
           <CustomerTrust />
           <GovernedAutonomy />
           <DifferentiationLadder />
-          <EcosystemRelationship />
+
 
           <PricingSection />
 
