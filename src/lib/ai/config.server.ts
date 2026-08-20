@@ -44,10 +44,13 @@ export function getAiConfig(): AiConfig {
     provider,
     model,
     fastModel: env("AI_FAST_MODEL") ?? model,
-    fallbackModel: env("AI_FALLBACK_MODEL") ?? null,
+    // A transient primary-model failure must not end a live sales conversation.
+    fallbackModel: env("AI_FALLBACK_MODEL") ?? DEFAULT_FALLBACK_MODEL,
     maxRetries: Math.max(0, Math.min(3, Number(env("AI_MAX_RETRIES") ?? 1) || 0)),
     timeouts: {
-      fast: num("AI_TIMEOUT_FAST_MS", 20_000),
+      // Long RAIŌ conversations carry a large system prompt; 20s was too tight
+      // and surfaced as a 503 on /api/public/meet-executive.
+      fast: num("AI_TIMEOUT_FAST_MS", 45_000),
       reasoning: num("AI_TIMEOUT_REASONING_MS", 90_000),
       evaluation: num("AI_TIMEOUT_EVALUATION_MS", 45_000),
     },
