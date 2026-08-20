@@ -58,10 +58,10 @@ export const WORKSPACE_COPY = createDict({
     },
     tasks: {
       eyebrow: "AI Task Center",
-      title: "Autonomous task engine",
+      title: "AUTONOMOUS TASK ENGINE",
       description: "Observe, think, plan, execute, monitor, report — every AI worker job in one queue.",
       runningCycle: "Running cycle…",
-      runAutonomousCycle: "Run autonomous cycle",
+      runAutonomousCycle: "Run Autonomous Cycle",
       kpiInQueue: "In queue",
       kpiInQueueHint: "Waiting to execute",
       kpiRunning: "Running",
@@ -236,7 +236,7 @@ export const WORKSPACE_COPY = createDict({
     },
     tasks: {
       eyebrow: "Pusat Tugasan AI",
-      title: "Enjin tugasan autonomi",
+      title: "AUTONOMOUS TASK ENGINE",
       description: "Perhati, fikir, rancang, laksana, pantau, lapor — setiap kerja pekerja AI dalam satu baris gilir.",
       runningCycle: "Menjalankan kitaran…",
       runAutonomousCycle: "Jalankan kitaran autonomi",
