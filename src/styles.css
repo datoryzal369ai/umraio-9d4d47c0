@@ -59,6 +59,13 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Executive brand-architecture palette (additive) */
+  --color-gold: var(--gold);
+  --color-gold-bright: var(--gold-bright);
+  --color-chrome: var(--chrome);
+  --color-platinum: var(--platinum);
+  --color-emerald: var(--emerald);
 }
 
 :root,
@@ -117,6 +124,23 @@
   --shadow-elevated: 0 24px 70px -30px rgba(0, 215, 255, 0.6);
   --shadow-panel: 0 1px 0 0 rgba(255, 255, 255, 0.06) inset;
   --shadow-glow: 0 0 0 1px rgba(0, 215, 255, 0.28), 0 18px 50px -20px rgba(0, 215, 255, 0.5);
+
+  /* ── Brand-architecture accents (additive, no existing token changed) ── */
+  --gold: #d9b877;
+  --gold-bright: #f2dda6;
+  --chrome: #c9d3dc;
+  --platinum: #eef3f7;
+  --emerald: #35d6a4;
+
+  --gradient-chrome:
+    linear-gradient(135deg, rgba(238, 243, 247, 0.16) 0%, rgba(201, 211, 220, 0.06) 26%,
+      rgba(7, 26, 39, 0.0) 52%, rgba(0, 215, 255, 0.06) 78%, rgba(238, 243, 247, 0.12) 100%);
+  --gradient-obsidian:
+    linear-gradient(160deg, rgba(18, 14, 8, 0.72) 0%, rgba(9, 22, 32, 0.86) 55%, rgba(5, 15, 22, 0.92) 100%);
+  --shadow-exec:
+    0 1px 0 0 rgba(255, 255, 255, 0.10) inset,
+    0 26px 60px -34px rgba(0, 0, 0, 0.95);
+  --shadow-gold: 0 0 0 1px rgba(217, 184, 119, 0.34), 0 18px 46px -22px rgba(217, 184, 119, 0.42);
 }
 
 
@@ -408,5 +432,105 @@
   .umr-hub,
   .umr-signal-line {
     animation: none !important;
+  }
+}
+
+
+/* ══ UMRAIO executive interaction system (additive, visual only) ══════ */
+
+/* Level 3 — AI Autonomous Business Executive™ chrome/platinum console */
+@utility panel-exec {
+  position: relative;
+  background-color: color-mix(in oklab, var(--color-card) 92%, black);
+  background-image: var(--gradient-chrome);
+  border: 1px solid rgba(238, 243, 247, 0.18);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-exec);
+  backdrop-filter: blur(14px);
+  transition:
+    border-color 220ms ease-out,
+    box-shadow 220ms ease-out,
+    transform 220ms ease-out;
+  &:hover {
+    border-color: rgba(238, 243, 247, 0.34);
+    box-shadow:
+      var(--shadow-exec),
+      0 0 0 1px rgba(0, 215, 255, 0.14),
+      0 22px 54px -30px rgba(238, 243, 247, 0.34);
+    transform: translateY(-2px);
+  }
+}
+
+/* Level 3 — AI SALES ELITE™ obsidian + champagne gold */
+@utility panel-elite {
+  position: relative;
+  background-image: var(--gradient-obsidian);
+  border: 1px solid rgba(217, 184, 119, 0.26);
+  border-radius: var(--radius-2xl);
+  box-shadow:
+    0 1px 0 0 rgba(242, 221, 166, 0.10) inset,
+    0 22px 56px -34px rgba(0, 0, 0, 0.92);
+  transition:
+    border-color 220ms ease-out,
+    box-shadow 220ms ease-out,
+    transform 220ms ease-out;
+  &:hover {
+    border-color: rgba(242, 221, 166, 0.55);
+    box-shadow: var(--shadow-gold);
+    transform: translateY(-3px);
+  }
+}
+
+/* Level 1→2 — every important card feels alive (turquoise register) */
+@utility card-interactive {
+  transition:
+    border-color 220ms ease-out,
+    box-shadow 220ms ease-out,
+    transform 220ms ease-out,
+    background-color 220ms ease-out;
+  &:hover {
+    border-color: rgba(0, 215, 255, 0.38);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-3px);
+  }
+  &:active {
+    transform: scale(0.985);
+  }
+}
+
+/* Gold register for AI SALES ELITE™ surfaces */
+@utility card-interactive-gold {
+  transition:
+    border-color 220ms ease-out,
+    box-shadow 220ms ease-out,
+    transform 220ms ease-out;
+  &:hover {
+    border-color: rgba(242, 221, 166, 0.55);
+    box-shadow: var(--shadow-gold);
+    transform: translateY(-3px);
+  }
+  &:active {
+    transform: scale(0.985);
+  }
+}
+
+@utility text-chrome {
+  background-image: linear-gradient(100deg, #ffffff 10%, var(--platinum) 38%, var(--chrome) 62%, #ffffff 92%);
+  background-clip: text;
+  color: transparent;
+}
+
+@utility text-champagne {
+  background-image: linear-gradient(100deg, var(--gold-bright) 12%, var(--gold) 52%, var(--gold-bright) 92%);
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-exec,
+  .panel-elite,
+  .card-interactive,
+  .card-interactive-gold {
+    transition: none;
   }
 }
