@@ -24,6 +24,15 @@ import {
   type WorkerStatus,
 } from "@/lib/executive";
 import { decideExecutiveTask, runExecutiveTask } from "@/lib/executive-ai.functions";
+import { WorkforceNavigator } from "@/components/executive/WorkforceNavigator";
+import { relativeTime } from "@/components/executive/WorkforceGrid";
+import {
+  AUTONOMY_TONE,
+  RUNTIME_TONE,
+  deriveWorkerRuntime,
+} from "@/lib/executive/worker-state";
+import { EXECUTIVE_CENTER_DICT } from "@/lib/i18n/app/executive-center.i18n";
+import { fetchEngineTasks } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/executive/$workerKey")({
@@ -70,7 +79,11 @@ function WorkerDetail() {
     queryFn: () => fetchTasks(workerKey),
   });
 
+  const engine = useQuery({ queryKey: ["engine-tasks"], queryFn: () => fetchEngineTasks(120) });
+  const center = useCopy(EXECUTIVE_CENTER_DICT);
+
   const worker = (workers.data ?? []).find((w) => w.worker_key === workerKey);
+  const runtime = worker ? deriveWorkerRuntime(worker, engine.data ?? []) : null;
   const status = (worker?.is_enabled ? worker.status : "idle") as WorkerStatus;
 
   const runMutation = useMutation({
