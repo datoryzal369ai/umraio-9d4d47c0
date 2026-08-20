@@ -430,6 +430,13 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
       minAgo: (n) => `${n}m lalu`,
       hAgo: (n) => `${n}j lalu`,
       dAgo: (n) => `${n}h lalu`,
+      stateRunning: (n) => `${n} tugasan sedang berjalan`,
+      stateQueued: (n) => `${n} dalam barisan`,
+      stateWaitingApproval: (n) => `${n} menunggu kelulusan`,
+      stateReady: "Sedia",
+      stateIdle: "Dijeda",
+      noLiveTasks: "Tiada tugasan aktif",
+      nextPriority: "Keutamaan seterusnya",
     },
     workerDetail: {
       backToExecutiveCenter: "AI Executive Center",
