@@ -246,7 +246,15 @@ function ExecutiveCenter() {
                       {" · "}
                       {worker.autonomy === "auto" ? copy.autonomous : copy.approvalRequired}
                     </p>
-                    <Button asChild size="sm" variant="outline">
+                    <Button
+                      asChild
+                      size="sm"
+                      variant="outline"
+                      className={cn(
+                        isElite &&
+                          "border-gold/50 bg-gold/10 text-gold hover:bg-gold/20 hover:text-gold",
+                      )}
+                    >
                       {WORKER_ROUTES[worker.worker_key] ? (
                         <Link to={WORKER_ROUTES[worker.worker_key]!}>{copy.openWorker}</Link>
                       ) : (
