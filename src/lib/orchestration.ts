@@ -22,6 +22,15 @@ export type ExecutiveDecision = {
   worker: string | null;
   result: ExecutiveActionResult;
   detail: string;
+  /* Orchestration intelligence — optional so historic records still render. */
+  objective?: string;
+  priority?: "high" | "medium" | "low";
+  boundary?: "autonomous" | "human_approval" | "human_only";
+  confidence?: number;
+  booking_probability?: number | null;
+  expected_outcome?: string;
+  worker_reason?: string;
+  escalation?: Record<string, string> | null;
 };
 
 export type ExecutiveCycle = {
