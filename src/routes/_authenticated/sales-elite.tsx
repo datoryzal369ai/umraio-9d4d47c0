@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/PageHeader";
+import { WorkforceNavigator } from "@/components/executive/WorkforceNavigator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
