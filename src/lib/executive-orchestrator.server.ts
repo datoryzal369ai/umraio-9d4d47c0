@@ -243,6 +243,71 @@ function buildExecutiveRegistry() {
         return { queued: true, task_id: taskId, worker: TASK_KINDS[kind]!.worker };
       },
     },
+
+    {
+      name: "executive_request_approval",
+      description:
+        "Persist an executive decision that requires human authorisation as a real ai_tasks record in waiting_approval. Never executes anything itself.",
+      permission: "write",
+      deterministicSafe: true,
+      inputSchema: z.object({
+        lead_id: z.string(),
+        objective: z.string(),
+        worker_key: z.string(),
+        title: z.string(),
+        reason: z.string(),
+        expected_outcome: z.string(),
+        priority: z.enum(["low", "medium", "high"]),
+        decision_confidence: z.number(),
+        booking_probability: z.number().nullable(),
+      }),
+      validate: async (input, tctx) => {
+        const { data: lead } = await tctx.supabase
+          .from("leads")
+          .select("id")
+          .eq("agency_id", tctx.agencyId)
+          .eq("id", input.lead_id)
+          .maybeSingle();
+        if (!lead) return "Lead does not belong to this agency.";
+        const { data: worker } = await tctx.supabase
+          .from("ai_workers")
+          .select("worker_key")
+          .eq("agency_id", tctx.agencyId)
+          .eq("worker_key", input.worker_key)
+          .maybeSingle();
+        if (!worker) return `Worker "${input.worker_key}" is not available for this agency.`;
+        return null;
+      },
+      execute: async (input, tctx) => {
+        const { createApprovalRequest } = await import("./executive/execution.server");
+        const result = await createApprovalRequest(tctx.supabase, tctx.agencyId, {
+          leadId: input.lead_id,
+          objective: input.objective,
+          workerKey: input.worker_key,
+          title: input.title,
+          reason: input.reason,
+          expectedOutcome: input.expected_outcome,
+          priority: input.priority,
+          decisionConfidence: input.decision_confidence,
+          bookingProbability: input.booking_probability,
+          correlationId: tctx.correlationId,
+        });
+        if (result.status === "duplicate") throw new Error(result.reason);
+        await tctx.supabase.from("activity_log").insert({
+          agency_id: tctx.agencyId,
+          actor: "ai",
+          action: `Autonomous AI Business Executive requested approval: ${input.title}`,
+          entity: "ai_task",
+          entity_id: result.taskId,
+          meta: {
+            lead_id: input.lead_id,
+            objective: input.objective,
+            correlation_id: tctx.correlationId,
+          },
+        });
+        return { approval_requested: true, task_id: result.taskId };
+      },
+    },
   ];
 
   return createToolRegistry(tools);
