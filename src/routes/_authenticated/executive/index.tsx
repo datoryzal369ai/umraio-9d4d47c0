@@ -166,15 +166,27 @@ function ExecutiveCenter() {
           : (workers.data ?? []).map((worker) => {
               const Icon = workerIcon[worker.worker_key] ?? Bot;
               const status = (worker.is_enabled ? worker.status : "idle") as WorkerStatus;
+              const isElite = worker.worker_key === "sales_elite";
               return (
-                <article key={worker.id} className="panel flex min-w-0 flex-col gap-4 p-5">
+                <article
+                  key={worker.id}
+                  className={cn(
+                    "flex min-w-0 flex-col gap-4 p-5",
+                    isElite ? "panel-elite card-interactive-gold" : "panel card-interactive",
+                  )}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div className="rounded-xl border border-border/60 bg-surface p-2.5">
-                        <Icon className="size-5 text-primary" />
+                      <div
+                        className={cn(
+                          "rounded-xl border p-2.5",
+                          isElite ? "border-gold/40 bg-gold/10" : "border-border/60 bg-surface",
+                        )}
+                      >
+                        <Icon className={cn("size-5", isElite ? "text-gold" : "text-primary")} />
                       </div>
                       <div className="min-w-0">
-                        <h2 className="truncate text-base font-semibold">{worker.name}</h2>
+                        <h2 className={cn("truncate text-base font-semibold", isElite && "text-champagne")}>{worker.name}</h2>
                         <p className="text-xs text-muted-foreground">{worker.description}</p>
                       </div>
                     </div>
