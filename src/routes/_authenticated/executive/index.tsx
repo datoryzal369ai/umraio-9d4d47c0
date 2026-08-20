@@ -138,7 +138,11 @@ function ExecutiveCenter() {
   const offline = allWorkers.length - online;
   const approvals = m?.pendingApprovals ?? 0;
   const opportunityCount = (opportunities.data ?? []).length;
-  const ready = !metrics.isLoading && !workers.isLoading;
+  const ready = !metrics.isLoading && !workers.isLoading && !engineTasksQuery.isLoading;
+  // Escalations are real: an approval-gated action that failed needs a human.
+  const escalations = engineTasks.filter(
+    (t) => t.status === "failed" && t.requires_approval,
+  ).length;
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
@@ -178,9 +182,21 @@ function ExecutiveCenter() {
           <Telemetry
             icon={Activity}
             label={center.telemetry.systemStatus}
-            value={ready ? center.telemetry.systemActive : center.telemetry.systemSyncing}
-            hint={ready ? center.nowNoEscalations : copy.syncing}
-            tone="text-emerald"
+            value={
+              !ready
+                ? center.telemetry.systemSyncing
+                : escalations > 0
+                  ? center.telemetry.systemAttention
+                  : center.telemetry.systemActive
+            }
+            hint={
+              !ready
+                ? copy.syncing
+                : escalations > 0
+                  ? center.telemetry.escalations(escalations)
+                  : center.nowNoEscalations
+            }
+            tone={escalations > 0 ? "text-destructive" : "text-emerald"}
           />
           <Telemetry
             icon={Users}
@@ -194,11 +210,11 @@ function ExecutiveCenter() {
           <Telemetry
             icon={ListChecks}
             label={center.telemetry.tasks}
-            value={center.telemetry.tasksCoordinated}
+            value={m ? center.telemetry.tasksToday(m.tasksToday) : "—"}
             hint={
-              m
-                ? `${center.telemetry.tasksToday(m.tasksToday)} · ${center.telemetry.tasksTotal(engineTasks.length)}`
-                : copy.syncing
+              engineTasksQuery.isLoading
+                ? copy.syncing
+                : center.telemetry.tasksRecent(engineTasks.length)
             }
             to="/tasks"
           />
