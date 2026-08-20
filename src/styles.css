@@ -534,3 +534,39 @@
     transition: none;
   }
 }
+
+/* RÉNAIO.CORE™ living intelligence mark — slow breathing glow + rare shimmer */
+.umr-core-mark {
+  animation: umr-core-breathe 7.5s ease-in-out infinite;
+}
+.umr-core-halo {
+  animation: umr-core-halo 7.5s ease-in-out infinite;
+}
+.umr-core-spark {
+  animation: umr-core-spark 11s ease-in-out infinite;
+}
+
+@keyframes umr-core-breathe {
+  0%, 100% { filter: brightness(1) saturate(1); transform: scale(1); }
+  50% { filter: brightness(1.09) saturate(1.06); transform: scale(1.012); }
+}
+
+@keyframes umr-core-halo {
+  0%, 100% { opacity: 0.35; transform: scale(0.94); }
+  50% { opacity: 0.7; transform: scale(1.06); }
+}
+
+@keyframes umr-core-spark {
+  0%, 86%, 100% { opacity: 0; }
+  90% { opacity: 0.55; }
+  94% { opacity: 0.12; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .umr-core-mark,
+  .umr-core-halo,
+  .umr-core-spark {
+    animation: none !important;
+  }
+  .umr-core-spark { opacity: 0; }
+}
