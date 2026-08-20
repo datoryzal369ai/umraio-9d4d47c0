@@ -68,9 +68,9 @@ function Telemetry({
   label: string;
   value: string;
   hint: string;
-  to?: "/tasks";
-  hash?: string;
-  tone?: string;
+  to?: "/tasks" | undefined;
+  hash?: string | undefined;
+  tone?: string | undefined;
 }) {
   const body = (
     <>
