@@ -25,11 +25,11 @@ import {
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
   head: () => ({
     meta: [
-      { title: "WhatsApp Integration — UMRAIO Autonomous AI Business Executive" },
+      { title: "WhatsApp Integration — UMRAIO AI Autonomous Business Executive" },
       {
         name: "description",
         content:
-          "Connect your WhatsApp Business number so the UMRAIO Autonomous AI Business Executive answers Umrah enquiries automatically.",
+          "Connect your WhatsApp Business number so the UMRAIO AI Autonomous Business Executive answers Umrah enquiries automatically.",
       },
       { property: "og:title", content: "WhatsApp Integration — UMRAIO" },
       {

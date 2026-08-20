@@ -29,11 +29,11 @@ import {
 export const Route = createFileRoute("/_authenticated/settings/agency")({
   head: () => ({
     meta: [
-      { title: "Agency Settings — UMRAIO Autonomous AI Business Executive" },
+      { title: "Agency Settings — UMRAIO AI Autonomous Business Executive" },
       {
         name: "description",
         content:
-          "Manage your Umrah agency profile, logo, contact details and business hours for the UMRAIO Autonomous AI Business Executive.",
+          "Manage your Umrah agency profile, logo, contact details and business hours for the UMRAIO AI Autonomous Business Executive.",
       },
       { property: "og:title", content: "Agency Settings — UMRAIO" },
       {

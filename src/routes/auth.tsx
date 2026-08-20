@@ -28,21 +28,21 @@ export const Route = createFileRoute("/auth")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Sign in — UMRAIO® Autonomous AI Business Executive" },
+      { title: "Sign in — UMRAIO® AI Autonomous Business Executive" },
       { name: "robots", content: "noindex, follow" },
       {
         name: "description",
         content:
-          "Sign in or create your UMRAIO® agency account to manage the Autonomous AI Business Executive for licensed Umrah agencies.",
+          "Sign in or create your UMRAIO® agency account to manage the AI Autonomous Business Executive for licensed Umrah agencies.",
       },
-      { property: "og:title", content: "Sign in — UMRAIO® Autonomous AI Business Executive" },
+      { property: "og:title", content: "Sign in — UMRAIO® AI Autonomous Business Executive" },
       {
         property: "og:description",
         content: "Access your UMRAIO® agency workspace.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: "https://umraio.com/auth" },
-      { name: "twitter:title", content: "Sign in — UMRAIO® Autonomous AI Business Executive" },
+      { name: "twitter:title", content: "Sign in — UMRAIO® AI Autonomous Business Executive" },
       { name: "twitter:description", content: "Access your UMRAIO® agency workspace." },
     ],
     links: [{ rel: "canonical", href: "https://umraio.com/auth" }],

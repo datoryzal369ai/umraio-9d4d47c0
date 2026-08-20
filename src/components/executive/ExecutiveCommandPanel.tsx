@@ -111,7 +111,7 @@ export function ExecutiveCommandPanel({
         <ol className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
           {HIERARCHY.map((level, index) => (
             <li key={level.name} className="flex min-w-0 items-center gap-2">
-              <div className="min-w-0 rounded-lg border border-border/60 bg-surface px-3 py-1.5">
+              <div className="card-interactive min-w-0 rounded-lg border border-border/60 bg-surface px-3 py-1.5">
                 <p className="truncate text-[12px] font-semibold">{level.name}</p>
                 <p className="truncate text-[10px] text-muted-foreground">{level.role}</p>
               </div>
@@ -127,18 +127,18 @@ export function ExecutiveCommandPanel({
       </div>
 
       {/* Executive command panel */}
-      <div className="panel relative overflow-hidden p-5">
+      <div className="panel-exec relative overflow-hidden p-5">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -right-16 -top-16 size-52 rounded-full bg-primary/10 blur-3xl"
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="rounded-xl border border-primary/30 bg-primary/10 p-2.5">
-              <BrainCircuit aria-hidden="true" className="size-5 text-primary" />
+            <div className="rounded-xl border border-platinum/25 bg-platinum/10 p-2.5">
+              <BrainCircuit aria-hidden="true" className="size-5 text-platinum" />
             </div>
             <div className="min-w-0">
-              <h2 id="abe-heading" className="font-display text-lg font-bold tracking-tight">
+              <h2 id="abe-heading" className="text-chrome font-display text-lg font-bold tracking-tight">
                 {copy.title}
               </h2>
               <p className="text-xs text-muted-foreground">
@@ -289,8 +289,8 @@ export function ExecutiveCommandPanel({
             {copy.orchestrationHeading}
           </h2>
         </div>
-        <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[12px] font-semibold">
-          AI Autonomous Business Executive™
+        <div className="text-chrome mt-3 rounded-lg border border-platinum/25 bg-platinum/[0.06] px-3 py-2 text-[12px] font-semibold">
+          AI AUTONOMOUS BUSINESS EXECUTIVE™
         </div>
         <div aria-hidden="true" className="mx-4 h-4 w-px bg-border" />
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -303,7 +303,7 @@ export function ExecutiveCommandPanel({
             : workers.map((worker) => (
                 <li
                   key={worker.id}
-                  className="rounded-lg border border-border/60 bg-surface px-3 py-2"
+                  className="card-interactive rounded-lg border border-border/60 bg-surface px-3 py-2"
                 >
                   <p className="truncate text-[12px] font-semibold">{worker.name}</p>
                   <p className="truncate text-[10px] text-muted-foreground">

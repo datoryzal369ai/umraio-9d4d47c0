@@ -18,7 +18,7 @@ export function KpiCard({
   className?: string;
 }) {
   return (
-    <div className={cn("panel group relative overflow-hidden p-5", className)}>
+    <div className={cn("panel card-interactive group relative overflow-hidden p-5", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="rounded-xl border border-border/60 bg-surface p-2.5">
           <Icon className="size-4 text-primary" />

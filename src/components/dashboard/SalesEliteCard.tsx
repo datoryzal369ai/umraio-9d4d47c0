@@ -63,14 +63,14 @@ export function SalesEliteCard({ data }: { data: DashboardData }) {
   });
 
   return (
-    <section className="panel space-y-5 p-5" aria-labelledby="sales-elite-heading">
+    <section className="panel-elite card-interactive-gold space-y-5 p-5" aria-labelledby="sales-elite-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="grid size-9 place-items-center rounded-xl border border-primary/30 bg-primary/10">
-            <Target className="size-4 text-primary" aria-hidden="true" />
+          <span className="grid size-9 place-items-center rounded-xl border border-gold/40 bg-gold/10">
+            <Target className="size-4 text-gold" aria-hidden="true" />
           </span>
           <div>
-            <h2 id="sales-elite-heading" className="text-sm font-semibold tracking-tight">
+            <h2 id="sales-elite-heading" className="text-champagne text-sm font-semibold tracking-tight">
               AI SALES ELITE™
             </h2>
             <p className="text-xs text-muted-foreground">
