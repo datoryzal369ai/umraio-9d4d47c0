@@ -1,5 +1,5 @@
 import aiMark from "@/assets/ai-mark.png.asset.json";
-import renaioAsset from "@/assets/renaio-core-logo.png.asset.json";
+import renaioMark from "@/assets/renaio-core-mark.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
 
 /**
