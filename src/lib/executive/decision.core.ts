@@ -143,7 +143,7 @@ export function prioritise(opp: SalesOpportunity): PriorityAssessment {
   if (opp.reasons.includes("followup_due")) parts.push("a scheduled follow-up is already due");
   if (opp.reasons.includes("no_contact")) parts.push("the lead has never been contacted");
   if (opp.reasons.includes("awaiting_reply")) parts.push("there has been no reply for over 24 hours");
-  if (opp.lead.stage === "proposal" || opp.lead.stage === "negotiation")
+  if (opp.lead.stage === "qualified" || opp.lead.stage === "negotiation")
     parts.push(`the lead already reached the ${opp.lead.stage} stage`);
   if (opp.missing.length) parts.push(`qualification data is incomplete (${opp.missing.join(", ")})`);
 
