@@ -59,15 +59,21 @@ export const decideExecutiveTask = createServerFn({ method: "POST" })
       );
 
 
-    // Record the human decision first — approval state is persistent.
-    await supabase
+    // Record the human decision first — compare-and-set on `waiting_approval`
+    // so two concurrent approvals cannot both execute the same action.
+    const { data: claimed } = await supabase
       .from("ai_tasks")
       .update({
         status: data.decision === "approve" ? "running" : "rejected",
         approved_at: data.decision === "approve" ? new Date().toISOString() : null,
         approved_by: data.decision === "approve" ? userId : null,
       })
-      .eq("id", task.id);
+      .eq("id", task.id)
+      .eq("status", "waiting_approval")
+      .select("id");
+    if (!claimed || claimed.length === 0)
+      throw new Error("This action was already decided by someone else.");
+
 
     await supabase.from("activity_log").insert({
       agency_id: task.agency_id,
