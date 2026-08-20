@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/PageHeader";
+import { WorkforceNavigator } from "@/components/executive/WorkforceNavigator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,13 +153,14 @@ function SalesElitePage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
+      <WorkforceNavigator workerKey="sales_elite" currentName="AI SALES ELITE™" />
+
       <PageHeader
-        backTo="/executive"
-        backLabel="Back to Command Center"
         eyebrow="AI Workforce"
         title={<span className="text-champagne">AI SALES ELITE™</span>}
         description="Elite autonomous sales & closing intelligence — live from your own pipeline, never estimated."
       />
+
 
 
       {desk.isLoading ? (
