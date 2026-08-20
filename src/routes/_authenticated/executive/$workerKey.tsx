@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect, useParams } from "@tanstack/react-router";
+import { createFileRoute, redirect, useParams } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Bot, Check, Loader2, Play, X } from "lucide-react";
