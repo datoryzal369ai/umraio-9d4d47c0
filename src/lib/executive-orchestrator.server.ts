@@ -447,21 +447,38 @@ export async function runExecutiveOrchestration(
       break;
     }
 
+    const envelope = decideFor(opp);
+    const why = `${envelope.priority.reason} (${envelope.priority.band.toUpperCase()} priority · ${opp.reasons.join(", ") || "no signal"} · decision confidence ${envelope.decisionConfidence}%${
+      envelope.bookingProbability === null
+        ? " · booking probability unknown"
+        : ` · booking probability ${envelope.bookingProbability}%`
+    })`;
 
-    const plan = planFor(opp);
-    const why = `${opp.reasons.join(", ")} · score ${opp.lead.score}/100 · ${opp.intent} intent`;
+    const common = {
+      at: new Date().toISOString(),
+      lead_id: opp.lead.id,
+      subject: opp.lead.full_name,
+      decision: envelope.objective,
+      why,
+      objective: envelope.objective,
+      priority: envelope.priority.band,
+      boundary: envelope.boundary,
+      confidence: envelope.decisionConfidence,
+      booking_probability: envelope.bookingProbability,
+      expected_outcome: envelope.expectedOutcome,
+      worker_reason: envelope.workerReason,
+      escalation: envelope.escalation,
+    };
 
-    if (plan.tool === null) {
+    if (envelope.tool === null) {
       decisions.push({
-        at: new Date().toISOString(),
-        lead_id: opp.lead.id,
-        subject: opp.lead.full_name,
-        decision: plan.decision,
-        why,
+        ...common,
         action: null,
-        worker: null,
+        worker: envelope.worker,
         result: "capability_unavailable",
-        detail: plan.detail,
+        detail:
+          envelope.unavailableReason ??
+          "No governed capability exists for this action. Nothing was executed.",
       });
       continue;
     }
@@ -469,13 +486,9 @@ export async function runExecutiveOrchestration(
     if (advisoryOnly) {
       // ASSISTED mode: recommend only. No governed side effect is performed.
       decisions.push({
-        at: new Date().toISOString(),
-        lead_id: opp.lead.id,
-        subject: opp.lead.full_name,
-        decision: plan.decision,
-        why,
-        action: plan.tool,
-        worker: plan.worker,
+        ...common,
+        action: envelope.tool,
+        worker: envelope.worker,
         result: "approval_required",
         detail:
           "Assisted autonomy mode — recommendation recorded. A human must approve before this action runs.",
@@ -484,12 +497,27 @@ export async function runExecutiveOrchestration(
     }
 
     attempted += 1;
-    const outcome: ToolOutcome = await registry.invoke(plan.tool, plan.input, toolCtx);
+    const toolInput =
+      envelope.tool === "executive_request_approval"
+        ? {
+            ...(envelope.toolInput ?? {}),
+            expected_outcome: envelope.expectedOutcome,
+            priority: envelope.priority.band,
+            decision_confidence: envelope.decisionConfidence,
+            booking_probability: envelope.bookingProbability,
+          }
+        : (envelope.toolInput ?? {});
+    const outcome: ToolOutcome = await registry.invoke(envelope.tool, toolInput, toolCtx);
 
     let result: ExecutiveActionResult;
     let detail: string;
     if (outcome.status === "executed") {
-      result = plan.tool === "executive_escalate_to_human" ? "escalated" : "executed";
+      result =
+        envelope.tool === "executive_escalate_to_human"
+          ? "escalated"
+          : envelope.tool === "executive_request_approval"
+            ? "approval_required"
+            : "executed";
       detail = JSON.stringify(outcome.result);
       executed += 1;
     } else if (outcome.status === "rejected") {
@@ -501,17 +529,14 @@ export async function runExecutiveOrchestration(
     }
 
     decisions.push({
-      at: new Date().toISOString(),
-      lead_id: opp.lead.id,
-      subject: opp.lead.full_name,
-      decision: plan.decision,
-      why,
-      action: plan.tool,
-      worker: plan.worker,
+      ...common,
+      action: envelope.tool,
+      worker: envelope.worker,
       result,
       detail,
     });
   }
+
 
   // Workforce coordination: keep Lead Intelligence scoring fresh when the
   // pipeline has unattended priorities. Queued only — the existing task engine
