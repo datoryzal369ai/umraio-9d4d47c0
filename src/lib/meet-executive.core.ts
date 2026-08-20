@@ -264,7 +264,7 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     key: "orchestrator",
-    name: "Autonomous AI Business Executive™",
+    name: "AI Autonomous Business Executive™",
     role: "Prioritisation, next action and coordination",
     status: "active",
   },
@@ -321,17 +321,17 @@ export const EXECUTION_FLOW = [
   "AI WhatsApp Executive — understand customer",
   "Qualify",
   "AI Lead Intelligence — prioritise",
-  "Autonomous AI Business Executive™ — decide next action",
+  "AI Autonomous Business Executive™ — decide next action",
   "Follow-up or escalation",
   "Human sales team",
 ];
 
-/** RAIŌ — the executive persona of UMRAIO's Autonomous AI Business Executive™. */
+/** RAIŌ — the executive persona of UMRAIO's AI Autonomous Business Executive™. */
 export const OPENING_MESSAGE =
-  "Assalamualaikum. I'm RAIŌ — UMRAIO's Autonomous AI Business Executive™.\n\nTell me how your agency currently handles enquiries, sales and follow-up.\n\nI'll help you identify where your biggest opportunities are and show you how UMRAIO can help.";
+  "Assalamualaikum. I'm RAIŌ — UMRAIO's AI Autonomous Business Executive™.\n\nTell me how your agency currently handles enquiries, sales and follow-up.\n\nI'll help you identify where your biggest opportunities are and show you how UMRAIO can help.";
 
 export const OPENING_MESSAGE_MS =
-  "Assalamualaikum. Saya RAIŌ — Autonomous AI Business Executive™ daripada UMRAIO.\n\nCeritakan bagaimana agensi Dato' menguruskan enquiry, sales dan follow-up sekarang.\n\nSaya akan bantu kenal pasti peluang terbesar dan tunjukkan bagaimana UMRAIO boleh membantu.";
+  "Assalamualaikum. Saya RAIŌ — AI Autonomous Business Executive™ daripada UMRAIO.\n\nCeritakan bagaimana agensi Dato' menguruskan enquiry, sales dan follow-up sekarang.\n\nSaya akan bantu kenal pasti peluang terbesar dan tunjukkan bagaimana UMRAIO boleh membantu.";
 
 export type MeetLanguagePreference = "auto" | "ms" | "en";
 

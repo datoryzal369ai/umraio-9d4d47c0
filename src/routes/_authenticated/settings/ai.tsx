@@ -38,7 +38,7 @@ export const Route = createFileRoute("/_authenticated/settings/ai")({
       {
         name: "description",
         content:
-          "Tune the UMRAIO Autonomous AI Business Executive: personality, tone, reply length, language and how it uses your knowledge base.",
+          "Tune the UMRAIO AI Autonomous Business Executive: personality, tone, reply length, language and how it uses your knowledge base.",
       },
       { property: "og:title", content: "AI Personality & Knowledge — UMRAIO" },
       {

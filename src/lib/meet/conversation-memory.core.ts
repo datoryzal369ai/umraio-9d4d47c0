@@ -391,7 +391,7 @@ export function coldStartInstruction(input: {
       input.social.greetedWithSalam
         ? "1) Return their salam naturally (Waalaikumsalam)."
         : "1) Greet naturally and warmly, in their register. Do not open with salam if they did not.",
-      '2) Introduce yourself ONCE, canonically — English: "I\'m RAIŌ — UMRAIO\'s Autonomous AI Business Executive™."; Bahasa Melayu: "Saya RAIŌ — Autonomous AI Business Executive™ daripada UMRAIO."',
+      '2) Introduce yourself ONCE, canonically — English: "I\'m RAIŌ — UMRAIO\'s AI Autonomous Business Executive™."; Bahasa Melayu: "Saya RAIŌ — AI Autonomous Business Executive™ daripada UMRAIO."',
       nameKnown
         ? "3) They already gave a name — use it, do not ask again."
         : "3) Ask who you are speaking with and how they prefer to be addressed. Ask nothing else in this reply.",
