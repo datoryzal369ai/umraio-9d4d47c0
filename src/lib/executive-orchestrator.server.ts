@@ -21,6 +21,15 @@ import {
 import type { Lead } from "./leads";
 import { APPROVAL_REQUIRED_KINDS, createTask, notify } from "./task-engine.server";
 import { TASK_KINDS } from "./executive-ai.server";
+import {
+  assessSituation,
+  decideFor,
+  type AutonomyBoundary,
+  type EscalationBrief,
+  type PriorityBand,
+  type SituationReport,
+} from "./executive/decision.core";
+import { monitorExecutedDecisions, type MonitorFinding } from "./executive/execution.server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
