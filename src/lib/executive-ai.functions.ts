@@ -45,11 +45,19 @@ export const decideExecutiveTask = createServerFn({ method: "POST" })
 
     const { data: task, error } = await supabase
       .from("ai_tasks")
-      .select("id, agency_id, title, worker_key, kind")
+      .select("id, agency_id, title, worker_key, kind, status")
       .eq("id", data.taskId)
       .maybeSingle();
     if (error) throw error;
     if (!task) throw new Error("Task not found");
+    // Approval governance: only a task that is genuinely pending a human
+    // decision may be approved or rejected. This blocks re-approval of an
+    // already decided action and prevents duplicate side effects.
+    if (task.status !== "waiting_approval")
+      throw new Error(
+        `This action is no longer awaiting approval (current state: ${task.status}).`,
+      );
+
 
     // Record the human decision first — approval state is persistent.
     await supabase
