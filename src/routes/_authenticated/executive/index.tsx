@@ -167,6 +167,26 @@ function ExecutiveCenter() {
               const Icon = workerIcon[worker.worker_key] ?? Bot;
               const status = (worker.is_enabled ? worker.status : "idle") as WorkerStatus;
               const isElite = worker.worker_key === "sales_elite";
+              const workerTasks = engineTasks.filter((t) => t.worker_key === worker.worker_key);
+              const running = workerTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
+              const queued = workerTasks.filter((t) => t.status === "queued").length;
+              const awaiting = workerTasks.filter((t) => t.status === "waiting_approval").length;
+              const nextTask =
+                workerTasks.find((t) => t.status === "waiting_approval") ??
+                workerTasks.find((t) => ACTIVE_STATUSES.includes(t.status)) ??
+                workerTasks.find((t) => t.status === "queued") ??
+                null;
+              const liveState = !worker.is_enabled
+                ? copy.stateIdle
+                : running > 0
+                  ? copy.stateRunning(running)
+                  : awaiting > 0
+                    ? copy.stateWaitingApproval(awaiting)
+                    : queued > 0
+                      ? copy.stateQueued(queued)
+                      : tasksLoading
+                        ? copy.syncing
+                        : copy.stateReady;
               return (
                 <article
                   key={worker.id}
