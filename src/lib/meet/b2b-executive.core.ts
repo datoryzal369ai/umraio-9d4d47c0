@@ -802,7 +802,7 @@ export function analyzeMeetConversation(messages: DemoMessage[]): MeetIntelligen
           commercialRelevance:
             primary.consequence ??
             "This step currently depends on individual availability rather than a repeatable process.",
-          umraioResponse: `UMRAIO would address this with ${CAPABILITY_FOR_GAP[primary.key]} capability, coordinated by the AI Autonomous Business Executive™.`,
+          umraioResponse: `UMRAIO would address this with ${CAPABILITY_FOR_GAP[primary.key]} capability, coordinated by the Autonomous AI Business Executive™.`,
           nextStep:
             "Start with the lowest-risk step — a live demonstration on one real enquiry pattern, or a free trial on your own workflow.",
         }

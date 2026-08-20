@@ -364,7 +364,7 @@ const CAPABILITY_ACTION: Record<string, { can: string; how: string; outcome: str
   },
   followup: {
     can: "run follow-up as a scheduled process instead of something people must remember",
-    how: "the AI Autonomous Business Executive™ schedules the follow-up, keeps the context of the last real conversation and stops instantly on opt-out",
+    how: "the Autonomous AI Business Executive™ schedules the follow-up, keeps the context of the last real conversation and stops instantly on opt-out",
     outcome: "interested customers stop disappearing simply because nobody returned to them at the right time",
   },
   qualification: {
@@ -384,12 +384,12 @@ const CAPABILITY_ACTION: Record<string, { can: string; how: string; outcome: str
   },
   manual_work: {
     can: "take over the repetitive parts of the workflow you described",
-    how: "the AI Autonomous Business Executive™ coordinates the specialist workers under your governance settings",
+    how: "the Autonomous AI Business Executive™ coordinates the specialist workers under your governance settings",
     outcome: "the same team can handle more enquiries without dropping the quality of each one",
   },
   automation: {
     can: "put a repeatable process around enquiry handling",
-    how: "the AI Autonomous Business Executive™ prioritises and coordinates each next action across the workforce",
+    how: "the Autonomous AI Business Executive™ prioritises and coordinates each next action across the workforce",
     outcome: "the workflow no longer stops whenever a specific person is unavailable",
   },
   capacity: {
@@ -441,7 +441,7 @@ const DEMO_HEADLINE: Record<DemoPath, string> = {
   BUYING_SIGNAL_DETECTION: "Buying-signal detection and escalation",
   HUMAN_HANDOFF: "Human takeover stopping automated messaging",
   SALES_INTELLIGENCE: "Lead scoring and prioritisation",
-  BUSINESS_ORCHESTRATION: "AI Autonomous Business Executive™ orchestration",
+  BUSINESS_ORCHESTRATION: "Autonomous AI Business Executive™ orchestration",
 };
 
 export function buildDemonstrationPlan(intel: MeetIntelligence): DemonstrationPlan | null {

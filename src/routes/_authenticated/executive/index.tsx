@@ -50,7 +50,7 @@ export const Route = createFileRoute("/_authenticated/executive/")({
       { property: "og:title", content: "AI Executive Center — UMRAIO" },
       {
         property: "og:description",
-        content: "Live control room for your AI Autonomous Business Executive workforce.",
+        content: "Live control room for your Autonomous AI Business Executive workforce.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

@@ -62,7 +62,7 @@ export const Route = createFileRoute("/_authenticated/knowledge/")({
       {
         name: "description",
         content:
-          "Feed your AI Autonomous Business Executive with FAQs, travel guides, package, visa and hotel information, plus uploaded PDF documents.",
+          "Feed your Autonomous AI Business Executive with FAQs, travel guides, package, visa and hotel information, plus uploaded PDF documents.",
       },
       { property: "og:title", content: "Knowledge Base — UMRAIO" },
       {

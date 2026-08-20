@@ -19,9 +19,9 @@ export const GLOBAL_UMRAIO_KNOWLEDGE: GlobalArticle[] = [
     id: "global-what-is-umraio",
     title: "What is UMRAIO®?",
     category: "general",
-    summary: "UMRAIO® is an AI Autonomous Business Executive for modern Umrah agencies.",
+    summary: "UMRAIO® is an Autonomous AI Business Executive for modern Umrah agencies.",
     content:
-      "UMRAIO® is an AI Autonomous Business Executive designed for modern Umrah agencies. It helps Umrah agencies use AI to manage customer conversations, leads, follow-up, sales assistance, WhatsApp communication, customer support, business workflows and operational tasks. UMRAIO is not simply a basic chatbot. It is designed as an AI workforce layer that assists the agency throughout customer and sales workflows.",
+      "UMRAIO® is an Autonomous AI Business Executive designed for modern Umrah agencies. It helps Umrah agencies use AI to manage customer conversations, leads, follow-up, sales assistance, WhatsApp communication, customer support, business workflows and operational tasks. UMRAIO is not simply a basic chatbot. It is designed as an AI workforce layer that assists the agency throughout customer and sales workflows.",
     tags: ["umraio", "platform", "about", "apakah", "apa itu"],
   },
   {
@@ -57,7 +57,7 @@ export const GLOBAL_UMRAIO_KNOWLEDGE: GlobalArticle[] = [
     category: "general",
     summary: "Brand architecture behind UMRAIO®.",
     content:
-      "Digital Renaissance Metaverse is the parent technology company. RÉNAIO.CORE™ is the Autonomous Intelligence Core — the intelligence layer that powers UMRAIO®. UMRAVERSE® is the Umrah ecosystem that provides knowledge, business and customer context. UMRAIO® is the AI Autonomous Business Executive for modern Umrah agencies. Do not represent UMRAIO as the entire UMRAVERSE ecosystem, and do not describe UMRAVERSE as the AI brain.",
+      "Digital Renaissance Metaverse is the parent technology company. RÉNAIO.CORE™ is the Autonomous Intelligence Core — the intelligence layer that powers UMRAIO®. UMRAVERSE® is the Umrah ecosystem that provides knowledge, business and customer context. UMRAIO® is the Autonomous AI Business Executive for modern Umrah agencies. Do not represent UMRAIO as the entire UMRAVERSE ecosystem, and do not describe UMRAVERSE as the AI brain.",
     tags: ["umraverse", "renaio.core", "ecosystem", "brand"],
   },
 
@@ -85,7 +85,7 @@ export const GLOBAL_UMRAIO_KNOWLEDGE: GlobalArticle[] = [
     category: "faq",
     summary: "Approved Malay answers about UMRAIO.",
     content:
-      'S: "Apakah UMRAIO?" J: "UMRAIO® ialah AI Autonomous Business Executive untuk agensi Umrah. Ia membantu agensi mengurus pertanyaan pelanggan, lead, follow-up, komunikasi WhatsApp dan pelbagai tugasan jualan serta operasi menggunakan AI."\n\nS: "UMRAIO ni chatbot ke?" J: "UMRAIO lebih daripada chatbot biasa. Ia direka sebagai AI Business Executive yang membantu mengendalikan proses seperti respons lead, qualification, follow-up, customer support berasaskan knowledge dan workflow perniagaan."\n\nS: "Apa UMRAIO boleh buat?" J: "UMRAIO boleh membantu agensi Umrah mengurus pertanyaan WhatsApp, lead, qualification, follow-up, customer support, sales assistance dan workflow perniagaan menggunakan AI."',
+      'S: "Apakah UMRAIO?" J: "UMRAIO® ialah Autonomous AI Business Executive untuk agensi Umrah. Ia membantu agensi mengurus pertanyaan pelanggan, lead, follow-up, komunikasi WhatsApp dan pelbagai tugasan jualan serta operasi menggunakan AI."\n\nS: "UMRAIO ni chatbot ke?" J: "UMRAIO lebih daripada chatbot biasa. Ia direka sebagai AI Business Executive yang membantu mengendalikan proses seperti respons lead, qualification, follow-up, customer support berasaskan knowledge dan workflow perniagaan."\n\nS: "Apa UMRAIO boleh buat?" J: "UMRAIO boleh membantu agensi Umrah mengurus pertanyaan WhatsApp, lead, qualification, follow-up, customer support, sales assistance dan workflow perniagaan menggunakan AI."',
     tags: ["faq", "soalan", "apakah umraio", "chatbot", "boleh buat"],
   },
 ];

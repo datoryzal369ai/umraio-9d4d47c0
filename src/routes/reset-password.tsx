@@ -20,7 +20,7 @@ export const Route = createFileRoute("/reset-password")({
       { name: "robots", content: "noindex, nofollow" },
       {
         name: "description",
-        content: "Choose a new password for your UMRAIO AI Autonomous Business Executive account.",
+        content: "Choose a new password for your UMRAIO Autonomous AI Business Executive account.",
       },
       { property: "og:title", content: "Set a new password — UMRAIO" },
       { property: "og:description", content: "Securely reset your UMRAIO account password." },

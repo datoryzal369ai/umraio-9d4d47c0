@@ -35,7 +35,7 @@ export function BrandArchitecture({ className }: { className?: string }) {
         {/* PRIMARY — UMRAIO */}
         <img
           src={umraioAsset.url}
-          alt="UMRAIO® — AI Autonomous Business Executive"
+          alt="UMRAIO® — Autonomous AI Business Executive"
           loading="lazy"
           className="h-auto w-full max-w-[260px] object-contain mix-blend-screen sm:max-w-[340px]"
         />

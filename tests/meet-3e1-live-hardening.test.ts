@@ -46,7 +46,7 @@ function state(msgs: DemoMessage[]) {
 /** The real 9-turn live QA journey. */
 const NINE_TURN: DemoMessage[] = [
   v("Salam, saya nak naikkan sales agency saya."),
-  e("Waalaikumsalam. Saya RAIŌ — AI Autonomous Business Executive™ daripada UMRAIO. Boleh saya tahu nama dan panggilan yang selesa?"),
+  e("Waalaikumsalam. Saya RAIŌ — Autonomous AI Business Executive™ daripada UMRAIO. Boleh saya tahu nama dan panggilan yang selesa?"),
   v("Nama saya Rizal."),
   e("Baik, Rizal. Berapa orang dalam team sales sekarang?"),
   v("Sales saya slow."),
@@ -214,7 +214,7 @@ describe("4 — cold-start consistency", () => {
     const { social } = state(msgs);
     const instr = coldStartInstruction({ social, visitorTurns: 1, executiveTurns: 0 });
     expect(instr).toContain("COLD START");
-    expect(instr).toContain("AI Autonomous Business Executive™");
+    expect(instr).toContain("Autonomous AI Business Executive™");
     expect(instr).toContain("how they prefer to be addressed");
     expect(instr).toContain("Waalaikumsalam");
   });

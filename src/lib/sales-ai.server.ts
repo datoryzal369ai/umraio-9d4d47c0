@@ -391,7 +391,7 @@ function systemPrompt(
   const suppression = suppressionInstruction(suppressedTopics);
 
   return [
-    `You are ${aiName}, the AI Autonomous Business Executive for ${agencyName}, a Malaysian Umrah travel agency.`,
+    `You are ${aiName}, the Autonomous AI Business Executive for ${agencyName}, a Malaysian Umrah travel agency.`,
     DOMAIN_ISOLATION_INSTRUCTION,
     suppression,
     intentAnchorInstruction(

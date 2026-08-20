@@ -40,13 +40,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard — UMRAIO AI Autonomous Business Executive" },
+      { title: "Dashboard — UMRAIO Autonomous AI Business Executive" },
       {
         name: "description",
         content:
           "Live Umrah sales command centre: today's leads, conversations, bookings, conversion rate, hot leads and AI follow-up tasks.",
       },
-      { property: "og:title", content: "Dashboard — UMRAIO AI Autonomous Business Executive" },
+      { property: "og:title", content: "Dashboard — UMRAIO Autonomous AI Business Executive" },
       {
         property: "og:description",
         content: "Track leads, conversations, bookings and AI follow-ups in one place.",

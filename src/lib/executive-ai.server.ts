@@ -94,7 +94,7 @@ async function loadAgencyContext(supabase: Db, agencyId: string) {
 
 function baseSystem(ctx: Awaited<ReturnType<typeof loadAgencyContext>>) {
   return [
-    `You are part of the AI Autonomous Business Executive team working for ${ctx.agency?.name ?? "an Umrah agency"} in ${ctx.agency?.country ?? "Malaysia"}.`,
+    `You are part of the Autonomous AI Business Executive team working for ${ctx.agency?.name ?? "an Umrah agency"} in ${ctx.agency?.country ?? "Malaysia"}.`,
     "You produce work that a senior Malaysian Umrah travel marketer would ship: specific, compliant, culturally respectful, never generic filler.",
     `Preferred language: ${ctx.settings?.ai_language ?? "Bahasa Malaysia + English mix"}. Tone: ${ctx.settings?.ai_tone ?? "warm professional"}.`,
     ctx.settings?.ai_custom_instructions

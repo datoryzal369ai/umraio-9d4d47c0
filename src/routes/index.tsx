@@ -28,44 +28,44 @@ import { SCHEMA_FAQS, siteCopy } from "@/lib/i18n/site.i18n";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "UMRAIO® — AI Autonomous Business Executive for Umrah Agencies" },
+      { title: "UMRAIO® — Autonomous AI Business Executive for Umrah Agencies" },
       {
         name: "description",
         content:
-          "UMRAIO® is an AI Autonomous Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
+          "UMRAIO® is an Autonomous AI Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
       },
       {
         property: "og:title",
-        content: "UMRAIO® — AI Autonomous Business Executive for Umrah Agencies",
+        content: "UMRAIO® — Autonomous AI Business Executive for Umrah Agencies",
       },
       {
         property: "og:description",
         content:
-          "UMRAIO® is an AI Autonomous Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
+          "UMRAIO® is an Autonomous AI Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
       },
       { property: "og:url", content: "https://umraio.com/" },
       { property: "og:type", content: "website" },
       {
         name: "twitter:title",
-        content: "UMRAIO® — AI Autonomous Business Executive for Umrah Agencies",
+        content: "UMRAIO® — Autonomous AI Business Executive for Umrah Agencies",
       },
       {
         name: "twitter:description",
         content:
-          "AI Autonomous Business Executive for Umrah agencies — WhatsApp enquiry automation, lead qualification, package recommendations and automated follow-up.",
+          "Autonomous AI Business Executive for Umrah agencies — WhatsApp enquiry automation, lead qualification, package recommendations and automated follow-up.",
       },
 
       { property: "og:image", content: `https://umraio.com${wordmarkAsset.url}` },
       {
         property: "og:image:alt",
-        content: "UMRAIO® — AI Autonomous Business Executive for Umrah agencies",
+        content: "UMRAIO® — Autonomous AI Business Executive for Umrah agencies",
       },
       { property: "og:locale", content: "en_MY" },
       { property: "og:site_name", content: "UMRAIO®" },
       { name: "twitter:image", content: `https://umraio.com${wordmarkAsset.url}` },
       {
         name: "twitter:image:alt",
-        content: "UMRAIO® — AI Autonomous Business Executive for Umrah agencies",
+        content: "UMRAIO® — Autonomous AI Business Executive for Umrah agencies",
       },
       { name: "robots", content: "index, follow, max-image-preview:large" },
     ],
@@ -157,7 +157,7 @@ function Index() {
               />
               <img
                 src={wordmarkAsset.url}
-                alt="UMRAIO® — AI Autonomous Business Executive"
+                alt="UMRAIO® — Autonomous AI Business Executive"
                 fetchPriority="high"
                 decoding="async"
                 className="mx-auto w-full max-w-2xl object-contain"
