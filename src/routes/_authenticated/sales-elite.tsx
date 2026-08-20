@@ -152,10 +152,13 @@ function SalesElitePage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <PageHeader
+        backTo="/executive"
+        backLabel="Back to Command Center"
         eyebrow="AI Workforce"
-        title="AI SALES ELITE™"
+        title={<span className="text-champagne">AI SALES ELITE™</span>}
         description="Elite autonomous sales & closing intelligence — live from your own pipeline, never estimated."
       />
+
 
       {desk.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
