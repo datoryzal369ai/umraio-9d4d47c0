@@ -123,17 +123,33 @@ export function IntelligenceArchitecture() {
           ))}
         </div>
 
-        {/* RÉNAIO.CORE™ + chain, shown once. */}
+        {/* RÉNAIO.CORE™ — logo mark only here; the full wordmark lives once in the footer. */}
         <div className="mx-auto mt-12 flex max-w-xl flex-col items-center">
-          <img
-            src={renaioAsset.url}
-            alt="RÉNAIO.CORE™ — The Autonomous Intelligence Core"
-            loading="lazy"
-            className="h-auto w-full max-w-[260px] object-contain mix-blend-screen"
-          />
-          <p className="mt-2 text-[10px] font-light uppercase tracking-[0.3em] text-muted-foreground/80">
-            {t.coreLabel}
-          </p>
+          <div className="relative flex size-[132px] items-center justify-center sm:size-[168px]">
+            <span
+              aria-hidden
+              className="umr-core-halo pointer-events-none absolute inset-0 -z-10 rounded-full blur-2xl"
+              style={{
+                background:
+                  "radial-gradient(50% 50% at 50% 50%, rgba(0,215,255,0.42), transparent 72%)",
+              }}
+            />
+            <img
+              src={renaioMark.url}
+              alt="RÉNAIO.CORE™"
+              loading="lazy"
+              className="umr-core-mark h-full w-full object-contain mix-blend-screen"
+            />
+            <span
+              aria-hidden
+              className="umr-core-spark pointer-events-none absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 rounded-full blur-md"
+              style={{
+                background:
+                  "radial-gradient(50% 50% at 50% 50%, rgba(255,255,255,0.9), transparent 70%)",
+              }}
+            />
+          </div>
+
           <ul className="mt-4 flex flex-wrap justify-center gap-2">
             {t.coreCaps.map((c) => (
               <li
