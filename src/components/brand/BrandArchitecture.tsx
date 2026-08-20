@@ -1,6 +1,7 @@
 import umraioAsset from "@/assets/umraio-official-wordmark.png.asset.json";
 import umraverseAsset from "@/assets/umraverse-logo.png.asset.json";
 import renaioAsset from "@/assets/renaio-core-logo.png.asset.json";
+import aiAsset from "@/assets/ai-autonomous-intelligence.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
 import { siteCopy } from "@/lib/i18n/site.i18n";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,21 @@ export function BrandArchitecture({ className }: { className?: string }) {
           loading="lazy"
           className="mt-6 h-auto w-full max-w-[280px] object-contain mix-blend-screen sm:max-w-[400px]"
         />
+
+        <Connector />
+
+        {/* TECHNOLOGY IDENTITY — ĀI™ AUTONOMOUS INTELLIGENCE */}
+        <Label>Built on</Label>
+        <img
+          src={aiAsset.url}
+          alt="ĀI™ — Autonomous Intelligence"
+          loading="lazy"
+          className="mt-6 h-auto w-full max-w-[420px] object-contain mix-blend-screen sm:max-w-[560px]"
+        />
+        <p className="mt-3 max-w-md text-[11px] font-light leading-relaxed text-muted-foreground/70">
+          AI provides intelligent capabilities. ĀI™ is our paradigm for turning those capabilities
+          into autonomous systems.
+        </p>
 
         <Connector />
 
