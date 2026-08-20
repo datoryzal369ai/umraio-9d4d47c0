@@ -276,6 +276,19 @@ function buildExecutiveRegistry() {
           .eq("worker_key", input.worker_key)
           .maybeSingle();
         if (!worker) return `Worker "${input.worker_key}" is not available for this agency.`;
+        // Idempotency: one open executive action per (lead, objective).
+        const { data: open } = await tctx.supabase
+          .from("ai_tasks")
+          .select("id, input")
+          .eq("agency_id", tctx.agencyId)
+          .eq("kind", "executive_action")
+          .eq("lead_id", input.lead_id)
+          .in("status", ["queued", "analysing", "planning", "running", "waiting_approval"])
+          .limit(20);
+        if (
+          (open ?? []).some((row: any) => (row.input?.objective ?? "") === input.objective)
+        )
+          return "An equivalent executive action for this lead and objective is already awaiting a decision.";
         return null;
       },
       execute: async (input, tctx) => {
