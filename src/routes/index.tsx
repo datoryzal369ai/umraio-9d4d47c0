@@ -226,13 +226,13 @@ function Index() {
 
           <AutomationShowcase />
 
+          <IntelligenceArchitecture />
+
           <BuiltForUmrah />
-          <IslamicImplementationLayer />
-          <IntelligenceLoop />
           <CustomerTrust />
           <GovernedAutonomy />
           <DifferentiationLadder />
-          <EcosystemRelationship />
+
 
           <PricingSection />
 
