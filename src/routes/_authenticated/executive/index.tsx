@@ -68,10 +68,57 @@ const workerIcon: Record<string, typeof Bot> = {
   sales_elite: Target,
 };
 
+/**
+ * Differentiated accent identity per specialist executive. Accents are limited to
+ * icon, border, status and button so cards stay one coherent dark-navy system.
+ */
+type Accent = { icon: string; chipBorder: string; chipBg: string; state: string; button: string };
+const ACCENTS: Record<string, Accent> = {
+  whatsapp: {
+    icon: "text-primary border-primary/40 bg-primary/10",
+    chipBorder: "border-primary/30",
+    chipBg: "bg-primary/[0.07]",
+    state: "text-primary",
+    button: "border-primary/45 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
+  },
+  marketing: {
+    icon: "text-emerald border-emerald/40 bg-emerald/10",
+    chipBorder: "border-emerald/30",
+    chipBg: "bg-emerald/[0.07]",
+    state: "text-emerald",
+    button: "border-emerald/45 bg-emerald/10 text-emerald hover:bg-emerald/20 hover:text-emerald",
+  },
+  content: {
+    icon: "text-violet border-violet/40 bg-violet/10",
+    chipBorder: "border-violet/30",
+    chipBg: "bg-violet/[0.07]",
+    state: "text-violet",
+    button: "border-violet/45 bg-violet/10 text-violet hover:bg-violet/20 hover:text-violet",
+  },
+  lead_intel: {
+    icon: "text-electric border-electric/40 bg-electric/10",
+    chipBorder: "border-electric/30",
+    chipBg: "bg-electric/[0.07]",
+    state: "text-electric",
+    button:
+      "border-electric/45 bg-electric/10 text-electric hover:bg-electric/20 hover:text-electric",
+  },
+  sales_elite: {
+    icon: "text-gold border-gold/50 bg-gold/12",
+    chipBorder: "border-gold/35",
+    chipBg: "bg-gold/[0.08]",
+    state: "text-gold-bright",
+    button:
+      "border-gold/60 bg-gold/15 text-gold-bright hover:bg-gold/25 hover:text-gold-bright",
+  },
+};
+const DEFAULT_ACCENT: Accent = ACCENTS["whatsapp"]!;
+
 /** Workers that own a dedicated workspace route instead of the generic worker page. */
 const WORKER_ROUTES: Record<string, "/sales-elite"> = {
   sales_elite: "/sales-elite",
 };
+
 
 
 function ExecutiveCenter() {
