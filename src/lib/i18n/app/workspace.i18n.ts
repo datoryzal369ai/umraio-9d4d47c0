@@ -239,7 +239,7 @@ export const WORKSPACE_COPY = createDict({
       title: "AUTONOMOUS TASK ENGINE",
       description: "Perhati, fikir, rancang, laksana, pantau, lapor — setiap kerja pekerja AI dalam satu baris gilir.",
       runningCycle: "Menjalankan kitaran…",
-      runAutonomousCycle: "Jalankan kitaran autonomi",
+      runAutonomousCycle: "Jalankan Kitaran Autonomi",
       kpiInQueue: "Dalam baris gilir",
       kpiInQueueHint: "Menunggu untuk dilaksanakan",
       kpiRunning: "Sedang Berjalan",
