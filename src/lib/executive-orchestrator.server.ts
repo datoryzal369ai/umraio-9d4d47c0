@@ -375,72 +375,10 @@ export async function loadOpportunities(supabase: Db, agencyId: string): Promise
 }
 
 /* ------------------------------------------------------------------ */
-/* Decision selection (deterministic)                                  */
+/* Decision selection — delegated to the pure decision core            */
 /* ------------------------------------------------------------------ */
-
-type PlannedAction =
-  | { tool: "executive_escalate_to_human"; input: Record<string, unknown>; worker: string; decision: string }
-  | { tool: "executive_schedule_followup"; input: Record<string, unknown>; worker: string; decision: string }
-  | { tool: null; decision: string; detail: string };
-
-function planFor(opp: SalesOpportunity): PlannedAction {
-  const lead = opp.lead;
-
-  if (opp.aiPaused || opp.humanAttention) {
-    return {
-      tool: "executive_escalate_to_human",
-      worker: "Human team",
-      decision: "Escalate to a human colleague",
-      input: {
-        lead_id: lead.id,
-        conversation_id: opp.conversationId,
-        reason: opp.aiPaused
-          ? `${lead.full_name} asked for a human — AI replies are paused on this conversation.`
-          : `${lead.full_name} was flagged for human attention by the WhatsApp worker.`,
-      },
-    };
-  }
-
-  if (opp.reasons.includes("followup_due")) {
-    return {
-      tool: null,
-      decision: "Leave the due follow-up with its owner",
-      detail:
-        "A follow-up job is already pending and due; duplicating it would double-contact the customer.",
-    };
-  }
-
-  if (opp.reasons.includes("no_contact") || opp.reasons.includes("awaiting_reply")) {
-    return {
-      tool: "executive_schedule_followup",
-      worker: "AI WhatsApp Executive",
-      decision: "Schedule a follow-up for this lead",
-      input: {
-        lead_id: lead.id,
-        title: opp.reasons.includes("no_contact")
-          ? `First contact: qualify ${lead.full_name}`
-          : `Re-engage ${lead.full_name} — no reply in 24h+`,
-        hours_from_now: opp.intent === "high" ? 1 : 4,
-      },
-    };
-  }
-
-  if (opp.reasons.includes("missing_info")) {
-    return {
-      tool: null,
-      decision: "Collect missing qualification details",
-      detail:
-        "Sending a customer-facing qualification message autonomously is not a permitted capability. Recorded as capability_unavailable — handled by the WhatsApp worker on the next inbound message, or by a human.",
-    };
-  }
-
-  return {
-    tool: null,
-    decision: "Recommend a package and push for a decision",
-    detail:
-      "Autonomous outbound package pitching is not a permitted capability. Recorded for human action.",
-  };
-}
+// See ./executive/decision.core.ts: UNDERSTAND → PRIORITISE → DECIDE →
+// COORDINATE, all deterministic so no outcome can be fabricated.
 
 /* ------------------------------------------------------------------ */
 /* Orchestration cycle                                                 */
