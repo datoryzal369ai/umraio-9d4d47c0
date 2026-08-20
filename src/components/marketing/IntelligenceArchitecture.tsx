@@ -6,7 +6,15 @@ type Copy = {
   eyebrow: string;
   heading: string;
   lede: string;
-  roles: Record<string, string>;
+  roles: {
+    renaio: string;
+    ai: string;
+    islamic: string;
+    umraio: string;
+    exec: string;
+    workforce: string;
+    actions: string;
+  };
   vs: { ai: string; aiDesc: string; aai: string; aaiDesc: string; flow: string };
   note: string;
 };
