@@ -447,10 +447,50 @@ export async function runExecutiveOrchestration(
   const opportunities = await loadOpportunities(supabase, agencyId);
   const candidates = opportunities.slice(0, MAX_CANDIDATES);
 
+  // UNDERSTAND — fact / signal / interpretation / unknown, from real data only.
+  const { data: workerRows } = await supabase
+    .from("ai_workers")
+    .select("worker_key, is_enabled")
+    .eq("agency_id", agencyId);
+  const situation = assessSituation(opportunities, {
+    enabled: (workerRows ?? []).filter((w: any) => w.is_enabled).length,
+    total: (workerRows ?? []).length,
+  });
+
+  // MONITOR — action completed is not the same as business outcome achieved.
+  let monitoring: MonitorFinding[] = [];
+  try {
+    monitoring = await monitorExecutedDecisions(supabase, agencyId);
+  } catch {
+    monitoring = [];
+  }
+
   const decisions: ExecutiveDecision[] = [];
   let executed = 0;
   let attempted = 0;
   let limitReached = false;
+
+  for (const finding of monitoring) {
+    decisions.push({
+      at: new Date().toISOString(),
+      lead_id: finding.leadId,
+      subject: finding.subject,
+      decision: "Review the outcome of a previously executed action",
+      why: finding.detail,
+      action: null,
+      worker: "Autonomous AI Business Executive",
+      result: finding.outcome === "no_response" ? "escalated" : "capability_unavailable",
+      detail: finding.nextAction,
+      objective: "Verify whether the business outcome was achieved",
+      priority: finding.outcome === "no_response" ? "high" : "low",
+      boundary: "human_only",
+      confidence: 90,
+      booking_probability: null,
+      expected_outcome: finding.nextAction,
+      worker_reason: "Outcome verification is the orchestrator's own responsibility.",
+      escalation: null,
+    });
+  }
 
   for (const [index, opp] of candidates.entries()) {
     if (executed >= MAX_ACTIONS_PER_CYCLE) {
