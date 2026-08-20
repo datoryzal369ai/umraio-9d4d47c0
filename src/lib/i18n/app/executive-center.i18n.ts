@@ -19,13 +19,17 @@ type CenterCopy = {
     systemStatus: string;
     systemActive: string;
     systemSyncing: string;
+    systemAttention: string;
+    escalations: (n: number) => string;
     workers: string;
     workersOnline: (online: number, total: number) => string;
     awaitingActivation: (n: number) => string;
+    noWorkers: string;
     tasks: string;
     tasksCoordinated: string;
     tasksToday: (n: number) => string;
     tasksTotal: (n: number) => string;
+    tasksRecent: (n: number) => string;
     approvals: string;
     approvalsWaiting: (n: number) => string;
     approvalsClear: string;
@@ -88,13 +92,17 @@ export const EXECUTIVE_CENTER_DICT = createDict<CenterCopy>({
       systemStatus: "System status",
       systemActive: "Active",
       systemSyncing: "Syncing",
+      systemAttention: "Needs attention",
+      escalations: (n) => `${n} escalated action${n === 1 ? "" : "s"}`,
       workers: "AI Workforce",
       workersOnline: (online, total) => `${online} / ${total} online`,
       awaitingActivation: (n) => `${n} awaiting activation`,
+      noWorkers: "No workers provisioned",
       tasks: "Tasks",
       tasksCoordinated: "Coordinated",
       tasksToday: (n) => `+${n} today`,
       tasksTotal: (n) => `${n} total`,
+      tasksRecent: (n) => `${n} in recent window`,
       approvals: "Approvals",
       approvalsWaiting: (n) => `${n} waiting`,
       approvalsClear: "Queue clear",
@@ -171,13 +179,17 @@ export const EXECUTIVE_CENTER_DICT = createDict<CenterCopy>({
       systemStatus: "Status sistem",
       systemActive: "Aktif",
       systemSyncing: "Menyegerak",
+      systemAttention: "Perlu perhatian",
+      escalations: (n) => `${n} tindakan dieskalasi`,
       workers: "Tenaga Kerja AI",
       workersOnline: (online, total) => `${online} / ${total} dalam talian`,
       awaitingActivation: (n) => `${n} menunggu pengaktifan`,
+      noWorkers: "Tiada pekerja disediakan",
       tasks: "Tugasan",
       tasksCoordinated: "Diselaraskan",
       tasksToday: (n) => `+${n} hari ini`,
       tasksTotal: (n) => `${n} jumlah`,
+      tasksRecent: (n) => `${n} dalam tetingkap terkini`,
       approvals: "Kelulusan",
       approvalsWaiting: (n) => `${n} menunggu`,
       approvalsClear: "Barisan kosong",
