@@ -56,7 +56,11 @@ export function IntelligenceArchitecture() {
   const t = COPY[useLocale().locale];
 
   return (
-    <section className="mt-24 sm:mt-28" aria-labelledby="intelligence-architecture-heading">
+    <section
+      id="intelligence-architecture"
+      className="mt-24 scroll-mt-24 sm:mt-28"
+      aria-labelledby="intelligence-architecture-heading"
+    >
       <div className="panel-exec relative overflow-hidden px-6 py-12 sm:px-12 sm:py-16">
         {/* Integrated ĀI™ intelligence lighting — part of the surface, not a pasted poster. */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">

@@ -118,6 +118,33 @@ type ExecutiveCopy = {
     metricLeadsPrioritised: string;
     metricAwaitingApproval: string;
     metricOpportunitiesDetected: string;
+    masterBadge: string;
+    controlsHint: string;
+    panelUnderstandTitle: string;
+    panelPrioritiseTitle: string;
+    panelCoordinateTitle: string;
+    panelRecommendTitle: string;
+    panelMonitorTitle: string;
+    panelEscalateTitle: string;
+    ctxOpenLeads: string;
+    ctxHighIntent: string;
+    ctxStale: string;
+    ctxActiveWorkers: string;
+    ctxPendingApprovals: string;
+    ctxRunningTasks: string;
+    ctxQueuedTasks: string;
+    ctxCompletedTasks: string;
+    emptyPriority: string;
+    emptyRecommendations: string;
+    emptyMonitor: string;
+    emptyEscalations: string;
+    openLead: string;
+    approve: string;
+    reject: string;
+    scoreLabel: (n: number) => string;
+    toastApproved: string;
+    toastRejected: string;
+    workforceSectionLink: string;
     briefTitle: string;
     briefError: string;
     workforceWorking: (running: number, queued: number, completed: number) => string;
@@ -280,7 +307,7 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
         orchestrator: "AI Business Director & Orchestrator",
         workforce: "Sales Elite • WhatsApp • Marketing • Content • Lead Intelligence",
       },
-      title: "Autonomous AI Business Executive™",
+      title: "AUTONOMOUS AI BUSINESS EXECUTIVE™",
       subtitle: "AI Business Director & Workforce Orchestrator",
       syncing: "Syncing…",
       active: "Active",
@@ -304,6 +331,33 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
       metricLeadsPrioritised: "Leads prioritised",
       metricAwaitingApproval: "Awaiting approval",
       metricOpportunitiesDetected: "Opportunities detected",
+      masterBadge: "Master executive / orchestrator",
+      controlsHint: "Select an executive function to inspect live business state.",
+      panelUnderstandTitle: "Executive context",
+      panelPrioritiseTitle: "Priority queue",
+      panelCoordinateTitle: "Workforce coordination",
+      panelRecommendTitle: "Executive recommendations",
+      panelMonitorTitle: "Live execution monitor",
+      panelEscalateTitle: "Human escalation & approvals",
+      ctxOpenLeads: "Open leads",
+      ctxHighIntent: "High-intent leads",
+      ctxStale: "No contact 24h+",
+      ctxActiveWorkers: "Active workers",
+      ctxPendingApprovals: "Pending approvals",
+      ctxRunningTasks: "Running tasks",
+      ctxQueuedTasks: "Queued tasks",
+      ctxCompletedTasks: "Completed tasks",
+      emptyPriority: "No prioritised leads right now.",
+      emptyRecommendations: "No recommendations — the workforce is on track.",
+      emptyMonitor: "No task activity recorded yet.",
+      emptyEscalations: "Nothing is waiting for a human decision.",
+      openLead: "Open lead",
+      approve: "Approve",
+      reject: "Reject",
+      scoreLabel: (n) => `Score ${n}`,
+      toastApproved: "Action approved",
+      toastRejected: "Action rejected",
+      workforceSectionLink: "Specialist AI Workforce",
       briefTitle: "Today's executive brief",
       briefError: "Could not load executive data. Refresh to try again.",
       workforceWorking: (running, queued, completed) =>
@@ -472,8 +526,8 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
         orchestrator: "Pengarah Perniagaan AI & Orkestrator",
         workforce: "Sales Elite • WhatsApp • Pemasaran • Kandungan • Kecerdasan Lead",
       },
-      title: "Autonomous AI Business Executive™",
-      subtitle: "Pengarah Perniagaan AI & Orkestrator Tenaga Kerja",
+      title: "AUTONOMOUS AI BUSINESS EXECUTIVE™",
+      subtitle: "AI Business Director & Workforce Orchestrator",
       syncing: "Menyegerak…",
       active: "Aktif",
       idle: "Idle",
@@ -496,6 +550,33 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
       metricLeadsPrioritised: "Lead diutamakan",
       metricAwaitingApproval: "Menunggu kelulusan",
       metricOpportunitiesDetected: "Peluang dikesan",
+      masterBadge: "Eksekutif utama / orkestrator",
+      controlsHint: "Pilih fungsi eksekutif untuk melihat keadaan perniagaan secara langsung.",
+      panelUnderstandTitle: "Konteks eksekutif",
+      panelPrioritiseTitle: "Giliran keutamaan",
+      panelCoordinateTitle: "Penyelarasan tenaga kerja",
+      panelRecommendTitle: "Cadangan eksekutif",
+      panelMonitorTitle: "Monitor pelaksanaan langsung",
+      panelEscalateTitle: "Eskalasi & kelulusan manusia",
+      ctxOpenLeads: "Lead terbuka",
+      ctxHighIntent: "Lead berminat tinggi",
+      ctxStale: "Tiada hubungan 24j+",
+      ctxActiveWorkers: "Worker aktif",
+      ctxPendingApprovals: "Menunggu kelulusan",
+      ctxRunningTasks: "Tugasan berjalan",
+      ctxQueuedTasks: "Tugasan dalam giliran",
+      ctxCompletedTasks: "Tugasan selesai",
+      emptyPriority: "Tiada lead diutamakan buat masa ini.",
+      emptyRecommendations: "Tiada cadangan — tenaga kerja berjalan lancar.",
+      emptyMonitor: "Belum ada aktiviti tugasan direkodkan.",
+      emptyEscalations: "Tiada perkara menunggu keputusan manusia.",
+      openLead: "Buka lead",
+      approve: "Lulus",
+      reject: "Tolak",
+      scoreLabel: (n) => `Skor ${n}`,
+      toastApproved: "Tindakan diluluskan",
+      toastRejected: "Tindakan ditolak",
+      workforceSectionLink: "Tenaga Kerja AI Pakar",
       briefTitle: "Ringkasan eksekutif hari ini",
       briefError: "Tidak dapat memuatkan data eksekutif. Muat semula untuk cuba lagi.",
       workforceWorking: (running, queued, completed) =>
