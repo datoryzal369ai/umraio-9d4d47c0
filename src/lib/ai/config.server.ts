@@ -22,6 +22,7 @@ export type AiConfig = {
 };
 
 const DEFAULT_MODEL = "openai/gpt-5.6-sol";
+const DEFAULT_FALLBACK_MODEL = "google/gemini-2.5-flash";
 
 function env(name: string): string | undefined {
   const value = process.env[name];
