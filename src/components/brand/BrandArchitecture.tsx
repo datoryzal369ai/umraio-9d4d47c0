@@ -1,6 +1,7 @@
 import umraioAsset from "@/assets/umraio-official-wordmark.png.asset.json";
 import umraverseAsset from "@/assets/umraverse-logo.png.asset.json";
 import renaioAsset from "@/assets/renaio-core-logo.png.asset.json";
+import aiMarkAsset from "@/assets/ai-autonomous-intelligence.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
 import { siteCopy } from "@/lib/i18n/site.i18n";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,19 @@ export function BrandArchitecture({ className }: { className?: string }) {
           loading="lazy"
           className="mt-6 h-auto w-full max-w-[280px] object-contain mix-blend-screen sm:max-w-[400px]"
         />
+
+        <Connector />
+
+        {/* TECHNOLOGY IDENTITY — ĀI™ AUTONOMOUS INTELLIGENCE */}
+        <img
+          src={aiMarkAsset.url}
+          alt="ĀI™ — Autonomous Intelligence™"
+          loading="lazy"
+          className="h-auto w-full max-w-[200px] object-contain sm:max-w-[260px]"
+        />
+        <p className="mt-3 text-[10px] font-light uppercase tracking-[0.28em] text-muted-foreground/70">
+          Autonomous Intelligence™
+        </p>
 
         <Connector />
 

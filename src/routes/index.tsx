@@ -5,6 +5,7 @@ import wordmarkAsset from "@/assets/umraio-wordmark-clear.png.asset.json";
 
 import { BrandArchitecture } from "@/components/brand/BrandArchitecture";
 import { AutomationShowcase } from "@/components/marketing/AutomationShowcase";
+import { IntelligenceArchitecture } from "@/components/marketing/IntelligenceArchitecture";
 import { PricingSection } from "@/components/marketing/PricingSection";
 import { WorkforceMetrics } from "@/components/marketing/WorkforceMetrics";
 import {
@@ -234,6 +235,7 @@ function Index() {
           <GovernedAutonomy />
           <DifferentiationLadder />
           <EcosystemRelationship />
+          <IntelligenceArchitecture />
 
           <PricingSection />
 
