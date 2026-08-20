@@ -234,6 +234,7 @@ function Index() {
           <GovernedAutonomy />
           <DifferentiationLadder />
           <EcosystemRelationship />
+          <IntelligenceArchitecture />
 
           <PricingSection />
 
