@@ -218,6 +218,28 @@ function ExecutiveCenter() {
                       {STATUS_LABEL[status]}
                     </Badge>
                   </div>
+
+                  <div
+                    className={cn(
+                      "rounded-xl border px-3 py-2",
+                      isElite ? "border-gold/30 bg-gold/[0.06]" : "border-border/60 bg-surface/60",
+                    )}
+                  >
+                    <p
+                      className={cn(
+                        "text-[11px] font-semibold uppercase tracking-[0.14em]",
+                        isElite ? "text-gold" : "text-primary",
+                      )}
+                    >
+                      {liveState}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {nextTask
+                        ? `${copy.nextPriority}: ${nextTask.title}`
+                        : copy.noLiveTasks}
+                    </p>
+                  </div>
+
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="min-w-0 text-xs text-muted-foreground">
                       {worker.last_run_at ? copy.lastRun(relative(worker.last_run_at)) : copy.notRunYet}
