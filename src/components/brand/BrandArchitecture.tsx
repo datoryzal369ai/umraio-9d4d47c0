@@ -1,6 +1,7 @@
 import umraioAsset from "@/assets/umraio-official-wordmark.png.asset.json";
 import umraverseAsset from "@/assets/umraverse-logo.png.asset.json";
 import renaioAsset from "@/assets/renaio-core-logo.png.asset.json";
+import aiMarkAsset from "@/assets/ai-autonomous-intelligence.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
 import { siteCopy } from "@/lib/i18n/site.i18n";
 import { cn } from "@/lib/utils";
