@@ -36,6 +36,7 @@ import {
   type WorkerStatus,
 } from "@/lib/executive";
 import { myr } from "@/lib/dashboard";
+import { ACTIVE_STATUSES, fetchEngineTasks } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/executive/")({
@@ -91,6 +92,9 @@ function ExecutiveCenter() {
   });
   const tasks = useQuery({ queryKey: ["ai-tasks", "all"], queryFn: () => fetchTasks(undefined, 8) });
   const activity = useQuery({ queryKey: ["ai-activity"], queryFn: () => fetchAiActivity(20) });
+  const engineTasksQuery = useQuery({ queryKey: ["engine-tasks"], queryFn: () => fetchEngineTasks(120) });
+  const engineTasks = engineTasksQuery.data ?? [];
+  const tasksLoading = engineTasksQuery.isLoading;
 
   const m = metrics.data;
 
