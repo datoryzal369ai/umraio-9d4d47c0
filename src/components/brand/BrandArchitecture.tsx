@@ -56,6 +56,19 @@ export function BrandArchitecture({ className }: { className?: string }) {
 
         <Connector />
 
+        {/* TECHNOLOGY IDENTITY — ĀI™ AUTONOMOUS INTELLIGENCE */}
+        <img
+          src={aiMarkAsset.url}
+          alt="ĀI™ — Autonomous Intelligence™"
+          loading="lazy"
+          className="h-auto w-full max-w-[200px] object-contain sm:max-w-[260px]"
+        />
+        <p className="mt-3 text-[10px] font-light uppercase tracking-[0.28em] text-muted-foreground/70">
+          Autonomous Intelligence™
+        </p>
+
+        <Connector />
+
         {/* GOVERNANCE — ISLAMIC IMPLEMENTATION LAYER */}
         <Label>{t.governedBy}</Label>
         <p className="mt-3 text-sm font-semibold tracking-tight text-foreground/85">
