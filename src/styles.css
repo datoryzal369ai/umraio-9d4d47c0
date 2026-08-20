@@ -107,6 +107,45 @@
   --chart-4: #4aa8ff;
   --chart-5: #9fd8ff;
 
+  /* Executive material system — chrome / champagne gold / emerald */
+  --gold: #d8b678;
+  --gold-glow: #f2ddb0;
+  --gold-foreground: #1a1206;
+  --emerald: #37cf9d;
+  --platinum: #dbe3ec;
+  --chrome: #b9c6d4;
+
+  --gradient-chrome: linear-gradient(
+    135deg,
+    rgba(219, 227, 236, 0.92) 0%,
+    rgba(148, 165, 182, 0.7) 28%,
+    rgba(240, 246, 252, 0.95) 52%,
+    rgba(126, 247, 255, 0.35) 74%,
+    rgba(174, 190, 206, 0.8) 100%
+  );
+  --gradient-gold: linear-gradient(
+    120deg,
+    #f2ddb0 0%,
+    #d8b678 42%,
+    #a9854a 68%,
+    #f2ddb0 100%
+  );
+  --shadow-executive:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 26px 60px -34px rgba(0, 0, 0, 0.95);
+  --shadow-executive-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 1px rgba(219, 227, 236, 0.32),
+    0 30px 70px -30px rgba(0, 215, 255, 0.35);
+  --shadow-elite:
+    inset 0 1px 0 rgba(242, 221, 176, 0.14),
+    0 24px 60px -34px rgba(0, 0, 0, 0.95);
+  --shadow-elite-hover:
+    inset 0 1px 0 rgba(242, 221, 176, 0.24),
+    0 0 0 1px rgba(216, 182, 120, 0.42),
+    0 28px 64px -28px rgba(216, 182, 120, 0.4);
+
+
   --sidebar: #071a27;
   --sidebar-foreground: #ffffff;
   --sidebar-primary: #00d7ff;
