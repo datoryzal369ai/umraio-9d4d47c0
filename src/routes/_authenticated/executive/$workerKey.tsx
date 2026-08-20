@@ -117,12 +117,7 @@ function WorkerDetail() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
-      <Button asChild variant="ghost" size="sm" className="-ml-2">
-        <Link to="/executive">
-          <ArrowLeft className="size-4" />
-          {copy.backToExecutiveCenter}
-        </Link>
-      </Button>
+      <WorkforceNavigator workerKey={workerKey} currentName={worker?.name} />
 
       <PageHeader
         eyebrow={copy.eyebrow}
@@ -130,8 +125,24 @@ function WorkerDetail() {
         description={worker?.description ?? copy.fallbackDescription}
         actions={
           worker ? (
-            <div className="flex items-center gap-2">
-              <Badge className={cn("border-0", STATUS_TONE[status])}>{STATUS_LABEL[status]}</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              {runtime ? (
+                <>
+                  <Badge className={cn("border-0", RUNTIME_TONE[runtime.state])}>
+                    {center.runtime[runtime.state]}
+                  </Badge>
+                  <span
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                      AUTONOMY_TONE[runtime.autonomy],
+                    )}
+                  >
+                    {center.autonomyValue[runtime.autonomy]}
+                  </span>
+                </>
+              ) : (
+                <Badge className={cn("border-0", STATUS_TONE[status])}>{STATUS_LABEL[status]}</Badge>
+              )}
               <Button size="sm" variant="outline" onClick={toggleEnabled}>
                 {worker.is_enabled ? copy.pauseWorker : copy.activateWorker}
               </Button>
@@ -139,6 +150,42 @@ function WorkerDetail() {
           ) : null
         }
       />
+
+      {runtime ? (
+        <section className="panel grid gap-4 p-5 sm:grid-cols-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              {center.activeTaskLabel}
+            </p>
+            <p className="mt-1 truncate text-sm">
+              {runtime.activeTask ? runtime.activeTask.title : center.noActiveTask}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              {center.lastExecutionLabel}
+            </p>
+            <p className="mt-1 truncate text-sm">
+              {runtime.lastExecutionAt
+                ? relativeTime(runtime.lastExecutionAt)
+                : center.neverExecuted}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              {center.approvalLabel}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {runtime.autonomy === "paused"
+                ? center.pausedNote
+                : runtime.autonomy === "autonomous"
+                  ? center.autonomousNote
+                  : center.approvalRequiredNote}
+            </p>
+          </div>
+        </section>
+      ) : null}
+
 
       {workerKey === "whatsapp" ? <WhatsappExecutiveCard /> : null}
 
