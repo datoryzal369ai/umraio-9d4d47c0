@@ -66,6 +66,9 @@
   --color-chrome: var(--chrome);
   --color-platinum: var(--platinum);
   --color-emerald: var(--emerald);
+  --color-amber-energy: var(--amber-energy);
+  --color-violet: var(--violet);
+  --color-electric: var(--electric);
 }
 
 :root,
@@ -126,8 +129,11 @@
   --shadow-glow: 0 0 0 1px rgba(0, 215, 255, 0.28), 0 18px 50px -20px rgba(0, 215, 255, 0.5);
 
   /* ── Brand-architecture accents (additive, no existing token changed) ── */
-  --gold: #e6c684;
-  --gold-bright: #ffe9b8;
+  --gold: #ffab4c;
+  --gold-bright: #ffd08a;
+  --amber-energy: #ff6a3d;
+  --violet: #a68bff;
+  --electric: #4aa8ff;
   --chrome: #c9d3dc;
   --platinum: #eef3f7;
   --emerald: #35d6a4;
@@ -140,7 +146,7 @@
   --shadow-exec:
     0 1px 0 0 rgba(255, 255, 255, 0.10) inset,
     0 26px 60px -34px rgba(0, 0, 0, 0.95);
-  --shadow-gold: 0 0 0 1px rgba(230, 198, 132, 0.46), 0 18px 46px -22px rgba(230, 198, 132, 0.5);
+  --shadow-gold: 0 0 0 1px rgba(255, 171, 76, 0.55), 0 18px 52px -20px rgba(255, 122, 60, 0.6);
 }
 
 
@@ -438,7 +444,7 @@
 
 /* ══ UMRAIO executive interaction system (additive, visual only) ══════ */
 
-/* Level 3 — AI Autonomous Business Executive™ chrome/platinum console */
+/* Level 3 — Autonomous AI Business Executive™ chrome/platinum console */
 @utility panel-exec {
   position: relative;
   background-color: color-mix(in oklab, var(--color-card) 92%, black);
@@ -465,17 +471,18 @@
 @utility panel-elite {
   position: relative;
   background-image: var(--gradient-obsidian);
-  border: 1px solid rgba(230, 198, 132, 0.42);
+  border: 1px solid rgba(255, 171, 76, 0.5);
   border-radius: var(--radius-2xl);
   box-shadow:
-    0 1px 0 0 rgba(255, 233, 184, 0.16) inset,
+    0 1px 0 0 rgba(255, 208, 138, 0.2) inset,
+    0 0 34px -16px rgba(255, 122, 60, 0.55),
     0 22px 56px -34px rgba(0, 0, 0, 0.92);
   transition:
     border-color 220ms ease-out,
     box-shadow 220ms ease-out,
     transform 220ms ease-out;
   &:hover {
-    border-color: rgba(242, 221, 166, 0.55);
+    border-color: rgba(255, 171, 76, 0.6);
     box-shadow: var(--shadow-gold);
     transform: translateY(-3px);
   }
@@ -505,7 +512,7 @@
     box-shadow 220ms ease-out,
     transform 220ms ease-out;
   &:hover {
-    border-color: rgba(242, 221, 166, 0.55);
+    border-color: rgba(255, 171, 76, 0.6);
     box-shadow: var(--shadow-gold);
     transform: translateY(-3px);
   }
@@ -533,4 +540,40 @@
   .card-interactive-gold {
     transition: none;
   }
+}
+
+/* RÉNAIO.CORE™ living intelligence mark — slow breathing glow + rare shimmer */
+.umr-core-mark {
+  animation: umr-core-breathe 7.5s ease-in-out infinite;
+}
+.umr-core-halo {
+  animation: umr-core-halo 7.5s ease-in-out infinite;
+}
+.umr-core-spark {
+  animation: umr-core-spark 11s ease-in-out infinite;
+}
+
+@keyframes umr-core-breathe {
+  0%, 100% { filter: brightness(1) saturate(1); transform: scale(1); }
+  50% { filter: brightness(1.09) saturate(1.06); transform: scale(1.012); }
+}
+
+@keyframes umr-core-halo {
+  0%, 100% { opacity: 0.35; transform: scale(0.94); }
+  50% { opacity: 0.7; transform: scale(1.06); }
+}
+
+@keyframes umr-core-spark {
+  0%, 86%, 100% { opacity: 0; }
+  90% { opacity: 0.55; }
+  94% { opacity: 0.12; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .umr-core-mark,
+  .umr-core-halo,
+  .umr-core-spark {
+    animation: none !important;
+  }
+  .umr-core-spark { opacity: 0; }
 }

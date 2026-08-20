@@ -51,7 +51,7 @@ export const Route = createFileRoute("/_authenticated/executive/")({
       { property: "og:title", content: "AI Executive Center — UMRAIO" },
       {
         property: "og:description",
-        content: "Live control room for your AI Autonomous Business Executive workforce.",
+        content: "Live control room for your Autonomous AI Business Executive workforce.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -68,10 +68,57 @@ const workerIcon: Record<string, typeof Bot> = {
   sales_elite: Target,
 };
 
+/**
+ * Differentiated accent identity per specialist executive. Accents are limited to
+ * icon, border, status and button so cards stay one coherent dark-navy system.
+ */
+type Accent = { icon: string; chipBorder: string; chipBg: string; state: string; button: string };
+const ACCENTS: Record<string, Accent> = {
+  whatsapp: {
+    icon: "text-primary border-primary/40 bg-primary/10",
+    chipBorder: "border-primary/30",
+    chipBg: "bg-primary/[0.07]",
+    state: "text-primary",
+    button: "border-primary/45 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
+  },
+  marketing: {
+    icon: "text-emerald border-emerald/40 bg-emerald/10",
+    chipBorder: "border-emerald/30",
+    chipBg: "bg-emerald/[0.07]",
+    state: "text-emerald",
+    button: "border-emerald/45 bg-emerald/10 text-emerald hover:bg-emerald/20 hover:text-emerald",
+  },
+  content: {
+    icon: "text-violet border-violet/40 bg-violet/10",
+    chipBorder: "border-violet/30",
+    chipBg: "bg-violet/[0.07]",
+    state: "text-violet",
+    button: "border-violet/45 bg-violet/10 text-violet hover:bg-violet/20 hover:text-violet",
+  },
+  lead_intel: {
+    icon: "text-electric border-electric/40 bg-electric/10",
+    chipBorder: "border-electric/30",
+    chipBg: "bg-electric/[0.07]",
+    state: "text-electric",
+    button:
+      "border-electric/45 bg-electric/10 text-electric hover:bg-electric/20 hover:text-electric",
+  },
+  sales_elite: {
+    icon: "text-gold border-gold/50 bg-gold/12",
+    chipBorder: "border-gold/35",
+    chipBg: "bg-gold/[0.08]",
+    state: "text-gold-bright",
+    button:
+      "border-gold/60 bg-gold/15 text-gold-bright hover:bg-gold/25 hover:text-gold-bright",
+  },
+};
+const DEFAULT_ACCENT: Accent = ACCENTS["whatsapp"]!;
+
 /** Workers that own a dedicated workspace route instead of the generic worker page. */
 const WORKER_ROUTES: Record<string, "/sales-elite"> = {
   sales_elite: "/sales-elite",
 };
+
 
 
 function ExecutiveCenter() {
@@ -171,6 +218,7 @@ function ExecutiveCenter() {
               const Icon = workerIcon[worker.worker_key] ?? Bot;
               const status = (worker.is_enabled ? worker.status : "idle") as WorkerStatus;
               const isElite = worker.worker_key === "sales_elite";
+              const accent = ACCENTS[worker.worker_key] ?? DEFAULT_ACCENT;
               const workerTasks = engineTasks.filter((t) => t.worker_key === worker.worker_key);
               const running = workerTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
               const queued = workerTasks.filter((t) => t.status === "queued").length;
@@ -201,16 +249,18 @@ function ExecutiveCenter() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div
-                        className={cn(
-                          "rounded-xl border p-2.5",
-                          isElite ? "border-gold/40 bg-gold/10" : "border-border/60 bg-surface",
-                        )}
-                      >
-                        <Icon className={cn("size-5", isElite ? "text-gold" : "text-primary")} />
+                      <div className={cn("rounded-xl border p-2.5", accent.icon)}>
+                        <Icon className="size-5" />
                       </div>
                       <div className="min-w-0">
-                        <h2 className={cn("truncate text-base font-semibold", isElite && "text-champagne")}>{worker.name}</h2>
+                        <h2
+                          className={cn(
+                            "truncate text-base font-semibold",
+                            isElite && "text-gold-bright",
+                          )}
+                        >
+                          {worker.name}
+                        </h2>
                         <p className="text-xs text-muted-foreground">{worker.description}</p>
                       </div>
                     </div>
@@ -219,16 +269,11 @@ function ExecutiveCenter() {
                     </Badge>
                   </div>
 
-                  <div
-                    className={cn(
-                      "rounded-xl border px-3 py-2",
-                      isElite ? "border-gold/30 bg-gold/[0.06]" : "border-border/60 bg-surface/60",
-                    )}
-                  >
+                  <div className={cn("rounded-xl border px-3 py-2", accent.chipBorder, accent.chipBg)}>
                     <p
                       className={cn(
                         "text-[11px] font-semibold uppercase tracking-[0.14em]",
-                        isElite ? "text-gold" : "text-primary",
+                        accent.state,
                       )}
                     >
                       {liveState}
@@ -246,15 +291,8 @@ function ExecutiveCenter() {
                       {" · "}
                       {worker.autonomy === "auto" ? copy.autonomous : copy.approvalRequired}
                     </p>
-                    <Button
-                      asChild
-                      size="sm"
-                      variant="outline"
-                      className={cn(
-                        isElite &&
-                          "border-gold/50 bg-gold/10 text-gold hover:bg-gold/20 hover:text-gold",
-                      )}
-                    >
+                    <Button asChild size="sm" variant="outline" className={accent.button}>
+
                       {WORKER_ROUTES[worker.worker_key] ? (
                         <Link to={WORKER_ROUTES[worker.worker_key]!}>{copy.openWorker}</Link>
                       ) : (

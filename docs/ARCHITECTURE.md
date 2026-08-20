@@ -1,6 +1,6 @@
 # UMRAIO® — Production Architecture
 
-**Product:** UMRAIO® AI Autonomous Business Executive
+**Product:** UMRAIO® Autonomous AI Business Executive
 **Tagline:** The Autonomous AI Business Executive for Umrah Agencies
 **Company:** Digital Renaissance Metaverse
 

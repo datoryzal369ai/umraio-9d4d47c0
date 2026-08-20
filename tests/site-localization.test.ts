@@ -55,7 +55,7 @@ describe("homepage hero", () => {
   });
 
   it("renders EN hero copy when EN is selected", () => {
-    expect(en.hero.headingLead).toBe("Your AI Autonomous Business Executive for");
+    expect(en.hero.headingLead).toBe("Your Autonomous AI Business Executive for");
     expect(en.hero.headingAccent).toBe("Modern Umrah Agencies");
     expect(en.hero.ctaTrial).toBe("Choose a Plan");
     expect(en.hero.ctaMeet).toContain("Meet Your AI Business Executive");
@@ -138,8 +138,8 @@ describe("all public homepage sections are localized", () => {
   it("preserves brand and technical terms in both languages", () => {
     for (const copy of [bm, en]) {
       expect(copy.islamicLayer.heading).toBe("Islamic Implementation Layer");
-      expect(copy.footer.tagline).toBe("AI Autonomous Business Executive");
-      expect(copy.meet.roleLine).toContain("AI Autonomous Business Executive");
+      expect(copy.footer.tagline).toBe("Autonomous AI Business Executive");
+      expect(copy.meet.roleLine).toContain("Autonomous AI Business Executive");
     }
   });
 });

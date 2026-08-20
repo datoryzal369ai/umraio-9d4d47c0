@@ -196,11 +196,11 @@ type SiteCopy = {
 const EN_FAQS: readonly Faq[] = [
   {
     q: "What is UMRAIO®?",
-    a: "UMRAIO® is an AI Autonomous Business Executive built for Umrah agencies. It answers enquiries, qualifies prospects, recommends packages and follows up so your team can focus on closing bookings.",
+    a: "UMRAIO® is an Autonomous AI Business Executive built for Umrah agencies. It answers enquiries, qualifies prospects, recommends packages and follows up so your team can focus on closing bookings.",
   },
   {
     q: "Is UMRAIO® a CRM or a chatbot?",
-    a: "Neither. UMRAIO® is positioned as an AI Autonomous Business Executive purpose-built for Umrah agencies. It includes a pipeline and messaging, but its role is to execute business workflows — enquiry handling, qualification, package recommendation and follow-up — rather than to act as a generic chatbot or a conventional CRM.",
+    a: "Neither. UMRAIO® is positioned as an Autonomous AI Business Executive purpose-built for Umrah agencies. It includes a pipeline and messaging, but its role is to execute business workflows — enquiry handling, qualification, package recommendation and follow-up — rather than to act as a generic chatbot or a conventional CRM.",
   },
   {
     q: "What does UMRAIO® do for Umrah agencies?",
@@ -236,7 +236,7 @@ const EN_FAQS: readonly Faq[] = [
   },
   {
     q: "What is RÉNAIO.CORE™?",
-    a: "RÉNAIO.CORE™ (RENAIO.CORE™) is the Autonomous Intelligence Core powering the Digital Renaissance ecosystem and its AI-native platforms. UMRAIO® is the AI Autonomous Business Executive for Umrah agencies built within that intelligence architecture — it is a separate product, not the core itself.",
+    a: "RÉNAIO.CORE™ (RENAIO.CORE™) is the Autonomous Intelligence Core powering the Digital Renaissance ecosystem and its AI-native platforms. UMRAIO® is the Autonomous AI Business Executive for Umrah agencies built within that intelligence architecture — it is a separate product, not the core itself.",
   },
   {
     q: "What powers UMRAIO®?",
@@ -247,11 +247,11 @@ const EN_FAQS: readonly Faq[] = [
 const BM_FAQS: readonly Faq[] = [
   {
     q: "Apa itu UMRAIO®?",
-    a: "UMRAIO® ialah AI Autonomous Business Executive yang dibina khas untuk agensi Umrah. Ia menjawab pertanyaan, menapis prospek, mencadangkan pakej dan membuat susulan supaya pasukan anda boleh fokus untuk menutup tempahan.",
+    a: "UMRAIO® ialah Autonomous AI Business Executive yang dibina khas untuk agensi Umrah. Ia menjawab pertanyaan, menapis prospek, mencadangkan pakej dan membuat susulan supaya pasukan anda boleh fokus untuk menutup tempahan.",
   },
   {
     q: "Adakah UMRAIO® sebuah CRM atau chatbot?",
-    a: "Kedua-duanya tidak. UMRAIO® diposisikan sebagai AI Autonomous Business Executive yang dibina khusus untuk agensi Umrah. Ia mempunyai pipeline dan mesej, tetapi peranannya adalah melaksanakan aliran kerja perniagaan — pengendalian pertanyaan, penapisan prospek, cadangan pakej dan susulan — bukan sekadar chatbot biasa atau CRM konvensional.",
+    a: "Kedua-duanya tidak. UMRAIO® diposisikan sebagai Autonomous AI Business Executive yang dibina khusus untuk agensi Umrah. Ia mempunyai pipeline dan mesej, tetapi peranannya adalah melaksanakan aliran kerja perniagaan — pengendalian pertanyaan, penapisan prospek, cadangan pakej dan susulan — bukan sekadar chatbot biasa atau CRM konvensional.",
   },
   {
     q: "Apa yang UMRAIO® lakukan untuk agensi Umrah?",
@@ -287,7 +287,7 @@ const BM_FAQS: readonly Faq[] = [
   },
   {
     q: "Apa itu RÉNAIO.CORE™?",
-    a: "RÉNAIO.CORE™ (RENAIO.CORE™) ialah Autonomous Intelligence Core yang menggerakkan ekosistem Digital Renaissance dan platform AI-native di dalamnya. UMRAIO® pula ialah AI Autonomous Business Executive untuk agensi Umrah yang dibina di atas seni bina kecerdasan tersebut — ia produk berasingan, bukan core itu sendiri.",
+    a: "RÉNAIO.CORE™ (RENAIO.CORE™) ialah Autonomous Intelligence Core yang menggerakkan ekosistem Digital Renaissance dan platform AI-native di dalamnya. UMRAIO® pula ialah Autonomous AI Business Executive untuk agensi Umrah yang dibina di atas seni bina kecerdasan tersebut — ia produk berasingan, bukan core itu sendiri.",
   },
   {
     q: "Apa yang menggerakkan UMRAIO®?",
@@ -300,8 +300,8 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
     nav: { dashboard: "Dashboard", signIn: "Sign In", signUp: "Sign Up", back: "Back" },
     hero: {
       poweredBy: "Powered by",
-      kicker: "AI Autonomous Business Executive",
-      headingLead: "Your AI Autonomous Business Executive for",
+      kicker: "Autonomous AI Business Executive",
+      headingLead: "Your Autonomous AI Business Executive for",
       headingAccent: "Modern Umrah Agencies",
       subheading:
         "UMRAIO® combines autonomous AI execution, Umrah domain intelligence, customer context and governed workflows — with an Islamic Implementation Layer™ designed for the specific requirements of the Umrah ecosystem.",
@@ -488,7 +488,7 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
     faqHeading: "Frequently Asked Questions",
     faqs: EN_FAQS,
     footer: {
-      tagline: "AI Autonomous Business Executive",
+      tagline: "Autonomous AI Business Executive",
       poweredBy: "Powered by",
       governedBy: "Governed by",
       governancePillars: "Principles • Halal • Ethics • Governance",
@@ -503,7 +503,7 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
       eyebrow: "Meet your AI Executive",
       headingLine1: "Autonomous AI",
       headingAccent: "Business Executive",
-      roleLine: "The AI Autonomous Business Executive™",
+      roleLine: "The Autonomous AI Business Executive™",
       lede: "Your intelligent AI executive for modern Umrah agencies.",
       body: "Tell RAIŌ how your agency works. RAIŌ will understand your workflow, identify opportunities and show you where UMRAIO can help your agency sell, follow up and grow.",
       conversationLabel: "Conversation",
@@ -562,8 +562,8 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
     nav: { dashboard: "Dashboard", signIn: "Log Masuk", signUp: "Daftar", back: "Kembali" },
     hero: {
       poweredBy: "Dikuasakan oleh",
-      kicker: "AI Autonomous Business Executive",
-      headingLead: "AI Autonomous Business Executive Anda untuk",
+      kicker: "Autonomous AI Business Executive",
+      headingLead: "Autonomous AI Business Executive Anda untuk",
       headingAccent: "Agensi Umrah Moden",
       subheading:
         "UMRAIO® menggabungkan pelaksanaan AI autonomi, kecerdasan domain Umrah, konteks pelanggan dan aliran kerja bertadbir urus — bersama Islamic Implementation Layer™ yang direka khusus untuk keperluan ekosistem Umrah.",
@@ -750,7 +750,7 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
     faqHeading: "Soalan Lazim",
     faqs: BM_FAQS,
     footer: {
-      tagline: "AI Autonomous Business Executive",
+      tagline: "Autonomous AI Business Executive",
       poweredBy: "Dikuasakan oleh",
       governedBy: "Ditadbir oleh",
       governancePillars: "Prinsip • Halal • Etika • Tadbir Urus",
@@ -765,7 +765,7 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
       eyebrow: "Jumpa AI Executive anda",
       headingLine1: "Autonomous AI",
       headingAccent: "Business Executive",
-      roleLine: "The AI Autonomous Business Executive™",
+      roleLine: "The Autonomous AI Business Executive™",
       lede: "AI executive pintar anda untuk agensi Umrah moden.",
       body: "Beritahu RAIŌ bagaimana agensi anda beroperasi. RAIŌ akan memahami aliran kerja anda, mengenal pasti peluang dan menunjukkan di mana UMRAIO boleh membantu agensi anda menjual, membuat susulan dan berkembang.",
       conversationLabel: "Perbualan",
