@@ -27,13 +27,13 @@ import { aiReplyToConversation, conversationInsights } from "@/lib/sales-ai.func
 export const Route = createFileRoute("/_authenticated/conversations/$conversationId")({
   head: () => ({
     meta: [
-      { title: "Conversation — UMRAIO AI Autonomous Business Executive" },
+      { title: "Conversation — UMRAIO Autonomous AI Business Executive" },
       {
         name: "description",
         content:
-          "WhatsApp-style conversation handled by the UMRAIO AI Autonomous Business Executive with live qualification, package recommendations and booking suggestions.",
+          "WhatsApp-style conversation handled by the UMRAIO Autonomous AI Business Executive with live qualification, package recommendations and booking suggestions.",
       },
-      { property: "og:title", content: "Conversation — UMRAIO AI Autonomous Business Executive" },
+      { property: "og:title", content: "Conversation — UMRAIO Autonomous AI Business Executive" },
       {
         property: "og:description",
         content: "AI replies, conversation summary, follow-up drafts and booking suggestions.",

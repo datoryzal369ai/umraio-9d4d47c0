@@ -47,7 +47,7 @@ export const shellCopy = createDict({
     dashboard: {
       eyebrowFallback: "Your agency",
       welcome: "Welcome",
-      description: "Here is what your AI Autonomous Business Executive handled today.",
+      description: "Here is what your Autonomous AI Business Executive handled today.",
       aiActive: "AI active",
       plan: "plan",
       trial: "trial",
@@ -90,7 +90,7 @@ export const shellCopy = createDict({
       insights: "Insights",
       title: "AI Analytics",
       description:
-        "How your AI Autonomous Business Executive turns Umrah enquiries into confirmed pilgrims.",
+        "How your Autonomous AI Business Executive turns Umrah enquiries into confirmed pilgrims.",
       dateRange: "Date range",
       kpi: {
         conversionRate: "Conversion rate",
@@ -187,7 +187,7 @@ export const shellCopy = createDict({
     dashboard: {
       eyebrowFallback: "Agensi anda",
       welcome: "Selamat kembali",
-      description: "Berikut ialah tugasan yang telah dikendalikan oleh AI Autonomous Business Executive anda hari ini.",
+      description: "Berikut ialah tugasan yang telah dikendalikan oleh Autonomous AI Business Executive anda hari ini.",
       aiActive: "AI aktif",
       plan: "pelan",
       trial: "percubaan",
@@ -230,7 +230,7 @@ export const shellCopy = createDict({
       insights: "Wawasan",
       title: "AI Analytics",
       description:
-        "Bagaimana AI Autonomous Business Executive anda menukar pertanyaan Umrah kepada jemaah yang disahkan.",
+        "Bagaimana Autonomous AI Business Executive anda menukar pertanyaan Umrah kepada jemaah yang disahkan.",
       dateRange: "Julat tarikh",
       kpi: {
         conversionRate: "Kadar penukaran",

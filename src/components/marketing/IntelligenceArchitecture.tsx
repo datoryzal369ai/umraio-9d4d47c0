@@ -25,7 +25,7 @@ const COPY = {
     chain: [
       { name: "ISLAMIC IMPLEMENTATION LAYER™", role: "Domain, governance & contextual rules" },
       { name: "UMRAIO®", role: "The product for modern Umrah agencies" },
-      { name: "AI AUTONOMOUS BUSINESS EXECUTIVE™", role: "Executive orchestration layer" },
+      { name: "AUTONOMOUS AI BUSINESS EXECUTIVE™", role: "Executive orchestration layer" },
       { name: "AI WORKFORCE", role: "Specialist autonomous operators" },
       { name: "BUSINESS ACTIONS", role: "Measured, verifiable outcomes" },
     ],
@@ -44,7 +44,7 @@ const COPY = {
     chain: [
       { name: "ISLAMIC IMPLEMENTATION LAYER™", role: "Domain, tadbir urus & peraturan konteks" },
       { name: "UMRAIO®", role: "Produk untuk agensi Umrah moden" },
-      { name: "AI AUTONOMOUS BUSINESS EXECUTIVE™", role: "Lapisan orkestrasi eksekutif" },
+      { name: "AUTONOMOUS AI BUSINESS EXECUTIVE™", role: "Lapisan orkestrasi eksekutif" },
       { name: "AI WORKFORCE", role: "Operator autonomi pakar" },
       { name: "BUSINESS ACTIONS", role: "Hasil yang boleh disahkan" },
     ],

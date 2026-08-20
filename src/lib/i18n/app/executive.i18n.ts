@@ -11,7 +11,7 @@
  * Consumes the single locale context in src/lib/i18n/locale.tsx via
  * createDict/useCopy from src/lib/i18n/dict.ts. Brand/technical terms are
  * kept identical in both languages: UMRAIO®, RAIŌ, RÉNAIO.CORE™,
- * UMRAVERSE®, AI Autonomous Business Executive, AI WhatsApp Executive,
+ * UMRAVERSE®, Autonomous AI Business Executive, AI WhatsApp Executive,
  * AI Marketing Executive, AI Content Executive, AI Lead Intelligence,
  * Islamic Implementation Layer™, WhatsApp, AI, API, CRM, Dashboard,
  * Knowledge Base, HITL, Umrah.
@@ -280,7 +280,7 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
         orchestrator: "AI Business Director & Orchestrator",
         workforce: "Sales Elite • WhatsApp • Marketing • Content • Lead Intelligence",
       },
-      title: "AI Autonomous Business Executive™",
+      title: "Autonomous AI Business Executive™",
       subtitle: "AI Business Director & Workforce Orchestrator",
       syncing: "Syncing…",
       active: "Active",
@@ -472,7 +472,7 @@ export const EXECUTIVE_DICT = createDict<ExecutiveCopy>({
         orchestrator: "Pengarah Perniagaan AI & Orkestrator",
         workforce: "Sales Elite • WhatsApp • Pemasaran • Kandungan • Kecerdasan Lead",
       },
-      title: "AI Autonomous Business Executive™",
+      title: "Autonomous AI Business Executive™",
       subtitle: "Pengarah Perniagaan AI & Orkestrator Tenaga Kerja",
       syncing: "Menyegerak…",
       active: "Aktif",

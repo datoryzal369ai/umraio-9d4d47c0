@@ -438,7 +438,7 @@
 
 /* ══ UMRAIO executive interaction system (additive, visual only) ══════ */
 
-/* Level 3 — AI Autonomous Business Executive™ chrome/platinum console */
+/* Level 3 — Autonomous AI Business Executive™ chrome/platinum console */
 @utility panel-exec {
   position: relative;
   background-color: color-mix(in oklab, var(--color-card) 92%, black);

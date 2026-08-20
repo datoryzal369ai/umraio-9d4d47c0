@@ -58,7 +58,7 @@ export function ExecutiveCommandPanel({
     { name: "RÉNAIO.CORE™", role: copy.hierarchy.core },
     { name: "UMRAIO®", role: copy.hierarchy.umraio },
     { name: "AI Executive Center", role: copy.hierarchy.executiveCenter },
-    { name: "AI Autonomous Business Executive™", role: copy.hierarchy.orchestrator },
+    { name: "Autonomous AI Business Executive™", role: copy.hierarchy.orchestrator },
     { name: "Specialist AI Workforce", role: copy.hierarchy.workforce },
   ];
 
@@ -290,7 +290,7 @@ export function ExecutiveCommandPanel({
           </h2>
         </div>
         <div className="text-chrome mt-3 rounded-lg border border-platinum/25 bg-platinum/[0.06] px-3 py-2 text-[12px] font-semibold">
-          AI AUTONOMOUS BUSINESS EXECUTIVE™
+          AUTONOMOUS AI BUSINESS EXECUTIVE™
         </div>
         <div aria-hidden="true" className="mx-4 h-4 w-px bg-border" />
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">

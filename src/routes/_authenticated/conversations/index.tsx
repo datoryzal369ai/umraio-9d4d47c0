@@ -33,7 +33,7 @@ export const Route = createFileRoute("/_authenticated/conversations/")({
       {
         name: "description",
         content:
-          "WhatsApp-style inbox where the UMRAIO AI Autonomous Business Executive answers Umrah enquiries, qualifies leads and recommends packages.",
+          "WhatsApp-style inbox where the UMRAIO Autonomous AI Business Executive answers Umrah enquiries, qualifies leads and recommends packages.",
       },
       { property: "og:title", content: "AI Inbox — UMRAIO" },
       {
