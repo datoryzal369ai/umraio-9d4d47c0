@@ -24,6 +24,7 @@ type CenterCopy = {
     workers: string;
     workersOnline: (online: number, total: number) => string;
     awaitingActivation: (n: number) => string;
+    noWorkers: string;
     tasks: string;
     tasksCoordinated: string;
     tasksToday: (n: number) => string;
@@ -96,6 +97,7 @@ export const EXECUTIVE_CENTER_DICT = createDict<CenterCopy>({
       workers: "AI Workforce",
       workersOnline: (online, total) => `${online} / ${total} online`,
       awaitingActivation: (n) => `${n} awaiting activation`,
+      noWorkers: "No workers provisioned",
       tasks: "Tasks",
       tasksCoordinated: "Coordinated",
       tasksToday: (n) => `+${n} today`,
@@ -182,6 +184,7 @@ export const EXECUTIVE_CENTER_DICT = createDict<CenterCopy>({
       workers: "Tenaga Kerja AI",
       workersOnline: (online, total) => `${online} / ${total} dalam talian`,
       awaitingActivation: (n) => `${n} menunggu pengaktifan`,
+      noWorkers: "Tiada pekerja disediakan",
       tasks: "Tugasan",
       tasksCoordinated: "Diselaraskan",
       tasksToday: (n) => `+${n} hari ini`,

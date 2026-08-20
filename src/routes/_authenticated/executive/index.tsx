@@ -201,9 +201,19 @@ function ExecutiveCenter() {
           <Telemetry
             icon={Users}
             label={center.telemetry.workers}
-            value={center.telemetry.workersOnline(online, allWorkers.length || 0)}
+            value={
+              workers.isLoading
+                ? "—"
+                : center.telemetry.workersOnline(online, allWorkers.length)
+            }
             hint={
-              offline > 0 ? center.telemetry.awaitingActivation(offline) : center.nowHealthy
+              workers.isLoading
+                ? copy.syncing
+                : allWorkers.length === 0
+                  ? center.telemetry.noWorkers
+                  : offline > 0
+                    ? center.telemetry.awaitingActivation(offline)
+                    : center.nowHealthy
             }
             hash="#executive-workforce"
           />
