@@ -218,6 +218,7 @@ function ExecutiveCenter() {
               const Icon = workerIcon[worker.worker_key] ?? Bot;
               const status = (worker.is_enabled ? worker.status : "idle") as WorkerStatus;
               const isElite = worker.worker_key === "sales_elite";
+              const accent = ACCENTS[worker.worker_key] ?? DEFAULT_ACCENT;
               const workerTasks = engineTasks.filter((t) => t.worker_key === worker.worker_key);
               const running = workerTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
               const queued = workerTasks.filter((t) => t.status === "queued").length;
@@ -248,16 +249,18 @@ function ExecutiveCenter() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div
-                        className={cn(
-                          "rounded-xl border p-2.5",
-                          isElite ? "border-gold/40 bg-gold/10" : "border-border/60 bg-surface",
-                        )}
-                      >
-                        <Icon className={cn("size-5", isElite ? "text-gold" : "text-primary")} />
+                      <div className={cn("rounded-xl border p-2.5", accent.icon)}>
+                        <Icon className="size-5" />
                       </div>
                       <div className="min-w-0">
-                        <h2 className={cn("truncate text-base font-semibold", isElite && "text-champagne")}>{worker.name}</h2>
+                        <h2
+                          className={cn(
+                            "truncate text-base font-semibold",
+                            isElite && "text-gold-bright",
+                          )}
+                        >
+                          {worker.name}
+                        </h2>
                         <p className="text-xs text-muted-foreground">{worker.description}</p>
                       </div>
                     </div>
@@ -266,16 +269,11 @@ function ExecutiveCenter() {
                     </Badge>
                   </div>
 
-                  <div
-                    className={cn(
-                      "rounded-xl border px-3 py-2",
-                      isElite ? "border-gold/30 bg-gold/[0.06]" : "border-border/60 bg-surface/60",
-                    )}
-                  >
+                  <div className={cn("rounded-xl border px-3 py-2", accent.chipBorder, accent.chipBg)}>
                     <p
                       className={cn(
                         "text-[11px] font-semibold uppercase tracking-[0.14em]",
-                        isElite ? "text-gold" : "text-primary",
+                        accent.state,
                       )}
                     >
                       {liveState}
@@ -293,15 +291,8 @@ function ExecutiveCenter() {
                       {" · "}
                       {worker.autonomy === "auto" ? copy.autonomous : copy.approvalRequired}
                     </p>
-                    <Button
-                      asChild
-                      size="sm"
-                      variant="outline"
-                      className={cn(
-                        isElite &&
-                          "border-gold/50 bg-gold/10 text-gold hover:bg-gold/20 hover:text-gold",
-                      )}
-                    >
+                    <Button asChild size="sm" variant="outline" className={accent.button}>
+
                       {WORKER_ROUTES[worker.worker_key] ? (
                         <Link to={WORKER_ROUTES[worker.worker_key]!}>{copy.openWorker}</Link>
                       ) : (
