@@ -29,7 +29,7 @@ export function PageHeader({
     <header className={cn("flex flex-col gap-4", className)}>
       {backTo ? (
         <Link
-          to={backTo}
+          to={backTo as never}
           className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
         >
           <ArrowLeft className="size-3.5" aria-hidden="true" />
