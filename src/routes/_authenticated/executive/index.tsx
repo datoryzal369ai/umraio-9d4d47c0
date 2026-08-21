@@ -167,19 +167,13 @@ function ExecutiveCenter() {
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm">
               <Link to="/executive/workforce">
                 <Users className="size-4" aria-hidden="true" />
                 {center.viewWorkforce}
               </Link>
             </Button>
-            <Button asChild size="sm" variant="outline">
-              <Link to="/tasks">
-                <ListChecks className="size-4" aria-hidden="true" />
-                {center.openTaskControl}
-              </Link>
-            </Button>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="ghost">
               <Link to="/executive/audit">
                 <ScrollText className="size-4" aria-hidden="true" />
                 Audit log
@@ -187,82 +181,8 @@ function ExecutiveCenter() {
             </Button>
           </div>
         </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-5">
-          <Telemetry
-            icon={Activity}
-            label={center.telemetry.systemStatus}
-            value={
-              !ready
-                ? center.telemetry.systemSyncing
-                : escalations > 0
-                  ? center.telemetry.systemAttention
-                  : center.telemetry.systemActive
-            }
-            hint={
-              !ready
-                ? copy.syncing
-                : escalations > 0
-                  ? center.telemetry.escalations(escalations)
-                  : center.nowNoEscalations
-            }
-            tone={escalations > 0 ? "text-destructive" : "text-emerald"}
-          />
-          <Telemetry
-            icon={Users}
-            label={center.telemetry.workers}
-            value={
-              workers.isLoading
-                ? "—"
-                : center.telemetry.workersOnline(online, allWorkers.length)
-            }
-            hint={
-              workers.isLoading
-                ? copy.syncing
-                : allWorkers.length === 0
-                  ? center.telemetry.noWorkers
-                  : offline > 0
-                    ? center.telemetry.awaitingActivation(offline)
-                    : center.nowHealthy
-            }
-            hash="#executive-workforce"
-          />
-          <Telemetry
-            icon={ListChecks}
-            label={center.telemetry.tasks}
-            value={m ? center.telemetry.tasksToday(m.tasksToday) : "—"}
-            hint={
-              engineTasksQuery.isLoading
-                ? copy.syncing
-                : center.telemetry.tasksRecent(engineTasks.length)
-            }
-            to="/tasks"
-          />
-          <Telemetry
-            icon={ShieldCheck}
-            label={center.telemetry.approvals}
-            value={
-              approvals > 0
-                ? center.telemetry.approvalsWaiting(approvals)
-                : center.telemetry.approvalsClear
-            }
-            hint={approvals > 0 ? center.openApprovalQueue : center.nowHealthyBody}
-            to="/tasks"
-            tone={approvals > 0 ? "text-gold-bright" : undefined}
-          />
-          <Telemetry
-            icon={Target}
-            label={center.telemetry.opportunities}
-            value={
-              opportunityCount > 0
-                ? center.telemetry.opportunitiesDetected(opportunityCount)
-                : center.telemetry.opportunitiesNone
-            }
-            hint={center.openOpportunities}
-            hash="#executive-opportunities"
-          />
-        </div>
       </header>
+
 
       {/* 1. EXECUTIVE NOW — what needs attention right now. */}
       <ExecutiveNowCard />
