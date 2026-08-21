@@ -50,13 +50,15 @@ function Metric({
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-surface/70 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </p>
       {loading ? (
-        <Skeleton className="mt-2 h-6 w-12" />
+        <Skeleton className="mt-2 h-7 w-14" />
       ) : (
-        <p className="mt-1 font-display text-xl font-bold tracking-tight">{value}</p>
+        <p className="mt-1.5 font-display text-2xl font-extrabold leading-none tracking-tight text-foreground">
+          {value}
+        </p>
       )}
     </div>
   );
@@ -226,7 +228,7 @@ export function ExecutiveCommandPanel({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-gold/10 blur-3xl"
+          className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-primary/10 blur-3xl"
         />
         <div
           aria-hidden="true"
@@ -649,7 +651,7 @@ export function ExecutiveCommandPanel({
 
 function PanelTitle({ children }: { children: string }) {
   return (
-    <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-gold-bright">
+    <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
       {children}
     </h3>
   );
