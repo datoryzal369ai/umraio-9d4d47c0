@@ -94,25 +94,34 @@ export const Route = createFileRoute("/")({
  */
 const EXECUTIVE_NAME = /(AI Autonomous Business Executive(?:™)?)/i;
 
-function ExecutivePhrase({ text }: { text: string }) {
-  const parts = text.split(EXECUTIVE_NAME);
+/**
+ * Hero identity block: one coherent statement with the locked product name as
+ * the single high-intensity element, supporting copy in soft white.
+ */
+function HeroIdentity({ lead, accent }: { lead: string; accent: string }) {
+  const parts = lead.split(EXECUTIVE_NAME);
+  const before = (parts[0] ?? "").trim();
+  const name = parts[1] ?? "AI Autonomous Business Executive";
+  const after = (parts[2] ?? "").trim();
+
   return (
-    <>
-      {parts.map((part, i) =>
-        EXECUTIVE_NAME.test(part) && i % 2 === 1 ? (
-          <span key={i} className="text-exec-intelligence">
-            {part}
-            <sup className="ml-0.5 align-super text-[0.42em] leading-none tracking-normal">™</sup>
-          </span>
-        ) : (
-          <span key={i} className="text-foreground/90">
-            {part}
-          </span>
-        ),
-      )}
-    </>
+    <span className="flex flex-col items-center gap-2 sm:gap-3">
+      {before ? (
+        <span className="text-[11px] font-medium uppercase tracking-[0.34em] text-muted-foreground sm:text-sm">
+          {before}
+        </span>
+      ) : null}
+      <span className="text-exec-intelligence block text-balance text-[30px] font-extrabold uppercase leading-[1.06] tracking-[-0.015em] sm:text-5xl lg:text-6xl">
+        {name}
+        <sup className="ml-0.5 align-super text-[0.36em] leading-none tracking-normal">™</sup>
+      </span>
+      <span className="text-exec-support block text-balance text-lg font-semibold leading-[1.25] tracking-tight sm:text-2xl lg:text-3xl">
+        {[after, accent].filter(Boolean).join(" ")}
+      </span>
+    </span>
   );
 }
+
 
 function Index() {
   const { user, loading } = useAuth();
@@ -196,12 +205,12 @@ function Index() {
             </p>
 
             <h1
-              className="animate-rise mt-12 max-w-4xl text-balance text-3xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl"
+              className="animate-rise mt-12 max-w-4xl"
               style={{ animationDelay: "180ms" }}
             >
-              <ExecutivePhrase text={t.hero.headingLead} />{" "}
-              <span className="text-foreground/90">{t.hero.headingAccent}</span>
+              <HeroIdentity lead={t.hero.headingLead} accent={t.hero.headingAccent} />
             </h1>
+
             <p
               className="animate-rise mt-6 max-w-xl text-balance text-base font-light leading-relaxed text-muted-foreground sm:max-w-2xl sm:text-lg"
               style={{ animationDelay: "240ms" }}

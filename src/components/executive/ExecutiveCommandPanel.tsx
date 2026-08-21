@@ -50,13 +50,15 @@ function Metric({
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-surface/70 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </p>
       {loading ? (
-        <Skeleton className="mt-2 h-6 w-12" />
+        <Skeleton className="mt-2 h-7 w-14" />
       ) : (
-        <p className="mt-1 font-display text-xl font-bold tracking-tight">{value}</p>
+        <p className="mt-1.5 font-display text-2xl font-extrabold leading-none tracking-tight text-foreground">
+          {value}
+        </p>
       )}
     </div>
   );
@@ -226,7 +228,7 @@ export function ExecutiveCommandPanel({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-gold/10 blur-3xl"
+          className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-primary/10 blur-3xl"
         />
         <div
           aria-hidden="true"
@@ -234,8 +236,8 @@ export function ExecutiveCommandPanel({
         />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-            <div className="rounded-2xl border border-gold/40 bg-gold/10 p-3 shadow-[0_0_34px_-14px_rgba(255,171,76,0.8)]">
-              <BrainCircuit aria-hidden="true" className="size-6 text-gold-bright sm:size-7" />
+            <div className="rounded-2xl border border-primary/45 bg-primary/10 p-3 shadow-[0_0_34px_-14px_var(--color-primary)]">
+              <BrainCircuit aria-hidden="true" className="size-6 text-primary sm:size-7" />
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-primary">
@@ -243,18 +245,19 @@ export function ExecutiveCommandPanel({
               </p>
               <h2
                 id="abe-heading"
-                className="text-master font-display text-xl font-extrabold leading-tight tracking-tight sm:text-3xl"
+                className="text-exec-intelligence max-w-[15ch] text-balance font-display text-[22px] font-extrabold uppercase leading-[1.08] tracking-[-0.01em] sm:text-3xl"
               >
                 {copy.title}
               </h2>
-              <p className="mt-1 text-xs text-platinum/80 sm:text-sm">{copy.subtitle}</p>
+              <p className="mt-2 text-xs font-medium text-foreground/75 sm:text-sm">{copy.subtitle}</p>
             </div>
           </div>
           <Badge
             className={cn(
               "shrink-0 border-0",
+              "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
               activeWorkers.length > 0
-                ? "bg-success/15 text-success"
+                ? "bg-primary/15 text-primary ring-1 ring-primary/40"
                 : "bg-muted text-muted-foreground",
             )}
           >
@@ -276,10 +279,10 @@ export function ExecutiveCommandPanel({
                   aria-controls="executive-control-panel"
                   onClick={() => setOpenControl(active ? null : key)}
                   className={cn(
-                    "inline-flex min-h-11 items-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-semibold transition-colors",
+                    "inline-flex min-h-11 flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold tracking-tight transition-colors sm:flex-none sm:basis-auto",
                     active
-                      ? "border-gold/60 bg-gold/15 text-gold-bright"
-                      : "border-border/60 bg-surface text-muted-foreground hover:border-primary/50 hover:text-primary",
+                      ? "border-primary/70 bg-primary/15 text-primary shadow-[0_0_30px_-16px_var(--color-primary)]"
+                      : "border-primary/20 bg-surface/70 text-foreground/80 hover:border-primary/50 hover:text-primary",
                   )}
                 >
                   <Icon aria-hidden="true" className="size-3.5" />
@@ -648,7 +651,7 @@ export function ExecutiveCommandPanel({
 
 function PanelTitle({ children }: { children: string }) {
   return (
-    <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-gold-bright">
+    <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
       {children}
     </h3>
   );
