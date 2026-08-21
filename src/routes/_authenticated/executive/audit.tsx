@@ -71,7 +71,7 @@ function AuditLogPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <PageHeader
         eyebrow={
           <span className="inline-flex items-center gap-1.5">
@@ -79,70 +79,72 @@ function AuditLogPage() {
             AI Executive Center
           </span>
         }
-        title="Executive Audit Log"
-        description="Read-only evidence: decisions, approvals, executions, monitoring checks and escalations, exactly as recorded."
+        title={
+          <span>
+            Executive <span className="text-primary">Audit Log</span>
+          </span>
+        }
+        description="Read-only evidence of decisions, approvals, executions, monitoring and escalations."
         backTo="/executive"
       />
 
-      <div className="panel p-4">
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              aria-pressed={filter === f.key}
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "min-h-10 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                filter === f.key
-                  ? "border-primary/60 bg-primary/10 text-primary"
-                  : "border-border/60 bg-surface text-muted-foreground hover:text-primary",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        {workers.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              aria-pressed={worker === "all"}
-              onClick={() => setWorker("all")}
-              className={cn(
-                "min-h-9 rounded-full border px-3 py-1 text-[11px] font-medium",
-                worker === "all"
-                  ? "border-gold/50 bg-gold/10 text-gold-bright"
-                  : "border-border/60 bg-surface text-muted-foreground",
-              )}
-            >
-              All workers
-            </button>
-            {workers.map((w) => (
+      <div className="panel space-y-5 p-4 sm:p-5">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+            Event type
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {FILTERS.map((f) => (
               <button
-                key={w}
+                key={f.key}
                 type="button"
-                aria-pressed={worker === w}
-                onClick={() => setWorker(w)}
+                aria-pressed={filter === f.key}
+                onClick={() => setFilter(f.key)}
                 className={cn(
-                  "min-h-9 rounded-full border px-3 py-1 text-[11px] font-medium",
-                  worker === w
-                    ? "border-gold/50 bg-gold/10 text-gold-bright"
-                    : "border-border/60 bg-surface text-muted-foreground",
+                  "min-h-9 rounded-full border px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.08em] transition-colors",
+                  filter === f.key
+                    ? "border-primary/60 bg-primary/10 text-primary shadow-[0_0_18px_-10px_var(--color-primary)]"
+                    : "border-border/60 bg-surface/60 text-muted-foreground hover:text-foreground",
                 )}
               >
-                {w}
+                {f.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        {workers.length > 0 ? (
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              Worker
+            </p>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {["all", ...workers].map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  aria-pressed={worker === w}
+                  onClick={() => setWorker(w)}
+                  className={cn(
+                    "min-h-9 rounded-full border px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.08em] transition-colors",
+                    worker === w
+                      ? "border-primary/60 bg-primary/10 text-primary shadow-[0_0_18px_-10px_var(--color-primary)]"
+                      : "border-border/60 bg-surface/60 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {w === "all" ? "All workers" : (WORKER_LABELS[w] ?? w)}
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
       </div>
 
-      <div className="panel p-4">
+      <div className="panel p-4 sm:p-5">
         {auditQuery.isLoading ? (
           <div className="space-y-2">
             {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-14 w-full" />
+              <Skeleton key={i} className="h-16 w-full" />
             ))}
           </div>
         ) : auditQuery.isError ? (
@@ -154,48 +156,60 @@ function AuditLogPage() {
             No recorded events match this filter.
           </p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-border/50">
             {visible.map((row) => {
               const t = timeOf(row.at);
               return (
-                <li
-                  key={row.id}
-                  className="rounded-xl border border-border/60 bg-surface/60 p-3 sm:flex sm:items-start sm:gap-4"
-                >
-                  <div className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:w-20">
-                    {t.time}
-                    <span className="ml-1.5 sm:ml-0 sm:block sm:font-normal">{t.date}</span>
+                <li key={row.id} className="py-4 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      {t.time} · {t.date}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em]",
+                        AUDIT_CATEGORY_TONE[row.category],
+                      )}
+                    >
+                      {row.event}
+                    </Badge>
+                    {row.state ? (
+                      <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/80">
+                        {row.state}
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="mt-1.5 min-w-0 flex-1 sm:mt-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={cn("border-0", AUDIT_CATEGORY_TONE[row.category])}>
-                        {row.event}
-                      </Badge>
-                      {row.state ? (
-                        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                          {row.state}
-                        </span>
-                      ) : null}
-                      {row.result ? (
-                        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                          {row.result}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 break-words text-sm">{row.action}</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {row.actor}
-                      {row.entity ? ` · ${row.entity}` : ""}
-                      {row.leadId ? ` · Lead #${row.leadId.slice(0, 8).toUpperCase()}` : ""}
-                      {row.approver ? ` · Approver: ${row.approver}` : ""}
-                    </p>
+
+                  <p className="mt-2 break-words text-sm leading-relaxed text-foreground/95">
+                    {row.action}
+                  </p>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                    <span className="text-foreground/70">
+                      {row.workerKey ? (WORKER_LABELS[row.workerKey] ?? row.actor) : row.actor}
+                    </span>
+                    {row.leadId ? (
+                      <span>· Lead #{row.leadId.slice(0, 8).toUpperCase()}</span>
+                    ) : null}
+                    {row.approver ? <span>· Approver: {row.approver}</span> : null}
+                    {row.result ? (
+                      <span
+                        className={cn(
+                          "font-medium uppercase tracking-[0.12em]",
+                          row.result === "FAILED" ? "text-destructive" : "text-foreground/70",
+                        )}
+                      >
+                        · {row.result}
+                      </span>
+                    ) : null}
                   </div>
                 </li>
               );
             })}
           </ul>
         )}
-        <p className="mt-4 text-[11px] text-muted-foreground">
+        <p className="mt-5 border-t border-border/50 pt-4 text-[11px] leading-relaxed text-muted-foreground">
           This log is evidence and is read-only. Historical events cannot be edited or deleted from
           the Executive Center.
         </p>
