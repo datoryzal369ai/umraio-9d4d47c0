@@ -103,7 +103,18 @@ export function deriveActionLoop(
   const failedStep = findStep(steps, "failed");
 
   const decisionAt = recommended?.at ?? task.created_at;
-  const decisionKnown = Boolean(recommended) || task.kind === "executive_action";
+  // The decision stages are proven either by an explicit recorded step, by the
+  // action being an executive decision, or — for legacy rows — by a later
+  // stage having demonstrably happened (a task cannot be approved, executed or
+  // failed without first having been decided).
+  const decisionKnown =
+    Boolean(recommended) ||
+    task.kind === "executive_action" ||
+    Boolean(task.approved_at) ||
+    Boolean(task.started_at) ||
+    ["waiting_approval", "running", "processing", "completed", "failed", "rejected"].includes(
+      task.status,
+    );
 
   const isRejected = task.status === "rejected";
   const isFailed = task.status === "failed";
