@@ -73,7 +73,12 @@ function AuditLogPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5">
       <PageHeader
-        icon={ScrollText}
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5">
+            <ScrollText aria-hidden="true" className="size-3.5" />
+            AI Executive Center
+          </span>
+        }
         title="Executive Audit Log"
         description="Read-only evidence: decisions, approvals, executions, monitoring checks and escalations, exactly as recorded."
         backTo="/executive"
