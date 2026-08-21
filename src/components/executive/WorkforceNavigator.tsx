@@ -97,7 +97,9 @@ export function WorkforceNavigator({
           <li aria-hidden="true">/</li>
           <li className="truncate font-medium text-foreground">{name}</li>
         </ol>
-      </nav>
+        </nav>
+      </div>
+
 
       <div
         className="flex items-center gap-2"
