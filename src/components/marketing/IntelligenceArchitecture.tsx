@@ -1,3 +1,4 @@
+import aiMark from "@/assets/ai-mark.png.asset.json";
 import renaioMark from "@/assets/renaio-core-mark.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
 import { cn } from "@/lib/utils";
@@ -5,29 +6,27 @@ import { cn } from "@/lib/utils";
 /**
  * ONE architecture moment for the whole public experience.
  *
- * Single governed flow: RÉNAIO.CORE™ → ĀI™ → ISLAMIC IMPLEMENTATION LAYER™ →
- * UMRAIO® → AI AUTONOMOUS BUSINESS EXECUTIVE™ → AI WORKFORCE → BUSINESS ACTIONS.
- * Compact tiers, subtle vertical connectors, one turquoise-cyan accent family.
+ * Replaces the previously repeated Islamic layer / intelligence loop /
+ * ecosystem stack sections so the architecture is explained exactly once,
+ * with the official ĀI™ mark integrated as ambient intelligence lighting
+ * rather than a poster pasted into a card.
  */
 
 const COPY = {
   en: {
     eyebrow: "Intelligence architecture",
     heading: "From intelligence to execution.",
-    lede: "One autonomous intelligence architecture for governed business execution.",
+    lede: "One foundation. One governance layer. One executive. A full autonomous workforce.",
+    aiVsAi: [
+      { k: "AI", v: "Intelligent capability" },
+      { k: "ĀI™", v: "Autonomous intelligence paradigm" },
+    ],
     coreLabel: "The Autonomous Intelligence Core",
     coreCaps: ["Context", "Memory", "Reasoning", "Orchestration", "Learning"],
-    aiParadigm: "Autonomous Intelligence",
-    aiParadigmSub: "Paradigm",
-    aiDistinction: ["AI = Artificial Intelligence", "ĀI™ = Autonomous Intelligence™"],
-    tiers: [
-      { name: "ISLAMIC IMPLEMENTATION LAYER™", role: "Domain • Governance • Contextual rules" },
+    chain: [
+      { name: "ISLAMIC IMPLEMENTATION LAYER™", role: "Domain, governance & contextual rules" },
       { name: "UMRAIO®", role: "The product for modern Umrah agencies" },
-      {
-        name: "AI AUTONOMOUS BUSINESS EXECUTIVE™",
-        role: "Executive orchestration layer",
-        hero: true,
-      },
+      { name: "AI AUTONOMOUS BUSINESS EXECUTIVE™", role: "Executive orchestration layer" },
       { name: "AI WORKFORCE", role: "Specialist autonomous operators" },
       { name: "BUSINESS ACTIONS", role: "Measured, verifiable outcomes" },
     ],
@@ -36,20 +35,17 @@ const COPY = {
   bm: {
     eyebrow: "Seni bina kecerdasan",
     heading: "Daripada kecerdasan kepada pelaksanaan.",
-    lede: "Satu seni bina kecerdasan autonomi untuk pelaksanaan perniagaan yang ditadbir.",
+    lede: "Satu asas. Satu lapisan tadbir urus. Satu eksekutif. Satu tenaga kerja autonomi penuh.",
+    aiVsAi: [
+      { k: "AI", v: "Keupayaan pintar" },
+      { k: "ĀI™", v: "Paradigma kecerdasan autonomi" },
+    ],
     coreLabel: "Teras Kecerdasan Autonomi",
     coreCaps: ["Konteks", "Memori", "Penaakulan", "Orkestrasi", "Pembelajaran"],
-    aiParadigm: "Kecerdasan Autonomi",
-    aiParadigmSub: "Paradigma",
-    aiDistinction: ["AI = Artificial Intelligence", "ĀI™ = Autonomous Intelligence™"],
-    tiers: [
-      { name: "ISLAMIC IMPLEMENTATION LAYER™", role: "Domain • Tadbir urus • Peraturan konteks" },
+    chain: [
+      { name: "ISLAMIC IMPLEMENTATION LAYER™", role: "Domain, tadbir urus & peraturan konteks" },
       { name: "UMRAIO®", role: "Produk untuk agensi Umrah moden" },
-      {
-        name: "AI AUTONOMOUS BUSINESS EXECUTIVE™",
-        role: "Lapisan orkestrasi eksekutif",
-        hero: true,
-      },
+      { name: "AI AUTONOMOUS BUSINESS EXECUTIVE™", role: "Lapisan orkestrasi eksekutif" },
       { name: "AI WORKFORCE", role: "Operator autonomi pakar" },
       { name: "BUSINESS ACTIONS", role: "Hasil yang boleh disahkan" },
     ],
@@ -57,156 +53,182 @@ const COPY = {
   },
 } as const;
 
-function Connector() {
-  return (
-    <span
-      aria-hidden
-      className="mx-auto block h-6 w-px bg-gradient-to-b from-primary/55 to-primary/10 sm:h-7"
-    />
-  );
-}
-
 export function IntelligenceArchitecture() {
   const t = COPY[useLocale().locale];
 
   return (
     <section
       id="intelligence-architecture"
-      className="mt-20 scroll-mt-24 sm:mt-24"
+      className="mt-24 scroll-mt-24 sm:mt-28"
       aria-labelledby="intelligence-architecture-heading"
     >
-      <div className="panel-exec relative overflow-hidden px-5 py-10 sm:px-12 sm:py-14">
+      <div className="panel-exec relative overflow-hidden px-6 py-12 sm:px-12 sm:py-16">
+        {/* Integrated ĀI™ intelligence lighting — part of the surface, not a pasted poster. */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
           <div
-            className="absolute inset-x-0 top-0 h-56"
+            className="absolute inset-x-0 top-0 h-72"
             style={{
               background:
-                "radial-gradient(60% 100% at 50% 0%, color-mix(in oklab, var(--color-primary) 16%, transparent), transparent 72%)",
+                "radial-gradient(60% 100% at 50% 0%, color-mix(in oklab, var(--color-primary) 22%, transparent), transparent 72%)",
             }}
+          />
+          <img
+            src={aiMark.url}
+            alt=""
+            loading="lazy"
+            className="absolute left-1/2 top-2 w-[clamp(220px,42vw,460px)] -translate-x-1/2 object-contain opacity-[0.10] mix-blend-screen blur-[1px]"
           />
         </div>
 
-        <header className="mx-auto max-w-xl text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary">
+        <header className="mx-auto max-w-2xl text-center">
+          <p className="text-[10px] font-medium uppercase tracking-[0.36em] text-primary/80">
             {t.eyebrow}
           </p>
+
+          <div className="relative mx-auto mt-8 w-full max-w-[300px]">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -z-10 blur-3xl"
+              style={{
+                background:
+                  "radial-gradient(50% 60% at 50% 50%, rgba(0,215,255,0.28), transparent 70%)",
+              }}
+            />
+            <img
+              src={aiMark.url}
+              alt="ĀI™ — Autonomous Intelligence"
+              loading="lazy"
+              className="mx-auto w-full object-contain mix-blend-screen drop-shadow-[0_18px_40px_rgba(0,0,0,0.55)]"
+            />
+          </div>
+
           <h2
             id="intelligence-architecture-heading"
-            className="mt-3 text-balance text-[26px] font-extrabold leading-[1.12] tracking-tight sm:text-4xl"
+            className="mt-8 text-balance text-2xl font-extrabold leading-[1.15] tracking-tight sm:text-4xl"
           >
             {t.heading}
           </h2>
-          <p className="text-exec-support mx-auto mt-3 max-w-md text-sm leading-relaxed sm:text-base">
+          <p className="mx-auto mt-4 max-w-xl text-sm font-light leading-[1.8] text-muted-foreground">
             {t.lede}
           </p>
         </header>
 
-        <div className="mx-auto mt-10 w-full max-w-xl">
-          {/* LEVEL 1 — RÉNAIO.CORE™ */}
-          <div className="flex flex-col items-center">
-            <div className="relative flex size-[150px] items-center justify-center sm:size-[210px]">
-              <span
-                aria-hidden
-                className="umr-core-halo pointer-events-none absolute inset-0 -z-10 rounded-full blur-2xl"
-                style={{
-                  background:
-                    "radial-gradient(50% 50% at 50% 50%, rgba(42,212,230,0.34), transparent 72%)",
-                }}
-              />
-              <img
-                src={renaioMark.url}
-                alt="RÉNAIO.CORE™"
-                loading="lazy"
-                className="umr-core-mark h-full w-full object-contain mix-blend-screen"
-              />
-            </div>
-            <p className="mt-3 text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
-              {t.coreLabel}
-            </p>
-            <ul className="mt-3 flex flex-wrap justify-center gap-1.5">
-              {t.coreCaps.map((c) => (
-                <li
-                  key={c}
-                  className="chip-capability rounded-full px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.16em]"
-                >
-                  {c}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <Connector />
-
-          {/* LEVEL 2 — ĀI™ */}
-          <div className="rounded-2xl border border-primary/55 bg-primary/[0.08] px-5 py-6 text-center shadow-[0_0_60px_-34px_var(--color-primary)]">
-            <div className="relative mx-auto w-fit">
-              <p className="text-exec-intelligence relative font-display text-[44px] font-extrabold leading-none tracking-tight sm:text-6xl">
-                ĀI
-                <sup className="ml-0.5 align-super text-[0.32em] font-bold leading-none tracking-normal">
-                  ™
-                </sup>
-              </p>
-            </div>
-            <p className="mt-3 text-[12px] font-bold uppercase tracking-[0.2em] text-primary sm:text-sm">
-              {t.aiParadigm}
-            </p>
-            <p className="text-exec-support mt-1 text-[10px] font-medium uppercase tracking-[0.24em] opacity-80">
-              {t.aiParadigmSub}
-            </p>
-            <p className="mt-4 text-[10px] font-medium leading-[1.9] tracking-[0.06em] text-muted-foreground sm:text-[11px]">
-              {t.aiDistinction[0]}
-              <br />
-              {t.aiDistinction[1]}
-            </p>
-          </div>
-
-          {/* LEVELS 3–7 */}
-          <ol className="w-full">
-            {t.tiers.map((node) => (
-              <li key={node.name} className="flex flex-col">
-                <Connector />
-                <div
+        {/* AI vs ĀI™ — stated once, compactly. */}
+        <div className="mx-auto mt-10 grid max-w-2xl gap-3 sm:grid-cols-2">
+          {t.aiVsAi.map((row, i) => {
+            const hero = i === 1;
+            return (
+              <div
+                key={row.k}
+                className={cn(
+                  "rounded-2xl border px-5 py-8 text-center backdrop-blur",
+                  hero
+                    ? "border-primary/60 bg-primary/[0.09] shadow-[0_0_70px_-32px_var(--color-primary)]"
+                    : "border-border/70 bg-surface/70",
+                )}
+              >
+                <p
                   className={cn(
-                    "rounded-2xl border px-4 py-3.5 text-center backdrop-blur sm:px-5",
-                    "hero" in node && node.hero
-                      ? "border-primary/55 bg-primary/[0.07] shadow-[0_0_60px_-36px_var(--color-primary)]"
-                      : "border-border/60 bg-surface/50",
+                    "font-display font-extrabold tracking-tight",
+                    hero
+                      ? "text-exec-intelligence text-4xl sm:text-5xl"
+                      : "text-3xl text-foreground/80 sm:text-4xl",
                   )}
                 >
-                  <p
-                    className={cn(
-                      "text-balance tracking-tight",
-                      "hero" in node && node.hero
-                        ? "text-exec-intelligence text-[15px] font-extrabold uppercase leading-[1.2] sm:text-xl"
-                        : "text-[13px] font-bold text-foreground sm:text-[15px]",
-                    )}
-                  >
-                    {node.name}
-                  </p>
-                  <p className="text-exec-support mt-1 text-[10px] font-medium uppercase tracking-[0.18em] opacity-75 sm:text-[11px]">
+                  {row.k}
+                </p>
+                <p
+                  className={cn(
+                    "mt-3 text-[11px] uppercase leading-[1.7] tracking-[0.2em]",
+                    hero
+                      ? "font-semibold text-primary"
+                      : "font-medium text-foreground/70",
+                  )}
+                >
+                  {row.v}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* RÉNAIO.CORE™ — logo mark only here; the full wordmark lives once in the footer. */}
+        <div className="mx-auto mt-12 flex max-w-xl flex-col items-center">
+          <div className="relative flex size-[220px] items-center justify-center sm:size-[300px]">
+            <span
+              aria-hidden
+              className="umr-core-halo pointer-events-none absolute inset-0 -z-10 rounded-full blur-2xl"
+              style={{
+                background:
+                  "radial-gradient(50% 50% at 50% 50%, rgba(42,212,230,0.42), transparent 72%)",
+              }}
+            />
+            <img
+              src={renaioMark.url}
+              alt="RÉNAIO.CORE™"
+              loading="lazy"
+              className="umr-core-mark h-full w-full object-contain mix-blend-screen"
+            />
+            <span
+              aria-hidden
+              className="umr-core-spark pointer-events-none absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 rounded-full blur-md"
+              style={{
+                background:
+                  "radial-gradient(50% 50% at 50% 50%, rgba(255,255,255,0.9), transparent 70%)",
+              }}
+            />
+          </div>
+
+          <p className="mt-5 text-center text-[11px] font-medium uppercase tracking-[0.26em] text-primary/90">
+            {t.coreLabel}
+          </p>
+
+          <ul className="mt-4 flex flex-wrap justify-center gap-2">
+            {t.coreCaps.map((c) => (
+              <li
+                key={c}
+                className="chip-capability rounded-full px-3.5 py-1.5 text-[10px] font-medium uppercase tracking-[0.2em]"
+              >
+                {c}
+              </li>
+            ))}
+          </ul>
+
+
+          <ol className="mt-8 w-full">
+            {t.chain.map((node, i) => (
+              <li key={node.name} className="flex flex-col items-center">
+                <span
+                  aria-hidden
+                  className="my-3 block h-7 w-px bg-gradient-to-b from-primary/50 to-transparent"
+                />
+                <div className="w-full rounded-2xl border border-border/60 bg-surface/50 px-5 py-3.5 text-center backdrop-blur">
+                  <p className="text-[13px] font-semibold tracking-tight sm:text-sm">{node.name}</p>
+                  <p className="mt-1 text-[10px] font-light uppercase tracking-[0.22em] text-muted-foreground/80">
                     {node.role}
                   </p>
                 </div>
-              </li>
-            ))}
-          </ol>
-
-          {/* Execution pipeline */}
-          <ol className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-2">
-            {t.pipeline.map((step, i) => (
-              <li key={step} className="flex items-center gap-2">
-                <span className="rounded-full border border-primary/35 bg-primary/[0.07] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-primary">
-                  {step}
-                </span>
-                {i < t.pipeline.length - 1 ? (
-                  <span aria-hidden className="text-primary/45">
-                    →
-                  </span>
-                ) : null}
+                {i === t.chain.length - 1 ? null : null}
               </li>
             ))}
           </ol>
         </div>
+
+        {/* Execution pipeline — the operational read of the same architecture. */}
+        <ol className="mt-12 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+          {t.pipeline.map((step, i) => (
+            <li key={step} className="flex items-center gap-3">
+              <span className="rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-[9px] font-medium uppercase tracking-[0.22em] text-primary/90">
+                {step}
+              </span>
+              {i < t.pipeline.length - 1 ? (
+                <span aria-hidden className="text-primary/40">
+                  →
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );

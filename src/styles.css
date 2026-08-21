@@ -187,14 +187,13 @@
   color: transparent;
 }
 
-/* Primary intelligence statement: crisp turquoise → cyan, minimal glow. */
+/* Primary intelligence statement: turquoise → cyan → soft white, restrained glow. */
 @utility text-exec-intelligence {
-  background-image: linear-gradient(100deg, #7defff 0%, #2ad4e6 42%, #5cc9ff 100%);
+  background-image: linear-gradient(100deg, #5fe6f5 0%, #2ad4e6 30%, #57c4ff 64%, #f2fbff 100%);
   background-clip: text;
   color: transparent;
-  text-shadow: 0 0 22px rgba(42, 212, 230, 0.14);
+  text-shadow: 0 0 40px rgba(42, 212, 230, 0.28);
 }
-
 
 /* Supporting statement — premium soft white, never coloured. */
 @utility text-exec-support {
