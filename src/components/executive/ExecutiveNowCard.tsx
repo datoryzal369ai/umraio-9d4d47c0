@@ -98,7 +98,7 @@ export function ExecutiveNowCard() {
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-primary">
-              AUTONOMOUS AI BUSINESS EXECUTIVE™
+              AI AUTONOMOUS BUSINESS EXECUTIVE™
             </p>
             <h2
               id="executive-now-heading"

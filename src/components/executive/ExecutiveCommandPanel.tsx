@@ -198,7 +198,7 @@ export function ExecutiveCommandPanel({
             )}
           />
           <HierarchyItem
-            name="AUTONOMOUS AI BUSINESS EXECUTIVE™"
+            name="AI AUTONOMOUS BUSINESS EXECUTIVE™"
             role={copy.hierarchy.orchestrator}
             render={(inner) => (
               <a href="#master-executive" className="min-w-0">

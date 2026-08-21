@@ -1,7 +1,7 @@
 import type { SalesOpportunity } from "@/lib/sales-opportunities.core";
 
 /**
- * AUTONOMOUS AI BUSINESS EXECUTIVE™ — orchestration intelligence (PURE).
+ * AI AUTONOMOUS BUSINESS EXECUTIVE™ — orchestration intelligence (PURE).
  *
  * OBSERVE → UNDERSTAND → PRIORITISE → DECIDE → COORDINATE.
  *

@@ -11,7 +11,7 @@ export const settingsCopy = createDict({
     layout: {
       eyebrow: "Workspace",
       title: "Settings",
-      description: "Configure your agency profile, Autonomous AI Business Executive, channels and plan.",
+      description: "Configure your agency profile, AI Autonomous Business Executive, channels and plan.",
       navLabel: "Settings sections",
       tabs: {
         agency: "Agency",
@@ -72,7 +72,7 @@ export const settingsCopy = createDict({
     ai: {
       personality: {
         title: "AI personality",
-        description: "How your Autonomous AI Business Executive sounds to customers.",
+        description: "How your AI Autonomous Business Executive sounds to customers.",
         assistantName: "Assistant name",
         tone: "Tone",
         replyLength: "Reply length",
@@ -142,7 +142,7 @@ export const settingsCopy = createDict({
     governance: {
       hero: {
         title: "Islamic Implementation Layer™",
-        body: "A governed architectural layer that constrains what the Autonomous AI Business Executive™ may claim or do. UMRAIO is {not} a mufti, Islamic scholar, fatwa body or Shariah authority, and it never issues religious rulings. Matters that require religious judgement are routed to qualified humans for review.",
+        body: "A governed architectural layer that constrains what the AI Autonomous Business Executive™ may claim or do. UMRAIO is {not} a mufti, Islamic scholar, fatwa body or Shariah authority, and it never issues religious rulings. Matters that require religious judgement are routed to qualified humans for review.",
         bodyNot: "not",
         note: "Policies are managed by the platform and are read-only here. Every policy decision is written to the audit trail with its policy code, version, source and authority.",
       },
@@ -214,7 +214,7 @@ export const settingsCopy = createDict({
       header: {
         eyebrow: "Integration",
         title: "WhatsApp Business",
-        description: "Connect the WhatsApp Cloud API so inbound enquiries create leads and the Autonomous AI Business Executive replies instantly.",
+        description: "Connect the WhatsApp Cloud API so inbound enquiries create leads and the AI Autonomous Business Executive replies instantly.",
       },
       status: {
         title: "Connection status",
@@ -234,7 +234,7 @@ export const settingsCopy = createDict({
         tokenStoredNote: "A token is securely stored. It is never shown again — enter a new one only to replace it.",
         tokenNotStoredNote: "Stored server-side only; it is never returned to your browser.",
         autoReply: "AI auto-reply",
-        autoReplyDescription: "Let the Autonomous AI Business Executive answer inbound WhatsApp messages automatically.",
+        autoReplyDescription: "Let the AI Autonomous Business Executive answer inbound WhatsApp messages automatically.",
         saving: "Saving…",
         save: "Save connection",
         disconnect: "Disconnect",
@@ -272,7 +272,7 @@ export const settingsCopy = createDict({
     layout: {
       eyebrow: "Ruang Kerja",
       title: "Tetapan",
-      description: "Konfigurasikan profil agency, Autonomous AI Business Executive, saluran dan pelan anda.",
+      description: "Konfigurasikan profil agency, AI Autonomous Business Executive, saluran dan pelan anda.",
       navLabel: "Bahagian tetapan",
       tabs: {
         agency: "Agency",
@@ -333,7 +333,7 @@ export const settingsCopy = createDict({
     ai: {
       personality: {
         title: "Personaliti AI",
-        description: "Bagaimana Autonomous AI Business Executive anda berbunyi kepada pelanggan.",
+        description: "Bagaimana AI Autonomous Business Executive anda berbunyi kepada pelanggan.",
         assistantName: "Nama pembantu",
         tone: "Nada",
         replyLength: "Panjang balasan",
@@ -403,7 +403,7 @@ export const settingsCopy = createDict({
     governance: {
       hero: {
         title: "Islamic Implementation Layer™",
-        body: "Satu lapisan seni bina bertadbir urus yang mengehadkan apa yang boleh didakwa atau dilakukan oleh Autonomous AI Business Executive™. UMRAIO {not} seorang mufti, ulama, badan fatwa atau autoriti Syariah, dan ia tidak sekali-kali mengeluarkan hukum agama. Perkara yang memerlukan pertimbangan agama dirujuk kepada manusia yang layak untuk semakan.",
+        body: "Satu lapisan seni bina bertadbir urus yang mengehadkan apa yang boleh didakwa atau dilakukan oleh AI Autonomous Business Executive™. UMRAIO {not} seorang mufti, ulama, badan fatwa atau autoriti Syariah, dan ia tidak sekali-kali mengeluarkan hukum agama. Perkara yang memerlukan pertimbangan agama dirujuk kepada manusia yang layak untuk semakan.",
         bodyNot: "bukan",
         note: "Polisi diurus oleh platform dan bersifat baca sahaja di sini. Setiap keputusan polisi direkodkan dalam audit trail berserta kod polisi, versi, sumber dan autoriti.",
       },
@@ -475,7 +475,7 @@ export const settingsCopy = createDict({
       header: {
         eyebrow: "Integrasi",
         title: "WhatsApp Business",
-        description: "Sambungkan WhatsApp Cloud API supaya pertanyaan masuk mencipta lead dan Autonomous AI Business Executive membalas dengan segera.",
+        description: "Sambungkan WhatsApp Cloud API supaya pertanyaan masuk mencipta lead dan AI Autonomous Business Executive membalas dengan segera.",
       },
       status: {
         title: "Status sambungan",
@@ -495,7 +495,7 @@ export const settingsCopy = createDict({
         tokenStoredNote: "Token disimpan dengan selamat. Ia tidak akan dipaparkan lagi — masukkan token baharu hanya untuk menggantikannya.",
         tokenNotStoredNote: "Disimpan di pelayan sahaja; ia tidak akan dikembalikan ke pelayar anda.",
         autoReply: "Auto-reply AI",
-        autoReplyDescription: "Benarkan Autonomous AI Business Executive membalas mesej WhatsApp masuk secara automatik.",
+        autoReplyDescription: "Benarkan AI Autonomous Business Executive membalas mesej WhatsApp masuk secara automatik.",
         saving: "Menyimpan…",
         save: "Simpan sambungan",
         disconnect: "Putuskan sambungan",

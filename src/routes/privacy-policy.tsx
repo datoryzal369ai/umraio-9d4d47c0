@@ -73,7 +73,7 @@ function PrivacyPolicyPage() {
           <article className="animate-rise mt-12 space-y-8 sm:mt-16">
             <PolicySection title="Introduction">
               <p>
-                UMRAIO® (“we”, “us”, or “our”) provides an autonomous AI business executive platform
+                UMRAIO® (“we”, “us”, or “our”) provides an AI autonomous business executive platform
                 for licensed Umrah and travel agencies. This Privacy Policy explains how we collect,
                 use, store, share and protect information when you use our website, applications and
                 services.

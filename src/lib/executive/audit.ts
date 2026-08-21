@@ -58,7 +58,7 @@ export type AuditRow = {
   leadId: string | null;
 };
 
-const MASTER = "AUTONOMOUS AI BUSINESS EXECUTIVE™";
+const MASTER = "AI AUTONOMOUS BUSINESS EXECUTIVE™";
 
 function classifyActivity(action: string, meta: Record<string, unknown>): AuditCategory {
   const a = action.toLowerCase();
