@@ -1,6 +1,7 @@
 import aiMark from "@/assets/ai-mark.png.asset.json";
 import renaioMark from "@/assets/renaio-core-mark.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
+import { cn } from "@/lib/utils";
 
 /**
  * ONE architecture moment for the whole public experience.
