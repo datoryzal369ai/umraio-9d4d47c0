@@ -1,4 +1,3 @@
-import aiMark from "@/assets/ai-mark.png.asset.json";
 import renaioMark from "@/assets/renaio-core-mark.png.asset.json";
 import umraioWordmark from "@/assets/umraio-wordmark-tm.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
@@ -116,7 +115,7 @@ export function IntelligenceArchitecture() {
             <img
               src={renaioMark.url}
               alt="RÉNAIO.CORE™"
-              loading="lazy"
+              loading="eager"
               className="umr-core-mark h-full w-full object-contain mix-blend-screen"
             />
           </div>
@@ -138,29 +137,19 @@ export function IntelligenceArchitecture() {
 
           {/* LEVEL 2 — ĀI™ */}
           <div className="flex w-full flex-col items-center">
-            <img
-              src={aiMark.url}
-              alt="ĀI™ — Autonomous Intelligence"
-              loading="lazy"
-              className="w-[clamp(140px,44vw,220px)] object-contain mix-blend-screen contrast-125 brightness-125 saturate-125"
-            />
+            <p className="text-exec-intelligence font-display text-[44px] font-extrabold leading-none tracking-tight sm:text-6xl">
+              ĀI
+              <sup className="ml-0.5 align-super text-[0.26em] font-semibold tracking-normal">™</sup>
+            </p>
             <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
               {t.aiParadigm}
             </p>
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11px] max-sm:flex-col">
-              <span className="rounded-full border border-border/70 bg-surface/70 px-3 py-1.5 font-medium text-foreground/70">
-                {t.aiPlain}
-              </span>
-              <span aria-hidden className="text-primary/60">
-                <span className="sm:hidden">↓</span>
-                <span className="hidden sm:inline">→</span>
-              </span>
-
-              <span className="rounded-full border border-primary/60 bg-primary/[0.1] px-3 py-1.5 font-semibold text-primary">
-                {t.aiAutonomous}
-              </span>
+            <div className="mt-3 flex flex-col items-center gap-1 text-[11px] font-light text-muted-foreground">
+              <span>{t.aiPlain}</span>
+              <span className="font-medium text-foreground/85">{t.aiAutonomous}</span>
             </div>
           </div>
+
 
           <Connector />
 
@@ -192,12 +181,12 @@ export function IntelligenceArchitecture() {
           <Connector />
 
           {/* LEVEL 5 — AI AUTONOMOUS BUSINESS EXECUTIVE™ */}
-          <div className="w-full rounded-2xl border border-primary/55 bg-primary/[0.07] px-5 py-7 shadow-[0_0_80px_-40px_var(--color-primary)] backdrop-blur sm:px-8">
-            <h3 className="text-balance font-display text-[22px] font-extrabold uppercase leading-[1.1] tracking-tight text-foreground sm:text-4xl">
-              <span className="text-exec-intelligence">AI Autonomous</span>
+          <div className="w-full rounded-2xl border border-primary/70 bg-primary/[0.1] px-5 py-8 shadow-[0_0_70px_-30px_var(--color-primary)] backdrop-blur sm:px-8">
+            <h3 className="text-balance font-display text-[26px] font-black uppercase leading-[1.05] tracking-tight text-foreground sm:text-[44px]">
+              AI Autonomous
               <br />
               Business Executive
-              <sup className="ml-0.5 align-super text-[0.42em] font-semibold tracking-normal text-primary">
+              <sup className="ml-0.5 align-super text-[0.32em] font-semibold tracking-normal text-primary">
                 ™
               </sup>
             </h3>
@@ -210,10 +199,12 @@ export function IntelligenceArchitecture() {
 
           {/* LEVEL 6 — AI WORKFORCE */}
           <div className="w-full rounded-2xl border border-border/60 bg-surface/50 px-5 py-4 backdrop-blur">
-            <LevelLabel>{t.workforceRole}</LevelLabel>
-            <p className="mt-1 text-sm font-semibold uppercase tracking-tight text-foreground/90">
+            <p className="text-sm font-semibold uppercase tracking-tight text-foreground/90">
               {t.workforce}
             </p>
+            <div className="mt-1">
+              <LevelLabel>{t.workforceRole}</LevelLabel>
+            </div>
           </div>
 
           <Connector />
