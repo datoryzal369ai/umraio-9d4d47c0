@@ -121,24 +121,28 @@ export function IntelligenceArchitecture() {
               <div
                 key={row.k}
                 className={cn(
-                  "rounded-2xl border px-5 py-7 text-center backdrop-blur",
+                  "rounded-2xl border px-5 py-8 text-center backdrop-blur",
                   hero
-                    ? "border-primary/40 bg-primary/[0.06] shadow-[0_0_60px_-40px_var(--color-primary)]"
-                    : "border-border/60 bg-surface/60",
+                    ? "border-primary/60 bg-primary/[0.09] shadow-[0_0_70px_-32px_var(--color-primary)]"
+                    : "border-border/70 bg-surface/70",
                 )}
               >
                 <p
                   className={cn(
-                    "font-display text-3xl font-extrabold tracking-tight sm:text-4xl",
-                    hero ? "text-exec-intelligence" : "text-foreground/70",
+                    "font-display font-extrabold tracking-tight",
+                    hero
+                      ? "text-exec-intelligence text-4xl sm:text-5xl"
+                      : "text-3xl text-foreground/80 sm:text-4xl",
                   )}
                 >
                   {row.k}
                 </p>
                 <p
                   className={cn(
-                    "mt-3 text-[11px] font-medium uppercase leading-[1.7] tracking-[0.2em]",
-                    hero ? "text-primary/90" : "text-muted-foreground",
+                    "mt-3 text-[11px] uppercase leading-[1.7] tracking-[0.2em]",
+                    hero
+                      ? "font-semibold text-primary"
+                      : "font-medium text-foreground/70",
                   )}
                 >
                   {row.v}
@@ -150,13 +154,13 @@ export function IntelligenceArchitecture() {
 
         {/* RÉNAIO.CORE™ — logo mark only here; the full wordmark lives once in the footer. */}
         <div className="mx-auto mt-12 flex max-w-xl flex-col items-center">
-          <div className="relative flex size-[168px] items-center justify-center sm:size-[224px]">
+          <div className="relative flex size-[220px] items-center justify-center sm:size-[300px]">
             <span
               aria-hidden
               className="umr-core-halo pointer-events-none absolute inset-0 -z-10 rounded-full blur-2xl"
               style={{
                 background:
-                  "radial-gradient(50% 50% at 50% 50%, rgba(0,215,255,0.42), transparent 72%)",
+                  "radial-gradient(50% 50% at 50% 50%, rgba(42,212,230,0.42), transparent 72%)",
               }}
             />
             <img
@@ -175,16 +179,21 @@ export function IntelligenceArchitecture() {
             />
           </div>
 
+          <p className="mt-5 text-center text-[11px] font-medium uppercase tracking-[0.26em] text-primary/90">
+            {t.coreLabel}
+          </p>
+
           <ul className="mt-4 flex flex-wrap justify-center gap-2">
             {t.coreCaps.map((c) => (
               <li
                 key={c}
-                className="rounded-full border border-border/70 bg-surface/50 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground"
+                className="chip-capability rounded-full px-3.5 py-1.5 text-[10px] font-medium uppercase tracking-[0.2em]"
               >
                 {c}
               </li>
             ))}
           </ul>
+
 
           <ol className="mt-8 w-full">
             {t.chain.map((node, i) => (
