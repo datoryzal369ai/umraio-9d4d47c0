@@ -88,6 +88,32 @@ export const Route = createFileRoute("/")({
 });
 
 
+/**
+ * Highlights the locked product name "AI Autonomous Business Executive™" as the
+ * primary intelligence statement inside surrounding hero copy.
+ */
+const EXECUTIVE_NAME = /(AI Autonomous Business Executive(?:™)?)/i;
+
+function ExecutivePhrase({ text }: { text: string }) {
+  const parts = text.split(EXECUTIVE_NAME);
+  return (
+    <>
+      {parts.map((part, i) =>
+        EXECUTIVE_NAME.test(part) && i % 2 === 1 ? (
+          <span key={i} className="text-exec-intelligence">
+            {part}
+            <sup className="ml-0.5 align-super text-[0.42em] leading-none tracking-normal">™</sup>
+          </span>
+        ) : (
+          <span key={i} className="text-foreground/90">
+            {part}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
 function Index() {
   const { user, loading } = useAuth();
   const { locale } = useLocale();
@@ -151,7 +177,7 @@ function Index() {
                 className="pointer-events-none absolute inset-0 -z-10 blur-3xl"
                 style={{
                   background:
-                    "radial-gradient(50% 60% at 50% 50%, rgba(0,215,255,0.22), transparent 70%)",
+                    "radial-gradient(46% 58% at 72% 52%, rgba(47,220,215,0.34), transparent 72%), radial-gradient(52% 62% at 40% 50%, rgba(160,200,225,0.14), transparent 74%)",
                 }}
               />
               <img
@@ -173,8 +199,8 @@ function Index() {
               className="animate-rise mt-12 max-w-4xl text-balance text-3xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl"
               style={{ animationDelay: "180ms" }}
             >
-              {t.hero.headingLead}{" "}
-              <span className="text-gradient-brand">{t.hero.headingAccent}</span>
+              <ExecutivePhrase text={t.hero.headingLead} />{" "}
+              <span className="text-foreground/90">{t.hero.headingAccent}</span>
             </h1>
             <p
               className="animate-rise mt-6 max-w-xl text-balance text-base font-light leading-relaxed text-muted-foreground sm:max-w-2xl sm:text-lg"

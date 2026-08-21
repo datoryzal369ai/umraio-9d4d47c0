@@ -187,6 +187,14 @@
   color: transparent;
 }
 
+/* Primary intelligence statement: turquoise → cyan → soft white, restrained glow. */
+@utility text-exec-intelligence {
+  background-image: linear-gradient(100deg, #8ef4f0 0%, #2fdcd7 34%, #56d6ff 68%, #eaf7ff 100%);
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 34px rgba(47, 220, 215, 0.18);
+}
+
 @utility bg-aurora {
   background-image: var(--gradient-surface);
 }
