@@ -184,12 +184,26 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         if (!conversationId) return new Response("ok");
 
         const inboundAt = new Date();
-        await supabaseAdmin.from("messages").insert({
+        // IDEMPOTENCY (authoritative gate): the DB unique index on
+        // (agency_id, provider_message_id) makes concurrent duplicate deliveries
+        // resolve to exactly one processed message. A conflict = stop, no AI, no send.
+        const { error: insertError } = await supabaseAdmin.from("messages").insert({
           agency_id: agencyId,
           conversation_id: conversationId,
           sender: "customer",
           body: text,
+          provider_message_id: providerMessageId,
         });
+        if (insertError) {
+          if (insertError.code === "23505") {
+            console.log(
+              `[whatsapp] concurrent duplicate delivery ignored provider_message_id=${providerMessageId}`,
+            );
+            return new Response("ok");
+          }
+          console.error("[whatsapp] inbound message insert failed", insertError.message);
+          return new Response("ok");
+        }
         await supabaseAdmin
           .from("whatsapp_configs")
           .update({ last_inbound_at: inboundAt.toISOString() })
