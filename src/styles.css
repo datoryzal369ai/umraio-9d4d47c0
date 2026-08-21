@@ -476,20 +476,19 @@
 @utility panel-elite {
   position: relative;
   background-image: var(--gradient-obsidian);
-  border: 1px solid rgba(255, 77, 94, 0.5);
+  border: 1px solid rgba(47, 220, 215, 0.3);
   border-radius: var(--radius-2xl);
   box-shadow:
-    0 1px 0 0 rgba(255, 208, 138, 0.2) inset,
-    0 0 34px -16px rgba(255, 77, 94, 0.55),
-    0 22px 56px -34px rgba(0, 0, 0, 0.92);
+    0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+    0 22px 56px -36px rgba(4, 16, 26, 0.9);
   transition:
     border-color 220ms ease-out,
     box-shadow 220ms ease-out,
     transform 220ms ease-out;
   &:hover {
-    border-color: rgba(255, 77, 94, 0.65);
-    box-shadow: var(--shadow-ruby);
-    transform: translateY(-3px);
+    border-color: rgba(47, 220, 215, 0.45);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-2px);
   }
 }
 
@@ -501,25 +500,25 @@
     transform 220ms ease-out,
     background-color 220ms ease-out;
   &:hover {
-    border-color: rgba(0, 215, 255, 0.38);
+    border-color: rgba(47, 220, 215, 0.36);
     box-shadow: var(--shadow-glow);
-    transform: translateY(-3px);
+    transform: translateY(-2px);
   }
   &:active {
     transform: scale(0.985);
   }
 }
 
-/* Gold register for AI SALES ELITE™ surfaces */
+/* Legacy alias — kept so existing surfaces stay on the single turquoise register */
 @utility card-interactive-gold {
   transition:
     border-color 220ms ease-out,
     box-shadow 220ms ease-out,
     transform 220ms ease-out;
   &:hover {
-    border-color: rgba(255, 77, 94, 0.65);
-    box-shadow: var(--shadow-ruby);
-    transform: translateY(-3px);
+    border-color: rgba(47, 220, 215, 0.4);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-2px);
   }
   &:active {
     transform: scale(0.985);
@@ -532,41 +531,35 @@
   color: transparent;
 }
 
-/* AI SALES ELITE™ — luminous ruby / vermilion title */
+/* AI SALES ELITE™ — restrained turquoise emphasis on cool white */
 @utility text-ruby-elite {
-  background-image: linear-gradient(100deg, var(--ruby-bright) 8%, var(--ruby) 46%, var(--gold-bright) 96%);
+  background-image: linear-gradient(100deg, #ffffff 6%, var(--platinum) 40%, var(--primary-glow) 96%);
   background-clip: text;
   color: transparent;
-  text-shadow: 0 0 26px rgba(255, 77, 94, 0.28);
 }
 
-/* MASTER EXECUTIVE — champagne gold + electric turquoise dominant surface */
+/* MASTER EXECUTIVE — platinum + turquoise dominant surface */
 @utility panel-master {
   position: relative;
-  background-color: color-mix(in oklab, var(--color-card) 88%, black);
+  background-color: color-mix(in oklab, var(--color-card) 94%, black);
   background-image:
-    radial-gradient(90% 70% at 6% 0%, rgba(255, 171, 76, 0.16), transparent 62%),
-    radial-gradient(80% 70% at 96% 4%, rgba(0, 215, 255, 0.18), transparent 62%),
+    radial-gradient(90% 70% at 6% 0%, rgba(47, 220, 215, 0.14), transparent 62%),
+    radial-gradient(80% 70% at 96% 4%, rgba(53, 200, 166, 0.1), transparent 62%),
     var(--gradient-chrome);
-  border: 1px solid rgba(255, 171, 76, 0.42);
+  border: 1px solid rgba(47, 220, 215, 0.32);
   border-radius: var(--radius-2xl);
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.14) inset,
-    0 0 0 1px rgba(0, 215, 255, 0.12),
-    0 34px 90px -40px rgba(0, 0, 0, 0.95);
+    0 1px 0 0 rgba(255, 255, 255, 0.12) inset,
+    0 34px 90px -46px rgba(4, 16, 26, 0.9);
   backdrop-filter: blur(16px);
 }
 
 @utility text-master {
-  background-image: linear-gradient(100deg, #ffffff 4%, var(--gold-bright) 34%, #ffffff 58%, #7ef7ff 96%);
-  background-clip: text;
-  color: transparent;
+  color: var(--foreground);
 }
 
 @utility text-champagne {
-  background-image: linear-gradient(100deg, var(--gold-bright) 12%, var(--gold) 52%, var(--gold-bright) 92%);
-  background-clip: text;
-  color: transparent;
+  color: var(--primary-glow);
 }
 
 @media (prefers-reduced-motion: reduce) {
