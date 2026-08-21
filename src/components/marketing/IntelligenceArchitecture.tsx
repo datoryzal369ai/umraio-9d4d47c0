@@ -114,17 +114,37 @@ export function IntelligenceArchitecture() {
 
         {/* AI vs ĀI™ — stated once, compactly. */}
         <div className="mx-auto mt-10 grid max-w-2xl gap-3 sm:grid-cols-2">
-          {t.aiVsAi.map((row) => (
-            <div
-              key={row.k}
-              className="rounded-2xl border border-border/60 bg-surface/60 px-5 py-4 text-center backdrop-blur"
-            >
-              <p className="text-lg font-semibold tracking-tight text-chrome">{row.k}</p>
-              <p className="mt-1 text-[11px] font-light uppercase tracking-[0.18em] text-muted-foreground">
-                {row.v}
-              </p>
-            </div>
-          ))}
+          {t.aiVsAi.map((row, i) => {
+            const hero = i === 1;
+            return (
+              <div
+                key={row.k}
+                className={cn(
+                  "rounded-2xl border px-5 py-7 text-center backdrop-blur",
+                  hero
+                    ? "border-primary/40 bg-primary/[0.06] shadow-[0_0_60px_-40px_var(--color-primary)]"
+                    : "border-border/60 bg-surface/60",
+                )}
+              >
+                <p
+                  className={cn(
+                    "font-display text-3xl font-extrabold tracking-tight sm:text-4xl",
+                    hero ? "text-exec-intelligence" : "text-foreground/70",
+                  )}
+                >
+                  {row.k}
+                </p>
+                <p
+                  className={cn(
+                    "mt-3 text-[11px] font-medium uppercase leading-[1.7] tracking-[0.2em]",
+                    hero ? "text-primary/90" : "text-muted-foreground",
+                  )}
+                >
+                  {row.v}
+                </p>
+              </div>
+            );
+          })}
         </div>
 
         {/* RÉNAIO.CORE™ — logo mark only here; the full wordmark lives once in the footer. */}
