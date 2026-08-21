@@ -1710,7 +1710,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      verify_cron_secret: { Args: { token: string }; Returns: boolean }
     }
     Enums: {
       ai_task_status:
