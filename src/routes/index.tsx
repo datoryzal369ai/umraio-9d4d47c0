@@ -205,12 +205,12 @@ function Index() {
             </p>
 
             <h1
-              className="animate-rise mt-12 max-w-4xl text-balance text-3xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl"
+              className="animate-rise mt-12 max-w-4xl"
               style={{ animationDelay: "180ms" }}
             >
-              <ExecutivePhrase text={t.hero.headingLead} />{" "}
-              <span className="text-foreground/90">{t.hero.headingAccent}</span>
+              <HeroIdentity lead={t.hero.headingLead} accent={t.hero.headingAccent} />
             </h1>
+
             <p
               className="animate-rise mt-6 max-w-xl text-balance text-base font-light leading-relaxed text-muted-foreground sm:max-w-2xl sm:text-lg"
               style={{ animationDelay: "240ms" }}
