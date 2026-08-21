@@ -313,7 +313,7 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
       sectionLabel: "UMRAIO AI workforce capabilities",
       items: [
         { label: "Always working", micro: "Your AI workforce never sleeps." },
-        { label: "Instant replies", micro: "Enquiries answered the moment they arrive." },
+        { label: "Enquiry response", micro: "Enquiries answered the moment they arrive." },
         { label: "Follow-up automated", micro: "Repetitive work runs itself." },
         { label: "Governed autonomy", micro: "Reasoned decisions, not scripted replies." },
       ],
@@ -575,7 +575,7 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
       sectionLabel: "Keupayaan tenaga kerja AI UMRAIO",
       items: [
         { label: "Sentiasa bekerja", micro: "Tenaga kerja AI anda tidak pernah tidur." },
-        { label: "Respons segera", micro: "Pertanyaan dijawab sebaik ia masuk." },
+        { label: "Respons pertanyaan", micro: "Pertanyaan dijawab sebaik ia masuk." },
         { label: "Susulan automatik", micro: "Kerja berulang berjalan sendiri." },
         { label: "Autonomi ditadbir", micro: "Keputusan bernalar, bukan jawapan skrip." },
       ],
