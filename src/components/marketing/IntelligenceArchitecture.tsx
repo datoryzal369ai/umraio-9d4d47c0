@@ -182,12 +182,12 @@ export function IntelligenceArchitecture() {
           <Connector />
 
           {/* LEVEL 5 — AI AUTONOMOUS BUSINESS EXECUTIVE™ */}
-          <div className="w-full rounded-2xl border border-primary/55 bg-primary/[0.07] px-5 py-7 shadow-[0_0_80px_-40px_var(--color-primary)] backdrop-blur sm:px-8">
-            <h3 className="text-balance font-display text-[22px] font-extrabold uppercase leading-[1.1] tracking-tight text-foreground sm:text-4xl">
-              <span className="text-exec-intelligence">AI Autonomous</span>
+          <div className="w-full rounded-2xl border border-primary/70 bg-primary/[0.1] px-5 py-8 shadow-[0_0_70px_-30px_var(--color-primary)] backdrop-blur sm:px-8">
+            <h3 className="text-balance font-display text-[26px] font-black uppercase leading-[1.05] tracking-tight text-foreground sm:text-[44px]">
+              AI Autonomous
               <br />
               Business Executive
-              <sup className="ml-0.5 align-super text-[0.42em] font-semibold tracking-normal text-primary">
+              <sup className="ml-0.5 align-super text-[0.32em] font-semibold tracking-normal text-primary">
                 ™
               </sup>
             </h3>
