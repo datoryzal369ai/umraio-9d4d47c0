@@ -3,7 +3,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 import { TASK_KINDS } from "./executive-ai.server";
 import {
-  APPROVAL_REQUIRED_KINDS,
   createTask,
   executeTask,
   notify,
@@ -138,9 +137,16 @@ export const decideTask = createServerFn({ method: "POST" })
     }
 
 
+    const { count } = await supabase
+      .from("ai_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("agency_id", task.agency_id)
+      .eq("worker_key", task.worker_key)
+      .eq("status", "waiting_approval");
+
     await supabase
       .from("ai_workers")
-      .update({ status: "idle" })
+      .update({ status: (count ?? 0) > 0 ? "waiting_approval" : "idle" })
       .eq("agency_id", task.agency_id)
       .eq("worker_key", task.worker_key);
 
@@ -161,7 +167,7 @@ export const decideTask = createServerFn({ method: "POST" })
       entityId: task.id,
     });
 
-    return { status: approved ? "completed" : "rejected" };
+    return { status: finalStatus };
   });
 
 export const cancelTask = createServerFn({ method: "POST" })
