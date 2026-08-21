@@ -232,11 +232,11 @@ function Index() {
                   <ArrowRight className="umr-arrow ml-1 size-4" />
                 </Link>
               </Button>
-              <div className="flex w-full items-center justify-center gap-2 sm:gap-3">
+              <div className="flex w-full flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
                 <Button
                   asChild
                   variant="ghost"
-                  className="btn-glass h-11 flex-1 rounded-xl px-3 text-[13px] font-medium sm:flex-none sm:px-6 sm:text-sm"
+                  className="btn-glass h-11 w-full rounded-xl px-4 text-sm font-medium sm:w-auto sm:px-6"
                 >
                   <Link to="/meet">
                     <Sparkles className="mr-1 size-4 shrink-0 text-primary" />
@@ -246,7 +246,7 @@ function Index() {
                 <Button
                   asChild
                   variant="ghost"
-                  className="btn-glass h-11 flex-1 rounded-xl px-3 text-[13px] font-medium sm:flex-none sm:px-6 sm:text-sm"
+                  className="btn-glass h-11 w-full rounded-xl px-4 text-sm font-medium sm:w-auto sm:px-6"
                 >
                   <Link to="/meet" hash="book-demo">
                     <PlayCircle className="mr-1 size-4 shrink-0 text-primary" />
