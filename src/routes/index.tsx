@@ -173,8 +173,8 @@ function Index() {
               className="animate-rise mt-12 max-w-4xl text-balance text-3xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl"
               style={{ animationDelay: "180ms" }}
             >
-              {t.hero.headingLead}{" "}
-              <span className="text-gradient-brand">{t.hero.headingAccent}</span>
+              <ExecutivePhrase text={t.hero.headingLead} />{" "}
+              <span className="text-foreground/90">{t.hero.headingAccent}</span>
             </h1>
             <p
               className="animate-rise mt-6 max-w-xl text-balance text-base font-light leading-relaxed text-muted-foreground sm:max-w-2xl sm:text-lg"
