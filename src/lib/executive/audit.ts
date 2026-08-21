@@ -30,14 +30,19 @@ export const AUDIT_CATEGORY_LABEL: Record<AuditCategory, string> = {
   other: "Other",
 };
 
+/**
+ * One intelligence colour family. Only failure/escalation keep a restrained
+ * semantic tone for accessibility; everything else is turquoise at different
+ * intensities.
+ */
 export const AUDIT_CATEGORY_TONE: Record<AuditCategory, string> = {
-  decision: "bg-primary/15 text-primary",
-  approval: "bg-gold/15 text-gold-bright",
-  execution: "bg-emerald/15 text-emerald",
-  failure: "bg-destructive/15 text-destructive",
-  monitoring: "bg-electric/15 text-electric",
-  escalation: "bg-ruby/15 text-ruby-bright",
-  other: "bg-muted text-muted-foreground",
+  decision: "border-primary/40 bg-primary/12 text-primary",
+  approval: "border-primary/30 bg-primary/8 text-primary/90",
+  execution: "border-primary/25 bg-primary/8 text-foreground/85",
+  failure: "border-destructive/40 bg-destructive/10 text-destructive",
+  monitoring: "border-border/70 bg-surface text-muted-foreground",
+  escalation: "border-destructive/30 bg-destructive/8 text-destructive/90",
+  other: "border-border/70 bg-surface text-muted-foreground",
 };
 
 export type AuditRow = {
