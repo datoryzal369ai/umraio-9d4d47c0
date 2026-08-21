@@ -148,7 +148,7 @@ function Index() {
                   asChild
                   variant="ghost"
                   size="sm"
-                  className="hidden rounded-full sm:inline-flex"
+                  className="rounded-full px-3 sm:px-4"
                 >
                   <Link to="/auth" search={{ mode: "login", redirect: undefined }}>
                     {t.nav.signIn}
@@ -219,41 +219,41 @@ function Index() {
             </p>
 
             <div
-              className="animate-rise mt-8 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row sm:gap-4"
+              className="animate-rise mt-8 flex w-full max-w-md flex-col items-center gap-3 sm:max-w-none"
               style={{ animationDelay: "300ms" }}
             >
               <Button
                 asChild
                 size="lg"
-                className="btn-premium h-13 w-full rounded-2xl px-8 text-base font-semibold text-background hover:bg-transparent sm:w-auto"
+                className="btn-premium h-13 w-full rounded-2xl px-8 text-base font-semibold text-background hover:bg-transparent sm:w-auto sm:min-w-64"
               >
                 <Link to="/auth" search={{ mode: "register", redirect: undefined }}>
                   {t.hero.ctaTrial}
                   <ArrowRight className="umr-arrow ml-1 size-4" />
                 </Link>
               </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="ghost"
-                className="btn-glass h-13 w-full rounded-2xl px-8 text-base font-medium sm:w-auto"
-              >
-                <Link to="/meet">
-                  <Sparkles className="mr-1 size-4 text-primary" />
-                  {t.hero.ctaMeet}
-                </Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="ghost"
-                className="btn-glass h-13 w-full rounded-2xl px-8 text-base font-medium sm:w-auto"
-              >
-                <Link to="/meet" hash="book-demo">
-                  <PlayCircle className="mr-1 size-4 text-primary" />
-                  {t.hero.ctaDemo}
-                </Link>
-              </Button>
+              <div className="flex w-full flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="btn-glass h-11 w-full rounded-xl px-4 text-sm font-medium sm:w-auto sm:px-6"
+                >
+                  <Link to="/meet">
+                    <Sparkles className="mr-1 size-4 shrink-0 text-primary" />
+                    <span className="truncate">{t.hero.ctaMeet}</span>
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="btn-glass h-11 w-full rounded-xl px-4 text-sm font-medium sm:w-auto sm:px-6"
+                >
+                  <Link to="/meet" hash="book-demo">
+                    <PlayCircle className="mr-1 size-4 shrink-0 text-primary" />
+                    <span className="truncate">{t.hero.ctaDemo}</span>
+                  </Link>
+                </Button>
+              </div>
             </div>
 
             <WorkforceMetrics className="mt-10 sm:mt-12" />

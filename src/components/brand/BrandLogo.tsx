@@ -34,7 +34,7 @@ export function BrandLogo({
           className="h-8 w-auto object-contain [image-rendering:auto] sm:h-9"
         />
         {showTagline ? (
-          <span className="mt-1.5 text-[9px] font-light uppercase leading-[1.5] tracking-[0.24em] text-muted-foreground/90">
+          <span className="mt-1.5 hidden text-[9px] font-light uppercase leading-[1.5] tracking-[0.24em] text-muted-foreground/90 sm:block">
             AI Autonomous Business Executive
           </span>
         ) : null}

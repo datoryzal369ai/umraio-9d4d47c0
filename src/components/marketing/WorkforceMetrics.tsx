@@ -5,7 +5,7 @@ import { siteCopy } from "@/lib/i18n/site.i18n";
 import { cn } from "@/lib/utils";
 
 /** Canonical figures — never translated. */
-const METRIC_VALUES = ["24/7", "3×", "85%", "100%"] as const;
+const METRIC_VALUES = ["24/7", "INSTANT", "AUTO", "ĀI™"] as const;
 const METRIC_ICONS = [Clock3, TrendingUp, Zap, BrainCircuit];
 
 function MetricModule({
@@ -33,7 +33,12 @@ function MetricModule({
           <Icon className="size-4 text-primary sm:size-5" aria-hidden />
         </span>
         <div className="min-w-0">
-          <p className="text-2xl font-extrabold leading-none tracking-tight text-primary sm:text-4xl">
+          <p
+            className={cn(
+              "font-extrabold leading-none tracking-tight text-primary",
+              value.length > 4 ? "text-base sm:text-2xl" : "text-2xl sm:text-4xl",
+            )}
+          >
             {value}
           </p>
           <p className="mt-1.5 text-[9px] font-medium uppercase tracking-[0.2em] text-foreground/80 sm:text-[11px]">
