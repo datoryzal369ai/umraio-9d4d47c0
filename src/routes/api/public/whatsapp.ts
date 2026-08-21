@@ -5,7 +5,7 @@ import { verifyMetaSignature } from "@/lib/whatsapp-signature";
 type WebhookValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
-  messages?: Array<{ from?: string; type?: string; text?: { body?: string } }>;
+  messages?: Array<{ id?: string; from?: string; type?: string; text?: { body?: string } }>;
 };
 
 type WebhookBody = {
@@ -70,6 +70,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
         const from = message.from ?? "";
         const text = message.type === "text" ? (message.text?.body ?? "") : "";
+        const providerMessageId = message.id?.trim() || null;
         if (!from || !text) return new Response("ok");
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
