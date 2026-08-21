@@ -86,15 +86,15 @@
   --popover: #0d2a41;
   --popover-foreground: #f2f7fb;
 
-  --primary: #2fdcd7;
+  --primary: #2ad4e6;
   --primary-foreground: #04202a;
-  --primary-glow: #8ef4f0;
+  --primary-glow: #86eefc;
 
   --secondary: #17405c;
   --secondary-foreground: #f2f7fb;
   --muted: #163a55;
   --muted-foreground: #a9c1d4;
-  --accent: #2fdcd7;
+  --accent: #2ad4e6;
   --accent-foreground: #04202a;
 
   --destructive: #e2626d;
@@ -121,7 +121,7 @@
   --sidebar-border: rgba(160, 195, 220, 0.12);
   --sidebar-ring: rgba(47, 220, 215, 0.5);
 
-  --gradient-primary: linear-gradient(135deg, #2fdcd7, #8ef4f0);
+  --gradient-primary: linear-gradient(135deg, #2ad4e6, #86eefc);
   --gradient-surface:
     radial-gradient(110% 80% at 50% -20%, rgba(47, 220, 215, 0.16), transparent 62%),
     radial-gradient(80% 60% at 88% 6%, rgba(53, 200, 166, 0.08), transparent 58%),
@@ -189,10 +189,27 @@
 
 /* Primary intelligence statement: turquoise → cyan → soft white, restrained glow. */
 @utility text-exec-intelligence {
-  background-image: linear-gradient(100deg, #8ef4f0 0%, #2fdcd7 34%, #56d6ff 68%, #eaf7ff 100%);
+  background-image: linear-gradient(100deg, #5fe6f5 0%, #2ad4e6 30%, #57c4ff 64%, #f2fbff 100%);
   background-clip: text;
   color: transparent;
-  text-shadow: 0 0 34px rgba(47, 220, 215, 0.18);
+  text-shadow: 0 0 40px rgba(42, 212, 230, 0.28);
+}
+
+/* Supporting statement — premium soft white, never coloured. */
+@utility text-exec-support {
+  color: color-mix(in oklab, var(--color-foreground) 92%, transparent);
+}
+
+/* Capability keyword chip — soft navy surface, subtle turquoise edge. */
+@utility chip-capability {
+  border: 1px solid color-mix(in oklab, var(--color-primary) 26%, transparent);
+  background-color: color-mix(in oklab, var(--color-surface) 70%, transparent);
+  color: color-mix(in oklab, var(--color-foreground) 82%, transparent);
+  transition: border-color 0.25s ease, color 0.25s ease, background-color 0.25s ease;
+  &:hover {
+    border-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
+    color: var(--color-primary);
+  }
 }
 
 @utility bg-aurora {
