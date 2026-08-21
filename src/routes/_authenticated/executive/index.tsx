@@ -254,9 +254,19 @@ function ExecutiveCenter() {
         </div>
       </header>
 
+      {/* 1. EXECUTIVE NOW — what needs attention right now. */}
+      <ExecutiveNowCard />
+
+      {/* 2. EXECUTIVE INSIGHT — what the Executive understands, with evidence. */}
+      <ExecutiveInsight />
+
+      {/* 3. EXECUTIVE LOOP — the general control surface plus orchestration. */}
       <ExecutiveCommandPanel workers={allWorkers} workersLoading={workers.isLoading} />
 
       <OrchestrationPanel />
+
+      {/* Business outcomes of what already executed. */}
+      <OutcomeMonitor />
 
       <section id="executive-opportunities" className="scroll-mt-24">
         <SalesOpportunities />
