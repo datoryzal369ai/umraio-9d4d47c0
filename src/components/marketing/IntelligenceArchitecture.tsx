@@ -1,4 +1,3 @@
-import aiMark from "@/assets/ai-mark.png.asset.json";
 import renaioMark from "@/assets/renaio-core-mark.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
 import { cn } from "@/lib/utils";
@@ -141,13 +140,6 @@ export function IntelligenceArchitecture() {
           {/* LEVEL 2 — ĀI™ */}
           <div className="rounded-2xl border border-primary/55 bg-primary/[0.08] px-5 py-6 text-center shadow-[0_0_60px_-34px_var(--color-primary)]">
             <div className="relative mx-auto w-fit">
-              <img
-                src={aiMark.url}
-                alt=""
-                aria-hidden
-                loading="lazy"
-                className="pointer-events-none absolute left-1/2 top-1/2 w-[210px] -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.10] mix-blend-screen"
-              />
               <p className="text-exec-intelligence relative font-display text-[44px] font-extrabold leading-none tracking-tight sm:text-6xl">
                 ĀI
                 <sup className="ml-0.5 align-super text-[0.32em] font-bold leading-none tracking-normal">
