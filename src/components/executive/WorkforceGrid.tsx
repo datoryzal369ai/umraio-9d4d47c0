@@ -119,7 +119,7 @@ export function WorkerCard({
         </span>
         <Button asChild size="sm" variant="outline">
           <WorkerLink workerKey={worker.worker_key}>
-            {copy.openWorker}
+            {contextualCta(worker.worker_key, runtime.state)}
             <ArrowRight className="size-4" aria-hidden="true" />
           </WorkerLink>
         </Button>
