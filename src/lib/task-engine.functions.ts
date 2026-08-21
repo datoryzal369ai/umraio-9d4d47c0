@@ -3,7 +3,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 import { TASK_KINDS } from "./executive-ai.server";
 import {
-  APPROVAL_REQUIRED_KINDS,
   createTask,
   executeTask,
   notify,
@@ -78,36 +77,76 @@ export const decideTask = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: task } = await supabase
       .from("ai_tasks")
-      .select("id, agency_id, title, worker_key, steps, kind")
+      .select("id, agency_id, title, worker_key, steps, kind, status")
       .eq("id", data.taskId)
       .maybeSingle();
     if (!task) throw new Error("Task not found");
-    if (!APPROVAL_REQUIRED_KINDS.has(task.kind)) {
-      // still allow decision, but note it
-    }
+    // Approval governance: only a task genuinely pending a human decision can
+    // be decided. Blocks re-approving completed/rejected/cancelled actions.
+    if (task.status !== "waiting_approval")
+      throw new Error(
+        `This action is no longer awaiting approval (current state: ${task.status}).`,
+      );
 
     const approved = data.decision === "approve";
     const steps = Array.isArray(task.steps) ? task.steps : [];
     steps.push({
       at: new Date().toISOString(),
-      status: approved ? "completed" : "rejected",
-      note: approved ? "Approved by a human executive — published" : "Rejected by a human executive",
+      status: approved ? "approved" : "rejected",
+      note: approved ? "Approved by a human executive" : "Rejected by a human executive",
     });
 
-    await supabase
+    // Compare-and-set claim: two concurrent approvals cannot both execute.
+    const { data: claimed } = await supabase
       .from("ai_tasks")
       .update({
-        status: approved ? "completed" : "rejected",
+        status: approved ? "running" : "rejected",
         steps,
         approved_at: approved ? new Date().toISOString() : null,
         approved_by: approved ? userId : null,
-        completed_at: new Date().toISOString(),
+        completed_at: approved ? null : new Date().toISOString(),
       })
-      .eq("id", task.id);
+      .eq("id", task.id)
+      .eq("status", "waiting_approval")
+      .select("id");
+    if (!claimed || claimed.length === 0)
+      throw new Error("This action was already decided by someone else.");
+
+    let finalStatus: string = approved ? "completed" : "rejected";
+    if (approved) {
+      const { EXECUTIVE_ACTION_KIND, executeApprovedExecutiveAction } = await import(
+        "./executive/execution.server"
+      );
+      if (task.kind === EXECUTIVE_ACTION_KIND) {
+        // Real side effect — the task only completes if execution succeeded.
+        const outcome = await executeApprovedExecutiveAction(
+          supabase,
+          task.agency_id as string,
+          task.id as string,
+          userId,
+        );
+        finalStatus = outcome.status;
+        if (outcome.status === "failed") throw new Error(outcome.detail);
+      } else {
+        // Document output: approval publishes the already-produced result.
+        await supabase
+          .from("ai_tasks")
+          .update({ status: "completed", completed_at: new Date().toISOString() })
+          .eq("id", task.id);
+      }
+    }
+
+
+    const { count } = await supabase
+      .from("ai_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("agency_id", task.agency_id)
+      .eq("worker_key", task.worker_key)
+      .eq("status", "waiting_approval");
 
     await supabase
       .from("ai_workers")
-      .update({ status: "idle" })
+      .update({ status: (count ?? 0) > 0 ? "waiting_approval" : "idle" })
       .eq("agency_id", task.agency_id)
       .eq("worker_key", task.worker_key);
 
@@ -128,7 +167,7 @@ export const decideTask = createServerFn({ method: "POST" })
       entityId: task.id,
     });
 
-    return { status: approved ? "completed" : "rejected" };
+    return { status: finalStatus };
   });
 
 export const cancelTask = createServerFn({ method: "POST" })

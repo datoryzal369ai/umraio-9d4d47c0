@@ -39,7 +39,13 @@ export type ApprovalRequestResult =
   | { status: "created"; taskId: string }
   | { status: "duplicate"; taskId: string; reason: string };
 
-/** Idempotent: one open executive action per (lead, objective). */
+/**
+ * Idempotent: one open executive action per (lead, objective), and no repeat
+ * of the same (lead, objective) within the re-action cooldown — so re-running
+ * a mission cannot schedule the same follow-up twice for one customer.
+ */
+export const REACTION_COOLDOWN_HOURS = 12;
+
 export async function createApprovalRequest(
   supabase: Db,
   agencyId: string,
@@ -63,6 +69,27 @@ export async function createApprovalRequest(
       taskId: duplicate.id as string,
       reason:
         "An equivalent executive action for this lead and objective is already awaiting a decision.",
+    };
+
+  const cooldownSince = new Date(Date.now() - REACTION_COOLDOWN_HOURS * HOUR).toISOString();
+  const { data: recent } = await supabase
+    .from("ai_tasks")
+    .select("id, input")
+    .eq("agency_id", agencyId)
+    .eq("kind", EXECUTIVE_ACTION_KIND)
+    .eq("lead_id", input.leadId)
+    .eq("status", "completed")
+    .gte("completed_at", cooldownSince)
+    .limit(20);
+
+  const repeated = (recent ?? []).find(
+    (row: any) => (row.input?.objective ?? "") === input.objective,
+  );
+  if (repeated)
+    return {
+      status: "duplicate",
+      taskId: repeated.id as string,
+      reason: `The same action already ran for this lead in the last ${REACTION_COOLDOWN_HOURS} hours — skipped to avoid contacting the customer twice.`,
     };
 
   const now = new Date().toISOString();
