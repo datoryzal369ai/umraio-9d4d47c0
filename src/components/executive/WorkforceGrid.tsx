@@ -40,6 +40,20 @@ export function relativeTime(iso: string) {
   return `${Math.round(mins / 1440)}d ago`;
 }
 
+/**
+ * Contextual CTA — the primary action a human would actually take next for
+ * this worker in this execution state. Never a universal "open worker".
+ */
+export function contextualCta(workerKey: string, state: string): string {
+  if (state === "awaiting_approval") return "REVIEW & APPROVE";
+  if (state === "escalated" || state === "failed") return "RESOLVE NOW";
+  if (state === "executing" || state === "analysing") return "WATCH LIVE";
+  if (state === "monitoring" || state === "completed") return "VIEW OUTCOME";
+  if (state === "paused") return "REACTIVATE";
+  if (workerKey === "sales_elite") return "START SALES INTELLIGENCE";
+  return "START MISSION";
+}
+
 /** One label/value row inside a worker card — same structure for every worker. */
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -119,7 +133,7 @@ export function WorkerCard({
         </span>
         <Button asChild size="sm" variant="outline">
           <WorkerLink workerKey={worker.worker_key}>
-            {copy.openWorker}
+            {contextualCta(worker.worker_key, runtime.state)}
             <ArrowRight className="size-4" aria-hidden="true" />
           </WorkerLink>
         </Button>

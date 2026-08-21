@@ -12,26 +12,26 @@ import { siteCopy } from "@/lib/i18n/site.i18n";
 export const Route = createFileRoute("/meet")({
   head: () => ({
     meta: [
-      { title: "Meet Your Autonomous AI Business Executive™ | UMRAIO®" },
+      { title: "Meet Your AI Autonomous Business Executive™ | UMRAIO®" },
       {
         name: "description",
         content:
-          "Tell RAIŌ how your Umrah agency works. UMRAIO's Autonomous AI Business Executive™ will identify where automation can improve your sales workflow — before you subscribe.",
+          "Tell RAIŌ how your Umrah agency works. UMRAIO's AI Autonomous Business Executive™ will identify where automation can improve your sales workflow — before you subscribe.",
       },
-      { property: "og:title", content: "Meet Your Autonomous AI Business Executive™ | UMRAIO®" },
+      { property: "og:title", content: "Meet Your AI Autonomous Business Executive™ | UMRAIO®" },
       {
         property: "og:description",
         content:
-          "Meet RAIŌ — UMRAIO's Autonomous AI Business Executive™ for Umrah agencies. A guided business diagnosis, not a generic chatbot.",
+          "Meet RAIŌ — UMRAIO's AI Autonomous Business Executive™ for Umrah agencies. A guided business diagnosis, not a generic chatbot.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: "https://umraio.com/meet" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Meet Your Autonomous AI Business Executive™ | UMRAIO®" },
+      { name: "twitter:title", content: "Meet Your AI Autonomous Business Executive™ | UMRAIO®" },
       {
         name: "twitter:description",
         content:
-          "A guided business demonstration with RAIŌ — UMRAIO's Autonomous AI Business Executive™ for Umrah agencies.",
+          "A guided business demonstration with RAIŌ — UMRAIO's AI Autonomous Business Executive™ for Umrah agencies.",
       },
       { name: "robots", content: "index, follow" },
     ],
@@ -81,7 +81,7 @@ function MeetPage() {
             <div className="flex flex-col items-center lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-center">
               <img
                 src={raioAsset.url}
-                alt="RAIŌ — UMRAIO's Autonomous AI Business Executive™"
+                alt="RAIŌ — UMRAIO's AI Autonomous Business Executive™"
                 className="w-full max-w-[260px] object-contain drop-shadow-[0_24px_60px_hsl(var(--primary)/0.25)] sm:max-w-[340px]"
                 width={1159}
                 height={1332}

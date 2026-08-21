@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowRight,
@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { myr } from "@/lib/dashboard";
 import { eliteSalesDesk } from "@/lib/sales/elite/elite-desk.functions";
+import { runSalesIntelligence } from "@/lib/sales/elite/mission.functions";
+import type { SalesMissionResult } from "@/lib/sales/elite/mission.server";
 import type { EliteDeskItem } from "@/lib/sales/elite/elite-desk.server";
 import { cn } from "@/lib/utils";
 
@@ -59,9 +61,9 @@ const priorityTone: Record<string, string> = {
 
 function Metric({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: string }) {
   return (
-    <div className="card-interactive-gold rounded-xl border border-gold/25 bg-surface p-4">
+    <div className="card-interactive rounded-xl border border-primary/25 bg-surface p-4">
       <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="size-3.5 text-gold" aria-hidden="true" />
+        <Icon className="size-3.5 text-primary" aria-hidden="true" />
         <span className="text-[11px] uppercase tracking-[0.14em]">{label}</span>
       </div>
       <p className="mt-2 text-xl font-semibold tabular-nums">{value}</p>
@@ -147,6 +149,119 @@ function DeskRow({ item }: { item: EliteDeskItem }) {
   );
 }
 
+
+const missionTone: Record<string, string> = {
+  executed: "bg-success/15 text-success",
+  approval_required: "bg-chart-4/15 text-chart-4",
+  duplicate_skipped: "bg-muted text-muted-foreground",
+  escalated: "bg-destructive/15 text-destructive",
+  failed: "bg-destructive/15 text-destructive",
+};
+
+/** Real sales intelligence mission — governed execution over live pipeline data. */
+function MissionPanel() {
+  const queryClient = useQueryClient();
+  const run = useServerFn(runSalesIntelligence);
+  const mission = useMutation({
+    mutationFn: () => run({ data: undefined }) as Promise<SalesMissionResult>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["elite-desk"] });
+      queryClient.invalidateQueries({ queryKey: ["engine-tasks"] });
+    },
+  });
+  const result = mission.data;
+
+  return (
+    <section className="panel space-y-4 p-5" aria-labelledby="mission-heading">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="mission-heading" className="text-sm font-semibold tracking-tight">
+            Sales intelligence mission
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Reads your live pipeline, prioritises real opportunities and creates governed actions —
+            nothing is executed outside your autonomy settings.
+          </p>
+        </div>
+        <Button onClick={() => mission.mutate()} disabled={mission.isPending}>
+          {mission.isPending ? "RUNNING…" : "START SALES INTELLIGENCE"}
+          <ArrowRight className="ml-1 size-4" aria-hidden="true" />
+        </Button>
+      </div>
+
+      {mission.isError ? (
+        <p className="text-sm text-destructive">
+          The mission could not complete: {(mission.error as Error).message}
+        </p>
+      ) : null}
+
+      {result ? (
+        <div className="space-y-3">
+          <p className="text-sm">{result.summary}</p>
+          <dl className="grid gap-3 rounded-xl border border-border/60 bg-surface px-4 py-3 sm:grid-cols-3">
+            <div>
+              <dt className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Hot opportunities
+              </dt>
+              <dd className="text-sm font-semibold tabular-nums">{result.metrics.hotOpportunities}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Stalled opportunities
+              </dt>
+              <dd className="text-sm font-semibold tabular-nums">
+                {result.metrics.stalledOpportunities}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Executed / awaiting approval
+              </dt>
+              <dd className="text-sm font-semibold tabular-nums">
+                {result.metrics.executed} / {result.metrics.approvalRequired}
+              </dd>
+            </div>
+          </dl>
+
+          {result.actions.length ? (
+            <ul className="space-y-2">
+              {result.actions.map((a) => (
+                <li key={`${a.leadId}-${a.nextBestAction}`} className="rounded-xl border border-border/60 bg-surface p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold">{a.leadName}</span>
+                    <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                      {a.salesStage}
+                    </Badge>
+                    <Badge className={cn("ml-auto text-[10px] uppercase", missionTone[a.result])}>
+                      {a.result.replaceAll("_", " ")}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-sm">
+                    <span className="font-medium text-primary">{a.nextBestAction}</span> — {a.detail}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Buying signal: {a.buyingSignal} · Confidence {a.confidence}% · Expected outcome:{" "}
+                    {a.expectedOutcome}
+                  </p>
+                  <Button asChild size="sm" variant="ghost" className="mt-2">
+                    <Link to="/leads/$leadId" params={{ leadId: a.leadId }}>
+                      Review lead
+                    </Link>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No action was created — there is not enough real customer signal to justify one.
+            </p>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function SalesElitePage() {
   const load = useServerFn(eliteSalesDesk);
   const desk = useQuery({ queryKey: ["elite-desk"], queryFn: () => load({ data: undefined }) });
@@ -157,11 +272,13 @@ function SalesElitePage() {
 
       <PageHeader
         eyebrow="AI Workforce"
-        title={<span className="text-champagne">AI SALES ELITE™</span>}
+        title={<span className="text-primary">AI SALES ELITE™</span>}
         description="Elite autonomous sales & closing intelligence — live from your own pipeline, never estimated."
       />
 
 
+
+      <MissionPanel />
 
       {desk.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

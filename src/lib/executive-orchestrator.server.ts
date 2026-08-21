@@ -35,7 +35,7 @@ import { monitorExecutedDecisions, type MonitorFinding } from "./executive/execu
 type Db = SupabaseClient<any, any, any>;
 
 /**
- * Autonomous AI Business Executive™ — governed orchestration cycle.
+ * AI Autonomous Business Executive™ — governed orchestration cycle.
  *
  * UNDERSTAND → ANALYSE → PRIORITISE → DECIDE → COORDINATE → EXECUTE (through
  * the EXISTING ToolRegistry decision gate) → OBSERVE → RECORD → STOP/ESCALATE.
@@ -160,7 +160,7 @@ function buildExecutiveRegistry() {
         await tctx.supabase.from("activity_log").insert({
           agency_id: tctx.agencyId,
           actor: "ai",
-          action: `Autonomous AI Business Executive scheduled follow-up: ${title}`,
+          action: `AI Autonomous Business Executive scheduled follow-up: ${title}`,
           entity: "lead",
           entity_id: lead_id,
           meta: { run_at: runAt.toISOString(), correlation_id: tctx.correlationId },
@@ -215,7 +215,7 @@ function buildExecutiveRegistry() {
         await tctx.supabase.from("activity_log").insert({
           agency_id: tctx.agencyId,
           actor: "ai",
-          action: `Autonomous AI Business Executive escalated to human: ${reason}`,
+          action: `AI Autonomous Business Executive escalated to human: ${reason}`,
           entity: "lead",
           entity_id: lead_id,
           meta: { conversation_id, correlation_id: tctx.correlationId },
@@ -257,7 +257,7 @@ function buildExecutiveRegistry() {
         await tctx.supabase.from("activity_log").insert({
           agency_id: tctx.agencyId,
           actor: "ai",
-          action: `Autonomous AI Business Executive coordinated ${TASK_KINDS[kind]!.label}`,
+          action: `AI Autonomous Business Executive coordinated ${TASK_KINDS[kind]!.label}`,
           entity: "ai_task",
           entity_id: taskId,
           meta: { kind, correlation_id: tctx.correlationId },
@@ -331,7 +331,7 @@ function buildExecutiveRegistry() {
         await tctx.supabase.from("activity_log").insert({
           agency_id: tctx.agencyId,
           actor: "ai",
-          action: `Autonomous AI Business Executive requested approval: ${input.title}`,
+          action: `AI Autonomous Business Executive requested approval: ${input.title}`,
           entity: "ai_task",
           entity_id: result.taskId,
           meta: {
@@ -478,7 +478,7 @@ export async function runExecutiveOrchestration(
       decision: "Review the outcome of a previously executed action",
       why: finding.detail,
       action: null,
-      worker: "Autonomous AI Business Executive",
+      worker: "AI Autonomous Business Executive",
       result: finding.outcome === "no_response" ? "escalated" : "capability_unavailable",
       detail: finding.nextAction,
       objective: "Verify whether the business outcome was achieved",
@@ -668,7 +668,7 @@ export async function runExecutiveOrchestration(
   await supabase.from("activity_log").insert({
     agency_id: agencyId,
     actor: "ai",
-    action: `Autonomous AI Business Executive ran a ${
+    action: `AI Autonomous Business Executive ran a ${
       triggerType === "scheduled_autonomous" ? "scheduled autonomous" : "manual"
     } orchestration cycle — ${executed} action(s) executed`,
     entity: "executive_cycle",

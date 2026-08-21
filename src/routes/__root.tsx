@@ -81,11 +81,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "UMRAIO® — Autonomous AI Business Executive for Umrah Agencies" },
+      { title: "UMRAIO® — AI Autonomous Business Executive for Umrah Agencies" },
       {
         name: "description",
         content:
-          "UMRAIO® is an Autonomous AI Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
+          "UMRAIO® is an AI Autonomous Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
       },
 
       { name: "author", content: "Digital Renaissance Metaverse" },
@@ -96,23 +96,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:site_name", content: "UMRAIO®" },
       {
         property: "og:title",
-        content: "UMRAIO® — Autonomous AI Business Executive for Umrah Agencies",
+        content: "UMRAIO® — AI Autonomous Business Executive for Umrah Agencies",
       },
       {
         property: "og:description",
         content:
-          "UMRAIO® is an Autonomous AI Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
+          "UMRAIO® is an AI Autonomous Business Executive for Umrah agencies — helping automate WhatsApp enquiries, qualify leads, recommend packages, follow up and grow sales.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       {
         name: "twitter:title",
-        content: "UMRAIO® — Autonomous AI Business Executive for Umrah Agencies",
+        content: "UMRAIO® — AI Autonomous Business Executive for Umrah Agencies",
       },
       {
         name: "twitter:description",
         content:
-          "Autonomous AI Business Executive for Umrah agencies — WhatsApp enquiry automation, lead qualification, package recommendations and automated follow-up.",
+          "AI Autonomous Business Executive for Umrah agencies — WhatsApp enquiry automation, lead qualification, package recommendations and automated follow-up.",
       },
 
     ],
@@ -143,12 +143,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           logo: "https://umraio.com/favicon-512x512.png",
           image: "https://umraio.com/favicon-512x512.png",
           description:
-            "UMRAIO® is an Autonomous AI Business Executive for Umrah agencies, automating WhatsApp enquiries, lead qualification, package recommendations and follow-up.",
+            "UMRAIO® is an AI Autonomous Business Executive for Umrah agencies, automating WhatsApp enquiries, lead qualification, package recommendations and follow-up.",
           areaServed: "MY",
           brand: { "@type": "Brand", name: "UMRAVERSE®" },
           parentOrganization: { "@type": "Organization", name: "Digital Renaissance Metaverse" },
           knowsAbout: [
-            "Autonomous AI Business Executive",
+            "AI Autonomous Business Executive",
             "Umrah agency automation",
             "RENAIO.CORE™ Autonomous Intelligence Core",
             "UMRAVERSE® Umrah digital ecosystem",
@@ -175,11 +175,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "@type": "SoftwareApplication",
           name: "UMRAIO®",
           applicationCategory: "BusinessApplication",
-          applicationSubCategory: "Autonomous AI Business Executive",
+          applicationSubCategory: "AI Autonomous Business Executive",
           operatingSystem: "Web",
           url: "https://umraio.com/",
           description:
-            "Autonomous AI Business Executive for Umrah agencies — WhatsApp enquiry automation, lead qualification, package recommendation, automated follow-up and business workflow automation.",
+            "AI Autonomous Business Executive for Umrah agencies — WhatsApp enquiry automation, lead qualification, package recommendation, automated follow-up and business workflow automation.",
           featureList: [
             "WhatsApp enquiry automation",
             "Lead qualification",
@@ -203,7 +203,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "@context": "https://schema.org",
           "@type": "WebSite",
           name: "UMRAIO®",
-          alternateName: "UMRAIO® — Autonomous AI Business Executive for Umrah Agencies",
+          alternateName: "UMRAIO® — AI Autonomous Business Executive for Umrah Agencies",
           url: "https://umraio.com/",
           inLanguage: "en",
           publisher: { "@type": "Organization", name: "UMRAIO®" },
