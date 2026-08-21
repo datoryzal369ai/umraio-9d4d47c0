@@ -115,7 +115,7 @@ export function IntelligenceArchitecture() {
             <img
               src={renaioMark.url}
               alt="RÉNAIO.CORE™"
-              loading="lazy"
+              loading="eager"
               className="umr-core-mark h-full w-full object-contain mix-blend-screen"
             />
           </div>
