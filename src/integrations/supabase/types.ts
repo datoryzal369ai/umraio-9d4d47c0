@@ -1179,6 +1179,7 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          provider_message_id: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
         }
         Insert: {
@@ -1187,6 +1188,7 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
+          provider_message_id?: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
         }
         Update: {
@@ -1195,6 +1197,7 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
+          provider_message_id?: string | null
           sender?: Database["public"]["Enums"]["msg_sender"]
         }
         Relationships: [
