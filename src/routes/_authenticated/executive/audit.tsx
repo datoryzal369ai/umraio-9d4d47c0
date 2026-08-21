@@ -177,7 +177,7 @@ function AuditLogPage() {
                     </Badge>
                     {row.state ? (
                       <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/80">
-                        {row.state}
+                        {row.state.replace(/_/g, " ")}
                       </span>
                     ) : null}
                   </div>
