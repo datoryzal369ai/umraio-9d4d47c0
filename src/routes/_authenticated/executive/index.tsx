@@ -167,19 +167,13 @@ function ExecutiveCenter() {
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm">
               <Link to="/executive/workforce">
                 <Users className="size-4" aria-hidden="true" />
                 {center.viewWorkforce}
               </Link>
             </Button>
-            <Button asChild size="sm" variant="outline">
-              <Link to="/tasks">
-                <ListChecks className="size-4" aria-hidden="true" />
-                {center.openTaskControl}
-              </Link>
-            </Button>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="ghost">
               <Link to="/executive/audit">
                 <ScrollText className="size-4" aria-hidden="true" />
                 Audit log
@@ -187,8 +181,49 @@ function ExecutiveCenter() {
             </Button>
           </div>
         </div>
+      </header>
 
-        <div className="mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-5">
+
+      {/* 1. EXECUTIVE NOW — what needs attention right now. */}
+      <ExecutiveNowCard />
+
+      {/* 2. EXECUTIVE INSIGHT — what the Executive understands, with evidence. */}
+      <ExecutiveInsight />
+
+      {/* 3. EXECUTIVE LOOP — the general control surface plus orchestration. */}
+      <ExecutiveCommandPanel workers={allWorkers} workersLoading={workers.isLoading} />
+
+      <OrchestrationPanel />
+
+      {/* Business outcomes of what already executed. */}
+      <OutcomeMonitor />
+
+      <section id="executive-opportunities" className="scroll-mt-24">
+        <SalesOpportunities />
+      </section>
+
+      <section id="executive-workforce" className="scroll-mt-24 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              {center.workforceTitle}
+            </h2>
+            <p className="text-xs text-muted-foreground">{center.workforceSubtitle}</p>
+          </div>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/executive/workforce">
+              {center.viewWorkforce}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+        <WorkforceGrid />
+      </section>
+
+      {/* 5. TELEMETRY — live system state, after the workforce it describes. */}
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold tracking-tight">Live telemetry</h2>
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">
           <Telemetry
             icon={Activity}
             label={center.telemetry.systemStatus}
@@ -206,16 +241,12 @@ function ExecutiveCenter() {
                   ? center.telemetry.escalations(escalations)
                   : center.nowNoEscalations
             }
-            tone={escalations > 0 ? "text-destructive" : "text-emerald"}
+            tone={escalations > 0 ? "text-destructive" : "text-primary"}
           />
           <Telemetry
             icon={Users}
             label={center.telemetry.workers}
-            value={
-              workers.isLoading
-                ? "—"
-                : center.telemetry.workersOnline(online, allWorkers.length)
-            }
+            value={workers.isLoading ? "—" : center.telemetry.workersOnline(online, allWorkers.length)}
             hint={
               workers.isLoading
                 ? copy.syncing
@@ -232,9 +263,7 @@ function ExecutiveCenter() {
             label={center.telemetry.tasks}
             value={m ? center.telemetry.tasksToday(m.tasksToday) : "—"}
             hint={
-              engineTasksQuery.isLoading
-                ? copy.syncing
-                : center.telemetry.tasksRecent(engineTasks.length)
+              engineTasksQuery.isLoading ? copy.syncing : center.telemetry.tasksRecent(engineTasks.length)
             }
             to="/tasks"
           />
@@ -262,24 +291,6 @@ function ExecutiveCenter() {
             hash="#executive-opportunities"
           />
         </div>
-      </header>
-
-      {/* 1. EXECUTIVE NOW — what needs attention right now. */}
-      <ExecutiveNowCard />
-
-      {/* 2. EXECUTIVE INSIGHT — what the Executive understands, with evidence. */}
-      <ExecutiveInsight />
-
-      {/* 3. EXECUTIVE LOOP — the general control surface plus orchestration. */}
-      <ExecutiveCommandPanel workers={allWorkers} workersLoading={workers.isLoading} />
-
-      <OrchestrationPanel />
-
-      {/* Business outcomes of what already executed. */}
-      <OutcomeMonitor />
-
-      <section id="executive-opportunities" className="scroll-mt-24">
-        <SalesOpportunities />
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -319,24 +330,6 @@ function ExecutiveCenter() {
           value={m ? `${m.hoursSaved.toFixed(1)}h` : "—"}
           hint={copy.hoursSavedHint}
         />
-      </section>
-
-      <section id="executive-workforce" className="scroll-mt-24 space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-lg font-semibold tracking-tight">
-              {center.workforceTitle}
-            </h2>
-            <p className="text-xs text-muted-foreground">{center.workforceSubtitle}</p>
-          </div>
-          <Button asChild size="sm" variant="ghost">
-            <Link to="/executive/workforce">
-              {center.viewWorkforce}
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </Button>
-        </div>
-        <WorkforceGrid />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">

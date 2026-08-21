@@ -69,7 +69,15 @@ export function WorkforceNavigator({
 
   return (
     <div className={cn("flex flex-wrap items-center justify-between gap-3", className)}>
-      <nav aria-label="Breadcrumb" className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <Button asChild size="sm" variant="outline">
+          <Link to="/executive/workforce">
+            <ChevronLeft className="size-4" aria-hidden="true" />
+            {copy.backToWorkforce}
+          </Link>
+        </Button>
+        <nav aria-label="Breadcrumb" className="min-w-0">
+
         <ol className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <li>
             <Link
@@ -89,7 +97,9 @@ export function WorkforceNavigator({
           <li aria-hidden="true">/</li>
           <li className="truncate font-medium text-foreground">{name}</li>
         </ol>
-      </nav>
+        </nav>
+      </div>
+
 
       <div
         className="flex items-center gap-2"
