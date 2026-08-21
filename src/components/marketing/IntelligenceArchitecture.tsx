@@ -199,10 +199,12 @@ export function IntelligenceArchitecture() {
 
           {/* LEVEL 6 — AI WORKFORCE */}
           <div className="w-full rounded-2xl border border-border/60 bg-surface/50 px-5 py-4 backdrop-blur">
-            <LevelLabel>{t.workforceRole}</LevelLabel>
-            <p className="mt-1 text-sm font-semibold uppercase tracking-tight text-foreground/90">
+            <p className="text-sm font-semibold uppercase tracking-tight text-foreground/90">
               {t.workforce}
             </p>
+            <div className="mt-1">
+              <LevelLabel>{t.workforceRole}</LevelLabel>
+            </div>
           </div>
 
           <Connector />
