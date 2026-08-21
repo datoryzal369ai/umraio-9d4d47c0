@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { authorizeCronRequest } from "@/lib/cron-auth.server";
+
 /**
  * Autonomous engine tick. Called on a schedule; runs one observe → plan →
  * execute cycle for every agency. Secured with the project publishable key.

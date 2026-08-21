@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { authorizeCronRequest } from "@/lib/cron-auth.server";
+
 /**
  * STEP 4A — scheduled autonomous orchestration tick.
  *
