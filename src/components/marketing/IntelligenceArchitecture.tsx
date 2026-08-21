@@ -147,7 +147,7 @@ export function IntelligenceArchitecture() {
             <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
               {t.aiParadigm}
             </p>
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11px]">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11px] max-sm:flex-col">
               <span className="rounded-full border border-border/70 bg-surface/70 px-3 py-1.5 font-medium text-foreground/70">
                 {t.aiPlain}
               </span>
