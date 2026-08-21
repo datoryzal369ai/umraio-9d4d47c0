@@ -9,6 +9,7 @@ import {
   Clock,
   ListChecks,
   MessageSquare,
+  ScrollText,
   ShieldCheck,
   Target,
   TicketCheck,
@@ -22,6 +23,9 @@ import { EXECUTIVE_DICT } from "@/lib/i18n/app/executive.i18n";
 import { EXECUTIVE_CENTER_DICT } from "@/lib/i18n/app/executive-center.i18n";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ExecutiveCommandPanel } from "@/components/executive/ExecutiveCommandPanel";
+import { ExecutiveInsight } from "@/components/executive/ExecutiveInsight";
+import { ExecutiveNowCard } from "@/components/executive/ExecutiveNowCard";
+import { OutcomeMonitor } from "@/components/executive/OutcomeMonitor";
 import { OrchestrationPanel } from "@/components/executive/OrchestrationPanel";
 import { SalesOpportunities } from "@/components/executive/SalesOpportunities";
 import { WorkforceGrid } from "@/components/executive/WorkforceGrid";
@@ -175,6 +179,12 @@ function ExecutiveCenter() {
                 {center.openTaskControl}
               </Link>
             </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link to="/executive/audit">
+                <ScrollText className="size-4" aria-hidden="true" />
+                Audit log
+              </Link>
+            </Button>
           </div>
         </div>
 
@@ -254,9 +264,19 @@ function ExecutiveCenter() {
         </div>
       </header>
 
+      {/* 1. EXECUTIVE NOW — what needs attention right now. */}
+      <ExecutiveNowCard />
+
+      {/* 2. EXECUTIVE INSIGHT — what the Executive understands, with evidence. */}
+      <ExecutiveInsight />
+
+      {/* 3. EXECUTIVE LOOP — the general control surface plus orchestration. */}
       <ExecutiveCommandPanel workers={allWorkers} workersLoading={workers.isLoading} />
 
       <OrchestrationPanel />
+
+      {/* Business outcomes of what already executed. */}
+      <OutcomeMonitor />
 
       <section id="executive-opportunities" className="scroll-mt-24">
         <SalesOpportunities />

@@ -30,6 +30,7 @@ import { Route as AuthenticatedConversationsIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedConversationsConversationIdRouteImport } from './routes/_authenticated/conversations/$conversationId'
 import { Route as AuthenticatedExecutiveIndexRouteImport } from './routes/_authenticated/executive/index'
 import { Route as AuthenticatedExecutiveWorkerKeyRouteImport } from './routes/_authenticated/executive/$workerKey'
+import { Route as AuthenticatedExecutiveAuditRouteImport } from './routes/_authenticated/executive/audit'
 import { Route as AuthenticatedExecutiveWorkforceRouteImport } from './routes/_authenticated/executive/workforce'
 import { Route as AuthenticatedKnowledgeIndexRouteImport } from './routes/_authenticated/knowledge/index'
 import { Route as AuthenticatedLeadsIndexRouteImport } from './routes/_authenticated/leads/index'
@@ -157,6 +158,12 @@ const AuthenticatedExecutiveWorkerKeyRoute =
   AuthenticatedExecutiveWorkerKeyRouteImport.update({
     id: '/executive/$workerKey',
     path: '/executive/$workerKey',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedExecutiveAuditRoute =
+  AuthenticatedExecutiveAuditRouteImport.update({
+    id: '/executive/audit',
+    path: '/executive/audit',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedExecutiveWorkforceRoute =
@@ -288,6 +295,7 @@ export interface FileRoutesByFullPath {
   '/q/$token': typeof QTokenRoute
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/executive/$workerKey': typeof AuthenticatedExecutiveWorkerKeyRoute
+  '/executive/audit': typeof AuthenticatedExecutiveAuditRoute
   '/executive/workforce': typeof AuthenticatedExecutiveWorkforceRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/agency': typeof AuthenticatedSettingsAgencyRoute
@@ -328,6 +336,7 @@ export interface FileRoutesByTo {
   '/q/$token': typeof QTokenRoute
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/executive/$workerKey': typeof AuthenticatedExecutiveWorkerKeyRoute
+  '/executive/audit': typeof AuthenticatedExecutiveAuditRoute
   '/executive/workforce': typeof AuthenticatedExecutiveWorkforceRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/agency': typeof AuthenticatedSettingsAgencyRoute
@@ -371,6 +380,7 @@ export interface FileRoutesById {
   '/q/$token': typeof QTokenRoute
   '/_authenticated/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/_authenticated/executive/$workerKey': typeof AuthenticatedExecutiveWorkerKeyRoute
+  '/_authenticated/executive/audit': typeof AuthenticatedExecutiveAuditRoute
   '/_authenticated/executive/workforce': typeof AuthenticatedExecutiveWorkforceRoute
   '/_authenticated/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/_authenticated/settings/agency': typeof AuthenticatedSettingsAgencyRoute
@@ -414,6 +424,7 @@ export interface FileRouteTypes {
     | '/q/$token'
     | '/conversations/$conversationId'
     | '/executive/$workerKey'
+    | '/executive/audit'
     | '/executive/workforce'
     | '/leads/$leadId'
     | '/settings/agency'
@@ -454,6 +465,7 @@ export interface FileRouteTypes {
     | '/q/$token'
     | '/conversations/$conversationId'
     | '/executive/$workerKey'
+    | '/executive/audit'
     | '/executive/workforce'
     | '/leads/$leadId'
     | '/settings/agency'
@@ -496,6 +508,7 @@ export interface FileRouteTypes {
     | '/q/$token'
     | '/_authenticated/conversations/$conversationId'
     | '/_authenticated/executive/$workerKey'
+    | '/_authenticated/executive/audit'
     | '/_authenticated/executive/workforce'
     | '/_authenticated/leads/$leadId'
     | '/_authenticated/settings/agency'
@@ -688,6 +701,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedExecutiveWorkerKeyRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/executive/audit': {
+      id: '/_authenticated/executive/audit'
+      path: '/executive/audit'
+      fullPath: '/executive/audit'
+      preLoaderRoute: typeof AuthenticatedExecutiveAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/executive/workforce': {
       id: '/_authenticated/executive/workforce'
       path: '/executive/workforce'
@@ -864,6 +884,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
   AuthenticatedConversationsConversationIdRoute: typeof AuthenticatedConversationsConversationIdRoute
   AuthenticatedExecutiveWorkerKeyRoute: typeof AuthenticatedExecutiveWorkerKeyRoute
+  AuthenticatedExecutiveAuditRoute: typeof AuthenticatedExecutiveAuditRoute
   AuthenticatedExecutiveWorkforceRoute: typeof AuthenticatedExecutiveWorkforceRoute
   AuthenticatedLeadsLeadIdRoute: typeof AuthenticatedLeadsLeadIdRoute
   AuthenticatedConversationsIndexRoute: typeof AuthenticatedConversationsIndexRoute
@@ -883,6 +904,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedConversationsConversationIdRoute:
     AuthenticatedConversationsConversationIdRoute,
   AuthenticatedExecutiveWorkerKeyRoute: AuthenticatedExecutiveWorkerKeyRoute,
+  AuthenticatedExecutiveAuditRoute: AuthenticatedExecutiveAuditRoute,
   AuthenticatedExecutiveWorkforceRoute: AuthenticatedExecutiveWorkforceRoute,
   AuthenticatedLeadsLeadIdRoute: AuthenticatedLeadsLeadIdRoute,
   AuthenticatedConversationsIndexRoute: AuthenticatedConversationsIndexRoute,

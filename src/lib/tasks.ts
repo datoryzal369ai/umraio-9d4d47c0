@@ -12,6 +12,20 @@ export type EngineTaskStatus =
   | "rejected"
   | "cancelled";
 
+export type EngineTaskStep = { at: string; status: string; note: string };
+
+/** Executive decision payload persisted on the task when the Executive created it. */
+export type EngineTaskInput = {
+  objective?: string;
+  reason?: string;
+  expected_outcome?: string;
+  worker?: string;
+  decision_confidence?: number;
+  booking_probability?: number | null;
+  correlation_id?: string;
+  [key: string]: unknown;
+};
+
 export type EngineTask = {
   id: string;
   worker_key: string;
@@ -23,11 +37,14 @@ export type EngineTask = {
   summary: string | null;
   error: string | null;
   plan: string[] | null;
-  steps: { at: string; status: string; note: string }[] | null;
+  steps: EngineTaskStep[] | null;
   output: { summary: string; sections: { heading: string; body: string }[] } | null;
   minutes_saved: number;
   requires_approval: boolean;
   approval_reason: string | null;
+  lead_id: string | null;
+  input: EngineTaskInput | null;
+  approved_at: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -46,7 +63,7 @@ export type AppNotification = {
 };
 
 const TASK_COLUMNS =
-  "id, worker_key, title, kind, status, priority, origin, summary, error, plan, steps, output, minutes_saved, requires_approval, approval_reason, created_at, started_at, completed_at";
+  "id, worker_key, title, kind, status, priority, origin, summary, error, plan, steps, output, minutes_saved, requires_approval, approval_reason, lead_id, input, approved_at, created_at, started_at, completed_at";
 
 export async function fetchEngineTasks(limit = 120): Promise<EngineTask[]> {
   const { data, error } = await supabase
