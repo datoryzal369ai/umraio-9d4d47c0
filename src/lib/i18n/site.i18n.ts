@@ -310,12 +310,12 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
       ctaDemo: "Book Live Demo",
     },
     metrics: {
-      sectionLabel: "UMRAIO AI workforce performance signals",
+      sectionLabel: "UMRAIO AI workforce capabilities",
       items: [
         { label: "Always working", micro: "Your AI workforce never sleeps." },
-        { label: "More leads", micro: "Instant, intelligent engagement." },
-        { label: "Time saved", micro: "Repetitive work runs itself." },
-        { label: "AI-powered", micro: "Always learning, always improving." },
+        { label: "Instant replies", micro: "Enquiries answered the moment they arrive." },
+        { label: "Follow-up automated", micro: "Repetitive work runs itself." },
+        { label: "Governed autonomy", micro: "Reasoned decisions, not scripted replies." },
       ],
     },
     showcase: {
