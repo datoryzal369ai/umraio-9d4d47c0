@@ -63,7 +63,7 @@ export type AppNotification = {
 };
 
 const TASK_COLUMNS =
-  "id, worker_key, title, kind, status, priority, origin, summary, error, plan, steps, output, minutes_saved, requires_approval, approval_reason, created_at, started_at, completed_at";
+  "id, worker_key, title, kind, status, priority, origin, summary, error, plan, steps, output, minutes_saved, requires_approval, approval_reason, lead_id, input, approved_at, created_at, started_at, completed_at";
 
 export async function fetchEngineTasks(limit = 120): Promise<EngineTask[]> {
   const { data, error } = await supabase
