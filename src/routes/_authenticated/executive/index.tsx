@@ -9,6 +9,7 @@ import {
   Clock,
   ListChecks,
   MessageSquare,
+  ScrollText,
   ShieldCheck,
   Target,
   TicketCheck,
