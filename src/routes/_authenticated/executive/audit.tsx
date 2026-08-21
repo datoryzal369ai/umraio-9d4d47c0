@@ -12,6 +12,7 @@ import {
   fetchAuditRows,
   type AuditCategory,
 } from "@/lib/executive/audit";
+import { WORKER_LABELS } from "@/lib/worker-labels";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/executive/audit")({
