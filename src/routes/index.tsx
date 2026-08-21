@@ -177,7 +177,7 @@ function Index() {
                 className="pointer-events-none absolute inset-0 -z-10 blur-3xl"
                 style={{
                   background:
-                    "radial-gradient(50% 60% at 50% 50%, rgba(0,215,255,0.22), transparent 70%)",
+                    "radial-gradient(46% 58% at 72% 52%, rgba(47,220,215,0.34), transparent 72%), radial-gradient(52% 62% at 40% 50%, rgba(160,200,225,0.14), transparent 74%)",
                 }}
               />
               <img
