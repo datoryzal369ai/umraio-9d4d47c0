@@ -148,7 +148,7 @@ function Index() {
                   asChild
                   variant="ghost"
                   size="sm"
-                  className="hidden rounded-full sm:inline-flex"
+                  className="rounded-full px-3 sm:px-4"
                 >
                   <Link to="/auth" search={{ mode: "login", redirect: undefined }}>
                     {t.nav.signIn}
