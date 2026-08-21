@@ -202,6 +202,97 @@ function ExecutiveCenter() {
         <SalesOpportunities />
       </section>
 
+      <section id="executive-workforce" className="scroll-mt-24 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              {center.workforceTitle}
+            </h2>
+            <p className="text-xs text-muted-foreground">{center.workforceSubtitle}</p>
+          </div>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/executive/workforce">
+              {center.viewWorkforce}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+        <WorkforceGrid />
+      </section>
+
+      {/* 5. TELEMETRY — live system state, after the workforce it describes. */}
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold tracking-tight">Live telemetry</h2>
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">
+          <Telemetry
+            icon={Activity}
+            label={center.telemetry.systemStatus}
+            value={
+              !ready
+                ? center.telemetry.systemSyncing
+                : escalations > 0
+                  ? center.telemetry.systemAttention
+                  : center.telemetry.systemActive
+            }
+            hint={
+              !ready
+                ? copy.syncing
+                : escalations > 0
+                  ? center.telemetry.escalations(escalations)
+                  : center.nowNoEscalations
+            }
+            tone={escalations > 0 ? "text-destructive" : "text-primary"}
+          />
+          <Telemetry
+            icon={Users}
+            label={center.telemetry.workers}
+            value={workers.isLoading ? "—" : center.telemetry.workersOnline(online, allWorkers.length)}
+            hint={
+              workers.isLoading
+                ? copy.syncing
+                : allWorkers.length === 0
+                  ? center.telemetry.noWorkers
+                  : offline > 0
+                    ? center.telemetry.awaitingActivation(offline)
+                    : center.nowHealthy
+            }
+            hash="#executive-workforce"
+          />
+          <Telemetry
+            icon={ListChecks}
+            label={center.telemetry.tasks}
+            value={m ? center.telemetry.tasksToday(m.tasksToday) : "—"}
+            hint={
+              engineTasksQuery.isLoading ? copy.syncing : center.telemetry.tasksRecent(engineTasks.length)
+            }
+            to="/tasks"
+          />
+          <Telemetry
+            icon={ShieldCheck}
+            label={center.telemetry.approvals}
+            value={
+              approvals > 0
+                ? center.telemetry.approvalsWaiting(approvals)
+                : center.telemetry.approvalsClear
+            }
+            hint={approvals > 0 ? center.openApprovalQueue : center.nowHealthyBody}
+            to="/tasks"
+            tone={approvals > 0 ? "text-gold-bright" : undefined}
+          />
+          <Telemetry
+            icon={Target}
+            label={center.telemetry.opportunities}
+            value={
+              opportunityCount > 0
+                ? center.telemetry.opportunitiesDetected(opportunityCount)
+                : center.telemetry.opportunitiesNone
+            }
+            hint={center.openOpportunities}
+            hash="#executive-opportunities"
+          />
+        </div>
+      </section>
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard
           icon={CheckCircle2}
@@ -239,24 +330,6 @@ function ExecutiveCenter() {
           value={m ? `${m.hoursSaved.toFixed(1)}h` : "—"}
           hint={copy.hoursSavedHint}
         />
-      </section>
-
-      <section id="executive-workforce" className="scroll-mt-24 space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-lg font-semibold tracking-tight">
-              {center.workforceTitle}
-            </h2>
-            <p className="text-xs text-muted-foreground">{center.workforceSubtitle}</p>
-          </div>
-          <Button asChild size="sm" variant="ghost">
-            <Link to="/executive/workforce">
-              {center.viewWorkforce}
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </Button>
-        </div>
-        <WorkforceGrid />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
