@@ -150,7 +150,7 @@ export function IntelligenceArchitecture() {
 
         {/* RÉNAIO.CORE™ — logo mark only here; the full wordmark lives once in the footer. */}
         <div className="mx-auto mt-12 flex max-w-xl flex-col items-center">
-          <div className="relative flex size-[132px] items-center justify-center sm:size-[168px]">
+          <div className="relative flex size-[168px] items-center justify-center sm:size-[224px]">
             <span
               aria-hidden
               className="umr-core-halo pointer-events-none absolute inset-0 -z-10 rounded-full blur-2xl"
