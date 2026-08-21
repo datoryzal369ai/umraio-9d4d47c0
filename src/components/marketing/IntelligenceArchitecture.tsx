@@ -152,8 +152,10 @@ export function IntelligenceArchitecture() {
                 {t.aiPlain}
               </span>
               <span aria-hidden className="text-primary/60">
-                →
+                <span className="sm:hidden">↓</span>
+                <span className="hidden sm:inline">→</span>
               </span>
+
               <span className="rounded-full border border-primary/60 bg-primary/[0.1] px-3 py-1.5 font-semibold text-primary">
                 {t.aiAutonomous}
               </span>
