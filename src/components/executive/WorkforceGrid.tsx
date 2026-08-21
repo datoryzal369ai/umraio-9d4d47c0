@@ -33,51 +33,6 @@ export const WORKER_ICON: Record<string, typeof Bot> = {
   sales_elite: Target,
 };
 
-/**
- * Differentiated accent identity per specialist executive. Accents are limited to
- * icon, border, state and button so cards stay one coherent dark-navy system.
- */
-type Accent = { icon: string; chipBorder: string; chipBg: string; state: string; button: string };
-export const ACCENTS: Record<string, Accent> = {
-  whatsapp: {
-    icon: "text-primary border-primary/40 bg-primary/10",
-    chipBorder: "border-primary/30",
-    chipBg: "bg-primary/[0.07]",
-    state: "text-primary",
-    button: "border-primary/45 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
-  },
-  marketing: {
-    icon: "text-emerald border-emerald/40 bg-emerald/10",
-    chipBorder: "border-emerald/30",
-    chipBg: "bg-emerald/[0.07]",
-    state: "text-emerald",
-    button: "border-emerald/45 bg-emerald/10 text-emerald hover:bg-emerald/20 hover:text-emerald",
-  },
-  content: {
-    icon: "text-violet border-violet/40 bg-violet/10",
-    chipBorder: "border-violet/30",
-    chipBg: "bg-violet/[0.07]",
-    state: "text-violet",
-    button: "border-violet/45 bg-violet/10 text-violet hover:bg-violet/20 hover:text-violet",
-  },
-  lead_intel: {
-    icon: "text-electric border-electric/40 bg-electric/10",
-    chipBorder: "border-electric/30",
-    chipBg: "bg-electric/[0.07]",
-    state: "text-electric",
-    button:
-      "border-electric/45 bg-electric/10 text-electric hover:bg-electric/20 hover:text-electric",
-  },
-  sales_elite: {
-    icon: "text-gold border-gold/50 bg-gold/12",
-    chipBorder: "border-gold/35",
-    chipBg: "bg-gold/[0.08]",
-    state: "text-gold-bright",
-    button: "border-gold/60 bg-gold/15 text-gold-bright hover:bg-gold/25 hover:text-gold-bright",
-  },
-};
-export const DEFAULT_ACCENT: Accent = ACCENTS["whatsapp"]!;
-
 export function relativeTime(iso: string) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 60) return `${Math.max(mins, 1)}m ago`;
@@ -85,7 +40,23 @@ export function relativeTime(iso: string) {
   return `${Math.round(mins / 1440)}d ago`;
 }
 
-/** One specialist operator card — role, real state, autonomy, task, last execution. */
+/** One label/value row inside a worker card — same structure for every worker. */
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-1 truncate text-xs text-foreground/90">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * One specialist operator card. Every worker uses the exact same card
+ * architecture and the same turquoise/navy register — differentiation comes
+ * from role and real state, never from colour.
+ */
 export function WorkerCard({
   worker,
   tasks,
@@ -97,27 +68,18 @@ export function WorkerCard({
 }) {
   const copy = useCopy(EXECUTIVE_CENTER_DICT);
   const Icon = WORKER_ICON[worker.worker_key] ?? Bot;
-  const accent = ACCENTS[worker.worker_key] ?? DEFAULT_ACCENT;
-  const isElite = worker.worker_key === "sales_elite";
   const runtime = deriveWorkerRuntime(worker, tasks);
 
   return (
-    <article
-      className={cn(
-        "flex min-w-0 flex-col gap-4 p-5",
-        isElite ? "panel-elite card-interactive-gold" : "panel card-interactive",
-      )}
-    >
+    <article className="panel card-interactive flex min-w-0 flex-col gap-4 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <div className={cn("rounded-xl border p-2.5", accent.icon)}>
+          <div className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-primary">
             <Icon className="size-5" aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <h3 className={cn("truncate text-base font-semibold", isElite && "text-gold-bright")}>
-              {worker.name}
-            </h3>
-            <p className="text-xs text-muted-foreground">{worker.description}</p>
+            <h3 className="truncate text-base font-semibold">{worker.name}</h3>
+            <p className="line-clamp-2 text-xs text-muted-foreground">{worker.description}</p>
           </div>
         </div>
         <Badge className={cn("shrink-0 border-0", RUNTIME_TONE[runtime.state])}>
@@ -125,45 +87,26 @@ export function WorkerCard({
         </Badge>
       </div>
 
-      <div className={cn("rounded-xl border px-3 py-2.5", accent.chipBorder, accent.chipBg)}>
-        <p
-          className={cn(
-            "text-[10px] font-semibold uppercase tracking-[0.16em]",
-            accent.state,
-          )}
-        >
-          {copy.activeTaskLabel}
-        </p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {runtime.activeTask ? runtime.activeTask.title : copy.noActiveTask}
-        </p>
-      </div>
-
-      {detailed ? (
-        <dl className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <dt className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-              {copy.lastExecutionLabel}
-            </dt>
-            <dd className="mt-0.5 truncate text-xs">
-              {runtime.lastExecutionAt
-                ? `${relativeTime(runtime.lastExecutionAt)}${
-                    runtime.lastExecution ? ` · ${runtime.lastExecution.title}` : ""
-                  }`
-                : copy.neverExecuted}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-              {copy.executionLabel}
-            </dt>
-            <dd className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-              {runtime.counts.completed} ✓ · {runtime.counts.awaitingApproval} ⏳ ·{" "}
-              {runtime.counts.failed} ✕
-            </dd>
-          </div>
-        </dl>
-      ) : null}
+      <dl className="grid gap-3 rounded-xl border border-border/60 bg-surface/60 px-3.5 py-3 sm:grid-cols-2">
+        <Field label={copy.autonomyLabel} value={copy.autonomyValue[runtime.autonomy]} />
+        <Field label={copy.stateLabel} value={copy.runtime[runtime.state]} />
+        <Field
+          label={copy.activeTaskLabel}
+          value={runtime.activeTask ? runtime.activeTask.title : copy.noActiveTask}
+        />
+        <Field
+          label={copy.lastExecutionLabel}
+          value={
+            runtime.lastExecutionAt ? relativeTime(runtime.lastExecutionAt) : copy.neverExecuted
+          }
+        />
+        {detailed ? (
+          <Field
+            label={copy.executionLabel}
+            value={`${runtime.counts.completed} completed · ${runtime.counts.awaitingApproval} awaiting · ${runtime.counts.failed} failed`}
+          />
+        ) : null}
+      </dl>
 
       <div className="mt-auto flex flex-wrap items-center justify-between gap-3">
         <span
@@ -174,21 +117,12 @@ export function WorkerCard({
         >
           {copy.autonomyValue[runtime.autonomy]}
         </span>
-        <div className="flex min-w-0 items-center gap-3">
-          {!detailed ? (
-            <span className="truncate text-xs text-muted-foreground">
-              {runtime.lastExecutionAt
-                ? relativeTime(runtime.lastExecutionAt)
-                : copy.neverExecuted}
-            </span>
-          ) : null}
-          <Button asChild size="sm" variant="outline" className={accent.button}>
-            <WorkerLink workerKey={worker.worker_key}>
-              {copy.openWorker}
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </WorkerLink>
-          </Button>
-        </div>
+        <Button asChild size="sm" variant="outline">
+          <WorkerLink workerKey={worker.worker_key}>
+            {copy.openWorker}
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </WorkerLink>
+        </Button>
       </div>
     </article>
   );
