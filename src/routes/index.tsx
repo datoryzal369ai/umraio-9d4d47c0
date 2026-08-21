@@ -88,6 +88,32 @@ export const Route = createFileRoute("/")({
 });
 
 
+/**
+ * Highlights the locked product name "AI Autonomous Business Executive™" as the
+ * primary intelligence statement inside surrounding hero copy.
+ */
+const EXECUTIVE_NAME = /(AI Autonomous Business Executive(?:™)?)/i;
+
+function ExecutivePhrase({ text }: { text: string }) {
+  const parts = text.split(EXECUTIVE_NAME);
+  return (
+    <>
+      {parts.map((part, i) =>
+        EXECUTIVE_NAME.test(part) && i % 2 === 1 ? (
+          <span key={i} className="text-exec-intelligence">
+            {part}
+            <sup className="ml-0.5 align-super text-[0.42em] leading-none tracking-normal">™</sup>
+          </span>
+        ) : (
+          <span key={i} className="text-foreground/90">
+            {part}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
 function Index() {
   const { user, loading } = useAuth();
   const { locale } = useLocale();
