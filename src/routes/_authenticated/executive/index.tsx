@@ -178,6 +178,12 @@ function ExecutiveCenter() {
                 {center.openTaskControl}
               </Link>
             </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link to="/executive/audit">
+                <ScrollText className="size-4" aria-hidden="true" />
+                Audit log
+              </Link>
+            </Button>
           </div>
         </div>
 
