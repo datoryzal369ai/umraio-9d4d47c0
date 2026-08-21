@@ -572,12 +572,12 @@ export const SITE_COPY: Record<Locale, SiteCopy> = {
       ctaDemo: "Tempah Demo Langsung",
     },
     metrics: {
-      sectionLabel: "Isyarat prestasi tenaga kerja AI UMRAIO",
+      sectionLabel: "Keupayaan tenaga kerja AI UMRAIO",
       items: [
         { label: "Sentiasa bekerja", micro: "Tenaga kerja AI anda tidak pernah tidur." },
-        { label: "Lebih banyak lead", micro: "Respons pantas dan bijak." },
-        { label: "Masa dijimatkan", micro: "Kerja berulang berjalan sendiri." },
-        { label: "Dikuasakan AI", micro: "Sentiasa belajar, sentiasa bertambah baik." },
+        { label: "Respons segera", micro: "Pertanyaan dijawab sebaik ia masuk." },
+        { label: "Susulan automatik", micro: "Kerja berulang berjalan sendiri." },
+        { label: "Autonomi ditadbir", micro: "Keputusan bernalar, bukan jawapan skrip." },
       ],
     },
     showcase: {
