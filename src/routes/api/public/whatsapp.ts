@@ -91,6 +91,23 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         const agencyId = config.agency_id;
         const profileName = value?.contacts?.[0]?.profile?.name ?? from;
 
+        // IDEMPOTENCY (fast path): Meta retries the same messages[].id. Scoped by
+        // agency so identical ids across tenants stay isolated.
+        if (providerMessageId) {
+          const { data: seen } = await supabaseAdmin
+            .from("messages")
+            .select("id")
+            .eq("agency_id", agencyId)
+            .eq("provider_message_id", providerMessageId)
+            .maybeSingle();
+          if (seen) {
+            console.log(
+              `[whatsapp] duplicate delivery ignored provider_message_id=${providerMessageId}`,
+            );
+            return new Response("ok");
+          }
+        }
+
         // Find or create the lead by phone
         let leadId: string | null = null;
         const { data: lead } = await supabaseAdmin
