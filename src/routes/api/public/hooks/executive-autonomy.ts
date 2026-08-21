@@ -16,15 +16,8 @@ export const Route = createFileRoute("/api/public/hooks/executive-autonomy")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const expected =
-          process.env["SUPABASE_PUBLISHABLE_KEY"] ?? process.env["SUPABASE_ANON_KEY"] ?? "";
-        const provided = request.headers.get("apikey") ?? "";
-        if (!expected || provided !== expected) {
-          return new Response(JSON.stringify({ error: "Unauthorized" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
+        const auth = await authorizeCronRequest(request);
+        if (!auth.ok) return auth.response;
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { runGovernedCycle } = await import("@/lib/executive-autonomy.server");
