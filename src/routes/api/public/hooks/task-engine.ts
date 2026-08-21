@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { authorizeCronRequest } from "@/lib/cron-auth.server";
+
 /**
  * Autonomous engine tick. Called on a schedule; runs one observe → plan →
  * execute cycle for every agency. Secured with the project publishable key.
@@ -8,15 +10,8 @@ export const Route = createFileRoute("/api/public/hooks/task-engine")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const expected =
-          process.env["SUPABASE_PUBLISHABLE_KEY"] ?? process.env["SUPABASE_ANON_KEY"] ?? "";
-        const provided = request.headers.get("apikey") ?? "";
-        if (!expected || provided !== expected) {
-          return new Response(JSON.stringify({ error: "Unauthorized" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
+        const auth = await authorizeCronRequest(request);
+        if (!auth.ok) return auth.response;
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { runAutonomousCycle } = await import("@/lib/task-engine.server");

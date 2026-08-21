@@ -5,7 +5,7 @@ import { verifyMetaSignature } from "@/lib/whatsapp-signature";
 type WebhookValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
-  messages?: Array<{ from?: string; type?: string; text?: { body?: string } }>;
+  messages?: Array<{ id?: string; from?: string; type?: string; text?: { body?: string } }>;
 };
 
 type WebhookBody = {
@@ -70,6 +70,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
         const from = message.from ?? "";
         const text = message.type === "text" ? (message.text?.body ?? "") : "";
+        const providerMessageId = message.id?.trim() || null;
         if (!from || !text) return new Response("ok");
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -89,6 +90,23 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
         const agencyId = config.agency_id;
         const profileName = value?.contacts?.[0]?.profile?.name ?? from;
+
+        // IDEMPOTENCY (fast path): Meta retries the same messages[].id. Scoped by
+        // agency so identical ids across tenants stay isolated.
+        if (providerMessageId) {
+          const { data: seen } = await supabaseAdmin
+            .from("messages")
+            .select("id")
+            .eq("agency_id", agencyId)
+            .eq("provider_message_id", providerMessageId)
+            .maybeSingle();
+          if (seen) {
+            console.log(
+              `[whatsapp] duplicate delivery ignored provider_message_id=${providerMessageId}`,
+            );
+            return new Response("ok");
+          }
+        }
 
         // Find or create the lead by phone
         let leadId: string | null = null;
@@ -166,12 +184,26 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         if (!conversationId) return new Response("ok");
 
         const inboundAt = new Date();
-        await supabaseAdmin.from("messages").insert({
+        // IDEMPOTENCY (authoritative gate): the DB unique index on
+        // (agency_id, provider_message_id) makes concurrent duplicate deliveries
+        // resolve to exactly one processed message. A conflict = stop, no AI, no send.
+        const { error: insertError } = await supabaseAdmin.from("messages").insert({
           agency_id: agencyId,
           conversation_id: conversationId,
           sender: "customer",
           body: text,
+          provider_message_id: providerMessageId,
         });
+        if (insertError) {
+          if (insertError.code === "23505") {
+            console.log(
+              `[whatsapp] concurrent duplicate delivery ignored provider_message_id=${providerMessageId}`,
+            );
+            return new Response("ok");
+          }
+          console.error("[whatsapp] inbound message insert failed", insertError.message);
+          return new Response("ok");
+        }
         await supabaseAdmin
           .from("whatsapp_configs")
           .update({ last_inbound_at: inboundAt.toISOString() })
