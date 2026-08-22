@@ -312,6 +312,14 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           }
 
           try {
+            // LATENCY — start the READ-ONLY work (module load, context, quota)
+            // concurrently with the coalescing wait. Nothing here decides
+            // whether to reply; the authoritative checks stay below the wait.
+            const salesAiModule = import("@/lib/sales-ai.server");
+            const prefetch = salesAiModule
+              .then((m) => m.prefetchReplyInputs(supabaseAdmin as never, conversationId))
+              .catch(() => null);
+
             // Brief accumulation window, then answer the whole burst at once.
             await waitForCoalesceWindow(windowMs);
 
@@ -336,8 +344,19 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             }
             console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
 
-            const { generateAgentReply } = await import("@/lib/sales-ai.server");
-            const reply = await generateAgentReply(supabaseAdmin as never, conversationId);
+            const { generateAgentReply, latestMessageStamp } = await salesAiModule;
+            const prefetched = await prefetch;
+            const expectedLatestMessageAt = latestMessageStamp(
+              pending as ReadonlyArray<{ created_at?: string | null }>,
+            );
+            const warmUsable =
+              Boolean(prefetched) && prefetched?.latestMessageAt === expectedLatestMessageAt;
+            console.log(`[whatsapp] prefetch warm_used=${warmUsable}`);
+            const reply = await generateAgentReply(supabaseAdmin as never, conversationId, {
+              prefetched,
+              expectedLatestMessageAt,
+            });
+
             console.log(`[whatsapp] ai reply generated=${Boolean(reply)}`);
             if (reply) {
               const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
