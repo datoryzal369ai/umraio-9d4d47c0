@@ -1,95 +1,32 @@
-# UMRAIO® Voice V1 — Live E2E Validation Gate (read-only audit + test runbook)
+# Voice V1 — Step 1: Confirm the Meta webhook subscription
 
-No files, secrets, database rows, routing or UI were changed. Findings below come from code reads, environment checks and read-only database queries run just now.
+Goal of this step: prove, before any live voice note is sent, that Meta is delivering webhook events for the UMRAX number to the live UMRAIO endpoint. No code, config, database or UI changes.
 
-## 1. Webhook endpoint and verification
+## What the data already tells us
 
-- Endpoint: `POST /api/public/whatsapp` (file `src/routes/api/public/whatsapp.ts`). Public prefix, so Meta reaches it without site auth.
-  - Preview: `https://project--34af2e6d-598c-48a2-a52d-f7cca0cbb051-dev.lovable.app/api/public/whatsapp`
-  - Production: `https://project--34af2e6d-598c-48a2-a52d-f7cca0cbb051.lovable.app/api/public/whatsapp` (also reachable on `umraio.com`)
-- `GET` handshake: requires `hub.mode=subscribe` plus `hub.verify_token` matching a `verify_token` value stored in `whatsapp_configs`. There is no env-var verify token; the token lives per-tenant in the database. (`WHATSAPP_VERIFY_TOKEN` is absent from the environment and is not used by this code — not a blocker.)
-- `POST` security: raw body → HMAC SHA-256 via `verifyMetaSignature` against `META_APP_SECRET` → 401 on mismatch before any DB/AI/Meta work.
-- Tenant resolution: `whatsapp_configs.phone_number_id` must equal Meta's `metadata.phone_number_id`. No match → logs an error and returns 200 (so Meta does not disable the subscription).
-- Idempotency: `messages(agency_id, provider_message_id)` fast-path check plus a unique index, both ahead of media retrieval, ASR and LLM.
+A read-only check of the backend shows inbound WhatsApp traffic from the UMRAX number arriving as recently as today at 05:54 UTC — 528 stored messages in total, all text. That means:
 
-## 2. Meta credentials/config — current state
+- the webhook URL currently configured in Meta reaches the live UMRAIO endpoint,
+- the `messages` field is subscribed (text notifications are delivered under that same field),
+- the HMAC app-secret check passes, and the number resolves to the UMRAX agency.
 
-| Item | Required for live voice | Status |
-|---|---|---|
-| `META_APP_SECRET` | Yes (HMAC) | Present |
-| `LOVABLE_API_KEY` | Yes (ASR) | Present |
-| `whatsapp_configs.access_token` | Yes (media download + reply send) | Present for UMRAX TRAVEL AGENCY (`phone_number_id 1232996883231810`) |
-| `whatsapp_configs.verify_token` | Yes (GET handshake) | Present for both rows |
-| `auto_reply` | Yes | true |
-| Webhook subscribed to `messages` field in Meta App | Yes | Cannot be verified from code — must be confirmed in the Meta app |
+Voice notes arrive on the exact same `messages` subscription — Meta has no separate "audio" field. So no additional subscription is needed; what remains is confirming the console still points where we think it does, and that nothing was changed since the last inbound.
 
-The second row ("umraverse Agency") has `phone_number_id = "016-755 9991"` and no access token — that row can never match a real Meta payload and cannot be used for the test. Use the UMRAX row.
+## Checks to perform in the Meta app (device/console side — cannot be done from code)
 
-Live traffic already exists on the UMRAX number: 528 text messages, latest inbound `2026-08-22 05:54`, so signature, tenant resolution, persistence and the reply path are proven live for text.
+1. WhatsApp → Configuration → Webhook: confirm the callback URL is the UMRAIO production endpoint
+   `https://project--34af2e6d-598c-48a2-a52d-f7cca0cbb051.lovable.app/api/public/whatsapp`
+   (`https://umraio.com/api/public/whatsapp` also serves it).
+2. Confirm the webhook status shows as verified — the verify token is stored per-agency in the backend, not in an environment variable, and the stored value for UMRAX is present.
+3. Under "Webhook fields", confirm `messages` is subscribed. Nothing else is required for voice.
+4. Confirm the phone number in use is the one whose Meta phone number id is `1232996883231810` (the UMRAX business number). The second stored connection ("umraverse Agency") holds a display-formatted number with no access token and can never match a real payload — do not test with it.
+5. Confirm the app is Live (not in development mode with the test number), and that the access token stored for UMRAX has not expired — an expired token still passes signature checks but fails media download.
 
-## 3. ASR provider and gateway configuration
+## Verification I run afterwards (read-only, from my side)
 
-- Model `openai/gpt-4o-transcribe`, endpoint `https://ai.gateway.lovable.dev/v1/audio/transcriptions`, multipart upload, `Authorization: Bearer LOVABLE_API_KEY` (`src/lib/voice/asr.server.ts`).
-- No `language` parameter — auto-detect, so Malay / English / mixed all transcribe as spoken.
-- Terminal statuses (400/404 → invalid audio, 401 → config, 402/403 → entitlement) are never retried; 429/5xx get 3 bounded attempts.
-- Media retrieval: Graph `v21.0` metadata then binary download with the agency token (`src/lib/voice/media.server.ts`); size gate at 10 MB, duration gate at 30 s (estimated at ~2000 bytes/s pre-ASR, corrected from the ASR-reported duration afterwards).
-- Not yet proven: a real gateway transcription call has never run in production — only mocked in tests. This is the single largest unknown and only a real audio payload settles it.
+- Ask you to send one ordinary text message from a real phone, then confirm a new `messages` row and a fresh `last_inbound_at` timestamp appear for the UMRAX agency, plus a matching AI reply row. That single round trip proves subscription, signature, tenant resolution, persistence and outbound delivery in one shot.
+- If nothing appears: the discriminator is whether the signature log line shows a valid or invalid signature — invalid means the app secret no longer matches the app; nothing at all means the subscription or URL is wrong.
 
-## 4. Voice quota prerequisites
+## What happens after this step
 
-- `assertVoiceQuota` runs before media download and before ASR, and fails closed if metering is unavailable.
-- UMRAX agency plan = `trial` → `voiceMinutesPerMonth: 15`.
-- Current voice usage this month: zero `voice_transcription` rows, so the full 15 minutes is available. A 10–20 s test note consumes 1 minute.
-- Successful transcriptions meter `duration_seconds`; failures are recorded with `success: false` and are not charged as successful.
-
-## 5. Exact live test sequence
-
-1. Confirm in the Meta app that the WhatsApp `messages` webhook is subscribed and points at the production URL above (device/Meta-console step).
-2. From a real phone that is not the business number, send the UMRAX number a **text** message first ("Salam, nak tanya pakej umrah") to re-confirm the baseline path is healthy today.
-3. Send a **voice note of 10–20 seconds** in Malay or mixed Malay-English with a clear Umrah enquiry (e.g. name, 4 pax, March intake, budget).
-4. Expect: no second AI reply for the text if sent within the coalescing window; for the voice note a single WhatsApp reply from RAIŌ answering the spoken content within roughly 10–25 s (3.5 s audio coalescing window + media + ASR + model).
-5. Negative case (optional, same session): send a voice note longer than 30 s → expect the honest Malay "too long" fallback, no AI answer.
-
-## 6. Telemetry that proves each stage
-
-Server logs (in order) for one successful note:
-
-```text
-[whatsapp] webhook_signature_valid=true
-[whatsapp] webhook received phone_number_id=1232996883231810 type=audio
-[whatsapp] agency identified agency_id=efaa961f-...
-[voice] audio_received ... media_id=...
-[voice] quota_decision=allowed
-[voice] media_retrieval=ok bytes=... mime=audio/ogg
-[voice] audio_duration_estimate_s=...
-[voice] asr_started model=openai/gpt-4o-transcribe
-[voice] asr_success chars=... duration_s=... latency_ms=...
-[voice] transcript_pipeline_entry total_latency_ms=...
-```
-
-Database proof after the test:
-
-- `select modality, media_id, body from messages where agency_id='efaa961f-...' and modality='audio' order by created_at desc limit 5;` — inbound row must be `modality='audio'` with the Meta media id and the transcript as `body`.
-- the following `sender='ai'` row must be `modality='text'`.
-- `select category, success, duration_seconds from usage_events where counts_against='voice_minutes' order by occurred_at desc limit 5;` — one row, `success=true`, real duration.
-- `activity_log` carries an inbound entry; a failed note instead writes "Voice note could not be processed" with the reason.
-
-Note: today there are zero `audio` rows and zero voice usage events, so any row appearing after the test is unambiguous evidence.
-
-## 7. Blockers
-
-No P0 code or configuration blocker was found for a single live test. Open risks, in order:
-
-1. **Meta webhook subscription for the `messages` field cannot be verified from here.** If it is not subscribed (or points at an old URL), nothing arrives. Device/console verification required.
-2. **The gateway ASR call is unproven in production.** A 401/402/404 from the transcriptions endpoint would surface as the generic Malay fallback; the `[voice] asr_failure category=...` log line is the discriminator.
-3. **Trial voice allowance is 15 minutes/month** — fine for testing, needs raising before a pilot with real volume.
-4. Stale `whatsapp_configs` row for "umraverse Agency" (`phone_number_id` holds a display number, no token). Harmless for the test, but it should be cleaned up before onboarding real agencies.
-
-### Verifiable from code/config vs. requires a real device
-
-- From code/config (all done above): endpoint, HMAC, verify-token model, tenant row, token presence, ASR wiring, quota headroom, telemetry lines, DB assertions.
-- Requires a real WhatsApp device / Meta number: webhook subscription state, actual Opus payload retrieval, real transcription quality, end-to-end latency, and the delivered reply.
-
-## Proposed next action (no implementation in this task)
-
-Run the live test as sequenced in section 5, then return here with the observed log lines. Nothing is changed until those logs identify a real failure.
+Only once the text round trip is confirmed do we proceed to the live voice note (10–20 s, Malay or mixed), and I read the voice-stage telemetry and the audio/usage rows to prove media retrieval, transcription, pipeline entry and metering. That is a separate step and nothing is implemented in either.
