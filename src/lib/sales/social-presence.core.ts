@@ -268,6 +268,9 @@ export function resolveAddress(input: {
   }
 
   if (!name && input.knownName) name = cleanName(input.knownName);
+  // An explicit declaration also becomes the preferred form of address, even
+  // when a different identity is already stored on the lead.
+  if (declaredName && !preferredName) preferredName = declaredName;
 
   const display = preferredName ?? name;
   const useHonorific = honorific && !honorificDeclined ? honorific : null;
