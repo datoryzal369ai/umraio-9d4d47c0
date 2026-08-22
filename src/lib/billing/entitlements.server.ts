@@ -45,6 +45,11 @@ export type PlanEntitlement = {
   aiRepliesPerMonth: number;
   /** AI worker tasks allowed per calendar month. */
   aiTasksPerMonth: number;
+  /**
+   * VOICE V1 PREPARATION — spoken (ASR) minutes allowed per calendar month.
+   * Nothing consumes this yet; voice processing is not implemented.
+   */
+  voiceMinutesPerMonth: number;
   whatsappNumbers: number;
   users: number;
   knowledgeArticles: number;
@@ -64,6 +69,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "RM149/month during the founding period",
     aiRepliesPerMonth: 1_500,
     aiTasksPerMonth: 300,
+    voiceMinutesPerMonth: 60,
     whatsappNumbers: 1,
     users: 3,
     knowledgeArticles: 50,
@@ -81,6 +87,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "Free during evaluation",
     aiRepliesPerMonth: 300,
     aiTasksPerMonth: 60,
+    voiceMinutesPerMonth: 15,
     whatsappNumbers: 1,
     users: 3,
     knowledgeArticles: 25,
@@ -96,6 +103,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "Not commercially available yet",
     aiRepliesPerMonth: 5_000,
     aiTasksPerMonth: 1_000,
+    voiceMinutesPerMonth: 200,
     whatsappNumbers: 2,
     users: 10,
     knowledgeArticles: 250,
@@ -111,6 +119,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "Not commercially available yet",
     aiRepliesPerMonth: 20_000,
     aiTasksPerMonth: 4_000,
+    voiceMinutesPerMonth: 600,
     whatsappNumbers: 5,
     users: 30,
     knowledgeArticles: 1_000,
@@ -127,6 +136,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "RM199/month",
     aiRepliesPerMonth: 1_500,
     aiTasksPerMonth: 300,
+    voiceMinutesPerMonth: 60,
     whatsappNumbers: 1,
     users: 3,
     knowledgeArticles: 50,
@@ -142,6 +152,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "RM299/month founding price · reference RM499/month",
     aiRepliesPerMonth: 5_000,
     aiTasksPerMonth: 1_000,
+    voiceMinutesPerMonth: 200,
     whatsappNumbers: 2,
     users: 10,
     knowledgeArticles: 250,
@@ -157,6 +168,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "RM799/month",
     aiRepliesPerMonth: 20_000,
     aiTasksPerMonth: 4_000,
+    voiceMinutesPerMonth: 600,
     whatsappNumbers: 5,
     users: 30,
     knowledgeArticles: 1_000,
@@ -172,6 +184,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
     priceNote: "Custom pricing — confirmed with the UMRAIO team",
     aiRepliesPerMonth: 50_000,
     aiTasksPerMonth: 10_000,
+    voiceMinutesPerMonth: 2000,
     whatsappNumbers: 10,
     users: 100,
     knowledgeArticles: 5_000,
