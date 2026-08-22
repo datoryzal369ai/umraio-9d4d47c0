@@ -31,10 +31,10 @@ export function BrandLogo({
         <img
           src={wordmarkAsset.url}
           alt="UMRAIO®"
-          className="h-8 w-auto object-contain [image-rendering:auto] sm:h-9 md:h-10"
+          className="h-7 w-auto min-w-[7rem] max-w-full object-contain [image-rendering:auto] sm:h-8 md:h-10"
         />
         {showTagline ? (
-          <span className="mt-1 text-[8px] font-light uppercase leading-[1.5] tracking-[0.24em] text-muted-foreground/90 sm:text-[9px]">
+          <span className="mt-1 max-w-[7rem] text-[8px] font-light uppercase leading-[1.5] tracking-[0.22em] text-muted-foreground/90 sm:max-w-none sm:text-[9px]">
             AI Autonomous Business Executive
           </span>
         ) : null}
