@@ -1,3 +1,4 @@
+import aiLogoAsset from "@/assets/ai-autonomous-intelligence-logo.png.asset.json";
 import renaioMark from "@/assets/renaio-core-mark.png.asset.json";
 import umraioWordmark from "@/assets/umraio-wordmark-tm.png.asset.json";
 import { useLocale } from "@/lib/i18n/locale";
@@ -137,10 +138,12 @@ export function IntelligenceArchitecture() {
 
           {/* LEVEL 2 — ĀI™ */}
           <div className="flex w-full flex-col items-center">
-            <p className="text-exec-intelligence font-display text-[44px] font-extrabold leading-none tracking-tight sm:text-6xl">
-              ĀI
-              <sup className="ml-0.5 align-super text-[0.26em] font-semibold tracking-normal">™</sup>
-            </p>
+            <img
+              src={aiLogoAsset.url}
+              alt="ĀI™ — Autonomous Intelligence™"
+              loading="lazy"
+              className="h-[36px] w-auto object-contain sm:h-[48px]"
+            />
             <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
               {t.aiParadigm}
             </p>
