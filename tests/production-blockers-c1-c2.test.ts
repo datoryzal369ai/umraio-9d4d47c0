@@ -4,6 +4,8 @@ import { signMetaPayload } from "../src/lib/whatsapp-signature";
 
 const SECRET = "test_app_secret_value";
 const CRON_SECRET = "test_cron_secret_value_1234567890";
+process.env["WHATSAPP_COALESCE_WINDOW_MS"] = "0";
+
 const PUBLISHABLE = "sb_publishable_jaH1v305MWLN1yWA4UBH1Q_DNl0S5YZ";
 
 // ---------------- shared fake DB ----------------
@@ -19,6 +21,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
     const filters: Row = {};
     const chain: Record<string, unknown> = {};
     chain["select"] = () => chain;
+    chain["or"] = () => chain;
     chain["order"] = () => chain;
     chain["limit"] = () => chain;
     chain["eq"] = (col: string, val: unknown) => {
@@ -38,9 +41,10 @@ vi.mock("@/integrations/supabase/client.server", () => {
           const dup = { error: { code: "23505", message: "duplicate key" } };
           return Object.assign(Promise.resolve(dup), chain);
         }
+        if (!row["created_at"]) row["created_at"] = new Date().toISOString();
         db.messages.push(row);
       }
-      return Object.assign(Promise.resolve({ error: null }), chain);
+      return Promise.resolve({ error: null });
     };
     chain["maybeSingle"] = async () => {
       if (name === "whatsapp_configs") {
@@ -66,6 +70,20 @@ vi.mock("@/integrations/supabase/client.server", () => {
       return { data: null };
     };
     chain["single"] = async () => ({ data: { id: "x", ai_enabled: true } });
+    // Thenable chain: awaiting a filtered query resolves to rows.
+    chain["then"] = (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) => {
+      let data: unknown = [];
+      if (name === "messages") {
+        data = db.messages.filter(
+          (m) =>
+            m["agency_id"] === filters["agency_id"] &&
+            (filters["conversation_id"] === undefined ||
+              m["conversation_id"] === filters["conversation_id"]),
+        );
+      }
+      if (name === "conversations") data = [{ id: "conv-1" }];
+      return Promise.resolve({ data, error: null }).then(ok, err);
+    };
     return chain;
   };
   return {
