@@ -112,10 +112,27 @@ function cleanName(raw: string | undefined): string | null {
 }
 
 
+/**
+ * J2 — DECLARED identity. Only these phrasings are an explicit self-declaration
+ * of how the customer wants to be known, and only these may override an
+ * identity already stored on the lead.
+ */
+const DECLARED_NAME_PATTERNS: RegExp[] = [
+  /\bnama\s+(?:penuh\s+)?(?:saya|aku|sy)\s+(?:ialah\s+|adalah\s+|is\s+)?([A-Za-z' -]{2,40})/i,
+  /\b(?:boleh\s+)?panggil\s+(?:saya|sy|aku)\s+([A-Za-z' -]{2,40})/i,
+  /\bsaya\s+lebih\s+suka\s+dipanggil\s+([A-Za-z' -]{2,40})/i,
+  /\bcall\s+me\s+([A-Za-z' -]{2,40})/i,
+  /\bmy\s+name\s+is\s+([A-Za-z' -]{2,40})/i,
+];
+
+/**
+ * J1 — weaker, INFERRED patterns. `i am` / `i'm` / `this is` must be anchored on
+ * real word boundaries: the previous `i\s*am` matched the substring "iam" inside
+ * Malay words such as "diam" ("Kenapa diam pulak" → false name "Pulak").
+ */
 const NAME_PATTERNS: RegExp[] = [
-  /(?:nama\s+(?:saya|aku|sy)|nama\s+penuh\s+saya)\s+(?:ialah\s+|adalah\s+|is\s+)?([A-Za-z' -]{2,40})/i,
-  /(?:panggil\s+(?:saya|sy|aku)|call\s+me)\s+([A-Za-z' -]{2,40})/i,
-  /(?:my\s+name\s+is|i\s*am|i'?m|this\s+is)\s+([A-Za-z' -]{2,40})/i,
+  ...DECLARED_NAME_PATTERNS,
+  /(?:^|[\s,;:.!?])(?:i\s+am|i'm|im|this\s+is)\s+([A-Za-z' -]{2,40})/i,
   /\b(?:[Ss]aya|[Ss]y|[Aa]ku)\s+([A-Z][A-Za-z']{1,20}(?:\s+[A-Z][A-Za-z']{1,20})?)\b/,
   /\b(?:[Ee]ncik|[Pp]uan|[Tt]uan|[Cc]ik|[Dd]ato'?|[Dd]atuk|[Dd]atin|[Hh]aji|[Hh]ajah|[Uu]staz|[Uu]stazah|[Dd]r\.?|[Mm]r\.?|[Mm]rs\.?|[Mm]s\.?)\s+([A-Z][A-Za-z']{1,20}(?:\s+[A-Z][A-Za-z']{1,20})?)\b/,
 ];
