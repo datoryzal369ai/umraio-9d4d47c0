@@ -312,6 +312,19 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           }
 
           try {
+            // LATENCY — start the READ-ONLY work (module load, context, quota)
+            // concurrently with the coalescing wait. Nothing here decides
+            // whether to reply; the authoritative checks stay below the wait.
+            const salesAiModule = import("@/lib/sales-ai.server");
+            const prefetch = salesAiModule
+              .then((m) =>
+                typeof m.prefetchReplyInputs === "function"
+                  ? m.prefetchReplyInputs(supabaseAdmin as never, conversationId)
+                  : null,
+              )
+              .catch(() => null);
+
+
             // Brief accumulation window, then answer the whole burst at once.
             await waitForCoalesceWindow(windowMs);
 
@@ -336,8 +349,24 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             }
             console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
 
-            const { generateAgentReply } = await import("@/lib/sales-ai.server");
-            const reply = await generateAgentReply(supabaseAdmin as never, conversationId);
+            const { generateAgentReply } = await salesAiModule;
+            const prefetched = await prefetch;
+            let expectedLatestMessageAt: string | null = null;
+            for (const m of pending as ReadonlyArray<{ created_at?: string | null }>) {
+              const at = m.created_at ?? null;
+              if (at && (!expectedLatestMessageAt || at > expectedLatestMessageAt)) {
+                expectedLatestMessageAt = at;
+              }
+            }
+
+            const warmUsable =
+              Boolean(prefetched) && prefetched?.latestMessageAt === expectedLatestMessageAt;
+            console.log(`[whatsapp] prefetch warm_used=${warmUsable}`);
+            const reply = await generateAgentReply(supabaseAdmin as never, conversationId, {
+              prefetched,
+              expectedLatestMessageAt,
+            });
+
             console.log(`[whatsapp] ai reply generated=${Boolean(reply)}`);
             if (reply) {
               const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);

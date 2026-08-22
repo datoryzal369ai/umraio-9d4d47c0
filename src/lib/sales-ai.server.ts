@@ -1009,9 +1009,66 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
   return createToolRegistry(tools);
 }
 
-export async function generateAgentReply(supabase: Db, conversationId: string): Promise<string> {
-  const ctx = await loadContext(supabase, conversationId);
+/**
+ * LATENCY — read-only warm-up. Loads exactly the same inputs the reply path
+ * needs (context + quota) so they can be fetched CONCURRENTLY with the
+ * coalescing wait instead of serially after it. Never decides anything: the
+ * result is only reused when the conversation content is provably unchanged.
+ */
+export type PrefetchedReplyInputs = {
+  ctx: Awaited<ReturnType<typeof loadContext>>;
+  quota: Awaited<ReturnType<typeof assertQuota>>;
+  latestMessageAt: string | null;
+};
+
+export function latestMessageStamp(
+  messages: ReadonlyArray<{ created_at?: string | null }>,
+): string | null {
+  let latest: string | null = null;
+  for (const m of messages) {
+    const at = m.created_at ?? null;
+    if (at && (!latest || at > latest)) latest = at;
+  }
+  return latest;
+}
+
+export async function prefetchReplyInputs(
+  supabase: Db,
+  conversationId: string,
+): Promise<PrefetchedReplyInputs | null> {
+  try {
+    const ctx = await loadContext(supabase, conversationId);
+    const agencyId = ctx.conversation.agency_id as string;
+    const quota = await assertQuota(supabase, agencyId, "customer_reply");
+    return {
+      ctx,
+      quota,
+      latestMessageAt: latestMessageStamp(
+        ctx.messages as ReadonlyArray<{ created_at?: string | null }>,
+      ),
+    };
+  } catch {
+    // Fail soft: the caller falls back to the normal sequential path.
+    return null;
+  }
+}
+
+export async function generateAgentReply(
+  supabase: Db,
+  conversationId: string,
+  warm?: { prefetched: PrefetchedReplyInputs | null; expectedLatestMessageAt: string | null },
+): Promise<string> {
+  // Reuse the warm read ONLY when no new message landed during the wait.
+  const reusable =
+    warm?.prefetched &&
+    warm.prefetched.ctx.conversation.id === conversationId &&
+    warm.prefetched.latestMessageAt === warm.expectedLatestMessageAt
+      ? warm.prefetched
+      : null;
+
+  const ctx = reusable ? reusable.ctx : await loadContext(supabase, conversationId);
   const agencyId = ctx.conversation.agency_id as string;
+
 
   // Step 3.6 — DETERMINISTIC SAFETY GATE. Customer control (opt-out, explicit
   // human request) is decided in code and short-circuits the model entirely.
@@ -1033,7 +1090,10 @@ export async function generateAgentReply(supabase: Db, conversationId: string): 
 
   // COMMERCIAL SAFETY — checked BEFORE any model call, from the server-side
   // plan only. Fails closed when metering is unavailable (never unlimited AI).
-  const quota = await assertQuota(supabase, agencyId, "customer_reply");
+  const quota = reusable
+    ? reusable.quota
+    : await assertQuota(supabase, agencyId, "customer_reply");
+
 
   const rawHistory = ctx.messages.slice(-40).map((m) => ({
     role: (m.sender === "customer" ? "user" : "assistant") as "user" | "assistant",
