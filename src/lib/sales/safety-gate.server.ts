@@ -98,6 +98,8 @@ export async function applySafetyGate(args: {
       .from("conversations")
       .update({
         ai_enabled: false,
+        // J4 — mute boundary for no-replay on re-enable.
+        ai_muted_at: now,
         human_attention_required: true,
         conversation_state: "HUMAN_HANDOFF",
         state_updated_at: now,
