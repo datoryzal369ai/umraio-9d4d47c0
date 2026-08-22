@@ -116,21 +116,54 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           }
         }
 
-        // VOICE V1 PREP — modality routing. Audio is reserved, never processed
-        // in this preparation phase: no media download, no ASR, no LLM, no reply.
-        if (inbound.modality === "audio") {
-          console.log(
-            `[whatsapp] audio message received (Voice V1 not enabled) agency_id=${agencyId} media_id=${inbound.mediaId ?? "none"} provider_message_id=${providerMessageId ?? "none"}`,
-          );
-          return new Response("ok");
-        }
+        // VOICE V1 — modality routing. Audio becomes a transcript here and then
+        // enters the EXISTING text pipeline unchanged. There is no second brain.
         if (inbound.modality === "unsupported") {
           console.log(
             `[whatsapp] unsupported message type ignored agency_id=${agencyId} type=${inbound.rawType}`,
           );
           return new Response("ok");
         }
-        if (!inbound.processable || !text) return new Response("ok");
+
+        let text = inbound.text;
+        if (inbound.modality === "audio") {
+          if (!inbound.mediaId || !config.access_token) {
+            console.error(
+              `[whatsapp] audio not processable agency_id=${agencyId} has_media=${Boolean(inbound.mediaId)} has_token=${Boolean(config.access_token)}`,
+            );
+            return new Response("ok");
+          }
+          const { ingestVoiceNote } = await import("@/lib/voice/inbound.server");
+          const voice = await ingestVoiceNote(supabaseAdmin as never, {
+            agencyId,
+            mediaId: inbound.mediaId,
+            accessToken: config.access_token,
+            providerMessageId,
+          });
+          if (!voice.ok) {
+            // Never silently drop, never fabricate a transcript, never let the
+            // sales brain answer guessed content.
+            await sendWhatsappText(
+              phoneNumberId,
+              config.access_token,
+              from,
+              voice.customerMessage,
+            );
+            await supabaseAdmin.from("activity_log").insert({
+              agency_id: agencyId,
+              actor: "ai",
+              action: "Voice note could not be processed",
+              entity: "lead",
+              entity_id: null,
+              meta: { reason: voice.reason, from },
+            });
+            return new Response("ok");
+          }
+          text = voice.transcript;
+        }
+
+        if (!text.trim()) return new Response("ok");
+
 
 
         // Find or create the lead by phone
