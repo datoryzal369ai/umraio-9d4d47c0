@@ -111,10 +111,7 @@ function HeroIdentity({ lead, accent }: { lead: string; accent: string }) {
           {before}
         </span>
       ) : null}
-      <span
-        className="text-hero-executive block text-balance pb-1 text-[30px] font-black uppercase leading-[1.06] tracking-[-0.015em] sm:text-5xl lg:text-6xl"
-        data-text={name}
-      >
+      <span className="text-exec-intelligence block text-balance text-[30px] font-extrabold uppercase leading-[1.06] tracking-[-0.015em] sm:text-5xl lg:text-6xl">
         {name}
         <sup className="ml-0.5 align-super text-[0.36em] leading-none tracking-normal">™</sup>
       </span>
