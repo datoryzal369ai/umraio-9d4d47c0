@@ -1090,7 +1090,10 @@ export async function generateAgentReply(
 
   // COMMERCIAL SAFETY — checked BEFORE any model call, from the server-side
   // plan only. Fails closed when metering is unavailable (never unlimited AI).
-  const quota = await assertQuota(supabase, agencyId, "customer_reply");
+  const quota = reusable
+    ? reusable.quota
+    : await assertQuota(supabase, agencyId, "customer_reply");
+
 
   const rawHistory = ctx.messages.slice(-40).map((m) => ({
     role: (m.sender === "customer" ? "user" : "assistant") as "user" | "assistant",
