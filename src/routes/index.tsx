@@ -134,9 +134,9 @@ function Index() {
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-particles opacity-70" />
 
       <div className="relative">
-        <header className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-6 py-8 sm:px-10 sm:py-10">
+        <header className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
           <BrandLogo showTagline />
-          <nav className="flex items-center gap-2 sm:gap-3">
+          <nav className="flex items-center gap-1.5 sm:gap-3">
             <LanguageSelector />
             {loading ? null : user ? (
               <Button asChild size="sm" className="rounded-full">
@@ -148,13 +148,13 @@ function Index() {
                   asChild
                   variant="ghost"
                   size="sm"
-                  className="rounded-full px-3 sm:px-4"
+                  className="rounded-full px-2.5 sm:px-4"
                 >
                   <Link to="/auth" search={{ mode: "login", redirect: undefined }}>
                     {t.nav.signIn}
                   </Link>
                 </Button>
-                <Button asChild size="sm" className="rounded-full shadow-elevated">
+                <Button asChild size="sm" className="rounded-full px-3 shadow-elevated sm:px-4">
                   <Link to="/auth" search={{ mode: "register", redirect: undefined }}>
                     {t.hero.ctaTrial}
                   </Link>

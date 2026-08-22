@@ -23,24 +23,23 @@ export function BrandLogo({
       <img
         src={logoAsset.url}
         alt="UMRAIO® logo"
-        className="size-12 shrink-0 rounded-2xl object-cover ring-1 ring-border transition-shadow duration-300 group-hover:glow-ring"
-        width={48}
-        height={48}
+        className="size-14 shrink-0 rounded-2xl object-cover ring-1 ring-border transition-shadow duration-300 group-hover:glow-ring md:size-16"
+        width={64}
+        height={64}
       />
       <span className="flex min-w-0 flex-col">
         <img
           src={wordmarkAsset.url}
           alt="UMRAIO®"
-          className="h-8 w-auto object-contain [image-rendering:auto] sm:h-9"
+          className="h-7 w-auto min-w-[7rem] max-w-full object-contain [image-rendering:auto] sm:h-8 md:h-10"
         />
         {showTagline ? (
-          <span className="mt-1.5 hidden text-[9px] font-light uppercase leading-[1.5] tracking-[0.24em] text-muted-foreground/90 sm:block">
+          <span className="mt-1 max-w-[7rem] text-[8px] font-light uppercase leading-[1.5] tracking-[0.22em] text-muted-foreground/90 sm:max-w-none sm:text-[9px]">
             AI Autonomous Business Executive
           </span>
         ) : null}
       </span>
     </Link>
-
   );
 }
 
