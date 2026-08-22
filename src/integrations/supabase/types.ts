@@ -1188,6 +1188,8 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          media_id: string | null
+          modality: string
           provider_message_id: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
         }
@@ -1197,6 +1199,8 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
+          media_id?: string | null
+          modality?: string
           provider_message_id?: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
         }
@@ -1206,6 +1210,8 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
+          media_id?: string | null
+          modality?: string
           provider_message_id?: string | null
           sender?: Database["public"]["Enums"]["msg_sender"]
         }
@@ -1556,6 +1562,7 @@ export type Database = {
           correlation_id: string | null
           counts_against: string
           created_at: string
+          duration_seconds: number | null
           event_key: string
           id: string
           input_tokens: number | null
@@ -1578,6 +1585,7 @@ export type Database = {
           correlation_id?: string | null
           counts_against?: string
           created_at?: string
+          duration_seconds?: number | null
           event_key: string
           id?: string
           input_tokens?: number | null
@@ -1600,6 +1608,7 @@ export type Database = {
           correlation_id?: string | null
           counts_against?: string
           created_at?: string
+          duration_seconds?: number | null
           event_key?: string
           id?: string
           input_tokens?: number | null

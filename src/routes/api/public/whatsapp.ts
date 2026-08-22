@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { verifyMetaSignature } from "@/lib/whatsapp-signature";
+import { classifyInboundMessage, persistedModality } from "@/lib/whatsapp/message-classification.core";
 
 type WebhookValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
@@ -68,11 +69,16 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         );
         if (!message || !phoneNumberId) return new Response("ok");
 
-        const from = message.from ?? "";
-        const text = message.type === "text" ? (message.text?.body ?? "") : "";
-        const providerMessageId = message.id?.trim() || null;
-        if (!from || !text) return new Response("ok");
+        // VOICE V1 PREP (1) — classify BEFORE any modality-specific work.
+        const inbound = classifyInboundMessage(message);
+        const from = inbound.from;
+        const text = inbound.text;
+        const providerMessageId = inbound.providerMessageId;
+        if (!from) return new Response("ok");
 
+        // VOICE V1 PREP (1) — agency/config/access-token resolution is HOISTED
+        // above the modality branch: audio retrieval will need the authenticated
+        // Meta token before anything else. Tenant resolution semantics unchanged.
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { data: config } = await supabaseAdmin
           .from("whatsapp_configs")
@@ -93,6 +99,8 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
         // IDEMPOTENCY (fast path): Meta retries the same messages[].id. Scoped by
         // agency so identical ids across tenants stay isolated.
+        // VOICE V1 PREP (2) — this gate runs BEFORE media retrieval / ASR / LLM,
+        // so a replayed audio webhook can never re-download or re-transcribe.
         if (providerMessageId) {
           const { data: seen } = await supabaseAdmin
             .from("messages")
@@ -102,11 +110,28 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             .maybeSingle();
           if (seen) {
             console.log(
-              `[whatsapp] duplicate delivery ignored provider_message_id=${providerMessageId}`,
+              `[whatsapp] duplicate delivery ignored provider_message_id=${providerMessageId} modality=${inbound.modality}`,
             );
             return new Response("ok");
           }
         }
+
+        // VOICE V1 PREP — modality routing. Audio is reserved, never processed
+        // in this preparation phase: no media download, no ASR, no LLM, no reply.
+        if (inbound.modality === "audio") {
+          console.log(
+            `[whatsapp] audio message received (Voice V1 not enabled) agency_id=${agencyId} media_id=${inbound.mediaId ?? "none"} provider_message_id=${providerMessageId ?? "none"}`,
+          );
+          return new Response("ok");
+        }
+        if (inbound.modality === "unsupported") {
+          console.log(
+            `[whatsapp] unsupported message type ignored agency_id=${agencyId} type=${inbound.rawType}`,
+          );
+          return new Response("ok");
+        }
+        if (!inbound.processable || !text) return new Response("ok");
+
 
         // Find or create the lead by phone
         let leadId: string | null = null;
@@ -193,6 +218,8 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           sender: "customer",
           body: text,
           provider_message_id: providerMessageId,
+          modality: persistedModality(inbound.modality),
+          media_id: inbound.mediaId,
         });
         if (insertError) {
           if (insertError.code === "23505") {
@@ -275,6 +302,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                 conversation_id: conversationId,
                 sender: "ai",
                 body: reply,
+                modality: "text",
               });
               const responseMs = Date.now() - inboundAt.getTime();
               await supabaseAdmin
