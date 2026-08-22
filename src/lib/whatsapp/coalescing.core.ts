@@ -11,6 +11,12 @@
 /** Time RAIŌ waits for additional rapid messages before answering. */
 export const COALESCE_WINDOW_MS = 9_000;
 
+/**
+ * VOICE V1 — audio-originated turns already spent time in media retrieval and
+ * ASR, so they wait a shorter window. Text behaviour is unchanged.
+ */
+export const AUDIO_COALESCE_WINDOW_MS = 3_500;
+
 /** A claim is considered abandoned after this long (crashed worker safety net). */
 export const CLAIM_STALE_MS = 120_000;
 
