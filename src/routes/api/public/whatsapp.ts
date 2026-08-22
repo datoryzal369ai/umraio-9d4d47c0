@@ -218,7 +218,53 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         });
 
         if (aiEnabled && config.auto_reply && config.access_token) {
+          // J3 — RAPID MESSAGE COALESCING. Exactly one delivery per conversation
+          // wins the claim; the others just persist their message and return, so
+          // a burst of rapid messages produces ONE contextual reply, not one per
+          // message. C2 idempotency above is untouched.
+          const {
+            claimConversationReply,
+            releaseConversationClaim,
+            loadPendingInbound,
+            waitForCoalesceWindow,
+          } = await import("@/lib/whatsapp/coalescing.server");
+
+          const claimed = await claimConversationReply(supabaseAdmin as never, {
+            agencyId,
+            conversationId,
+          });
+          if (!claimed) {
+            console.log(
+              `[whatsapp] message coalesced into in-flight reply conversation=${conversationId}`,
+            );
+            return new Response("ok");
+          }
+
           try {
+            // Brief accumulation window, then answer the whole burst at once.
+            await waitForCoalesceWindow();
+
+            const { data: convState } = await supabaseAdmin
+              .from("conversations")
+              .select("ai_enabled, ai_muted_at")
+              .eq("id", conversationId)
+              .maybeSingle();
+
+            // J4 — never replay messages received while the AI was muted.
+            const pending = await loadPendingInbound(supabaseAdmin as never, {
+              agencyId,
+              conversationId,
+              mutedAt: (convState as { ai_muted_at?: string | null } | null)?.ai_muted_at ?? null,
+            });
+            if (!convState?.ai_enabled || pending.length === 0) {
+              console.log(
+                `[whatsapp] no genuine pending inbound to answer conversation=${conversationId} pending=${pending.length}`,
+              );
+              await releaseConversationClaim(supabaseAdmin as never, { agencyId, conversationId });
+              return new Response("ok");
+            }
+            console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
+
             const { generateAgentReply } = await import("@/lib/sales-ai.server");
             const reply = await generateAgentReply(supabaseAdmin as never, conversationId);
             console.log(`[whatsapp] ai reply generated=${Boolean(reply)}`);
