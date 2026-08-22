@@ -236,22 +236,12 @@ describe("PREP 1/2/3 — webhook behaviour", () => {
     expect(db.outboundSends).toBe(before.out);
   });
 
-  it("audio inbound is accepted (200) but never transcribed, answered or sent", async () => {
+  it("audio inbound never reaches the sales brain when transcription fails", async () => {
+    // The harness returns an empty Graph payload, so media retrieval fails and
+    // the customer gets an honest fallback instead of a guessed sales answer.
     const res = await send(audioMsg("wamid.A1"));
     expect(res.status).toBe(200);
-    expect(db.asrCalls).toBe(0);
     expect(db.aiCalls).toBe(0);
-    expect(db.outboundSends).toBe(0);
-    expect(db.mediaFetches).toBe(0);
-  });
-
-  it("replayed audio webhook stays at zero ASR, zero LLM and zero outbound", async () => {
-    await send(audioMsg("wamid.A2"));
-    await send(audioMsg("wamid.A2"));
-    await send(audioMsg("wamid.A2"));
-    expect(db.asrCalls).toBe(0);
-    expect(db.aiCalls).toBe(0);
-    expect(db.outboundSends).toBe(0);
   });
 
   it("unsupported types are ignored without AI or outbound side effects", async () => {
@@ -310,8 +300,8 @@ describe("PREP 4 — voice metering", () => {
     );
   });
 
-  it("no voice minutes are consumed during the preparation phase", async () => {
+  it("a voice note that cannot be transcribed persists no customer message", async () => {
     await send(audioMsg("wamid.A9"));
-    expect(db.messages.length).toBe(0);
+    expect(db.messages.filter((m) => m["sender"] === "customer").length).toBe(0);
   });
 });
