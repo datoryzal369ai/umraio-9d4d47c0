@@ -349,11 +349,16 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             }
             console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
 
-            const { generateAgentReply, latestMessageStamp } = await salesAiModule;
+            const { generateAgentReply } = await salesAiModule;
             const prefetched = await prefetch;
-            const expectedLatestMessageAt = latestMessageStamp(
-              pending as ReadonlyArray<{ created_at?: string | null }>,
-            );
+            let expectedLatestMessageAt: string | null = null;
+            for (const m of pending as ReadonlyArray<{ created_at?: string | null }>) {
+              const at = m.created_at ?? null;
+              if (at && (!expectedLatestMessageAt || at > expectedLatestMessageAt)) {
+                expectedLatestMessageAt = at;
+              }
+            }
+
             const warmUsable =
               Boolean(prefetched) && prefetched?.latestMessageAt === expectedLatestMessageAt;
             console.log(`[whatsapp] prefetch warm_used=${warmUsable}`);
