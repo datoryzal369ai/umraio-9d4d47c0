@@ -159,6 +159,37 @@ describe("Step 3.6 — deterministic human handoff", () => {
     expect(result.state).toBe("HUMAN_HANDOFF");
     expect(result.humanRequested).toBe(true);
   });
+
+  test("explicit human/staff targets still escalate", () => {
+    for (const m of [
+      "saya nak bercakap dengan manusia",
+      "nak bercakap dengan staff",
+      "nak bercakap dengan staf",
+      "nak bercakap dengan ejen",
+      "nak bercakap dengan admin",
+      "nak bercakap dengan pegawai",
+      "nak bercakap dengan customer service",
+    ]) {
+      expect(detectHumanRequest(m)).toBe(true);
+    }
+  });
+
+  test("talking to RAIŌ itself is NOT a handoff", () => {
+    for (const m of [
+      "Nak bercakap dengan awak",
+      "Nak cakap dengan awak",
+      "Nak bercakap dengan RAIŌ",
+      "boleh bercakap dengan awak?",
+      "saya nak bercakap dengan awak",
+      "Heloo",
+      "berapa harga pakej umrah bulan disember untuk 2 orang?",
+    ]) {
+      expect(detectHumanRequest(m)).toBe(false);
+    }
+    const result = intel(["Nak bercakap dengan awak"]);
+    expect(result.humanRequested).toBe(false);
+    expect(result.state).not.toBe("HUMAN_HANDOFF");
+  });
 });
 
 describe("Step 3.6 — objection lifecycle", () => {
