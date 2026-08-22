@@ -72,7 +72,6 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         // VOICE V1 PREP (1) — classify BEFORE any modality-specific work.
         const inbound = classifyInboundMessage(message);
         const from = inbound.from;
-        const text = inbound.text;
         const providerMessageId = inbound.providerMessageId;
         if (!from) return new Response("ok");
 
