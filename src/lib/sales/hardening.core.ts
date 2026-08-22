@@ -478,7 +478,9 @@ const HUMAN_REQUEST_PATTERNS: RegExp[] = [
   /\b(cakap|bercakap|bincang|berbual|contact|hubungi|sambung(kan)?|talk|speak|chat)\b[^.?!]{0,40}\b(manusia|human|staff|staf|agent|ejen|orang(\s+sebenar)?|person|admin|pegawai|manager|pengurus|customer service|cs)\b/,
   /\b(staff|staf|agent|ejen|admin|manusia|human|orang)\b[^.?!]{0,30}\b(call|telefon|hubungi|whatsapp|contact)\b[^.?!]{0,20}\b(saya|aku|me|i)\b/,
   /\b(real|live)\s+(person|agent|human)\b/,
-  /\bnak\s+(cakap|bercakap)\s+dengan\b/,
+  // Must name an explicit human/staff target. "nak bercakap dengan awak/kamu/RAIŌ"
+  // refers to the AI itself and must NEVER trigger a handover.
+  /\bnak\s+(cakap|bercakap)\s+dengan\s+(manusia|human|staff|staf|agent|ejen|orang|admin|pegawai|pengurus|manager|cs|customer\s+service|person|real\s+person)\b/,
   /\btransfer\s+(me\s+)?to\s+(a\s+)?(human|agent|staff|person)\b/,
 ];
 
