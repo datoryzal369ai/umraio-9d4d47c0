@@ -30,7 +30,7 @@ export async function claimConversationReply(
     .from("conversations")
     .update({
       ai_reply_claimed_at: now.toISOString(),
-      ai_reply_due_at: replyDueAt(now, args.windowMs ?? COALESCE_WINDOW_MS).toISOString(),
+      ai_reply_due_at: replyDueAt(now, args.windowMs ?? coalesceWindowMs()).toISOString(),
     })
     .eq("id", args.conversationId)
     .eq("agency_id", args.agencyId)
@@ -89,8 +89,14 @@ export async function loadPendingInbound(
   });
 }
 
+/** Effective window; overridable server-side (tests / ops tuning). */
+export function coalesceWindowMs(): number {
+  const raw = Number(process.env["WHATSAPP_COALESCE_WINDOW_MS"]);
+  return Number.isFinite(raw) && raw >= 0 ? raw : COALESCE_WINDOW_MS;
+}
+
 /** Waits out the coalescing window without blocking anything else. */
-export function waitForCoalesceWindow(windowMs: number = COALESCE_WINDOW_MS): Promise<void> {
+export function waitForCoalesceWindow(windowMs: number = coalesceWindowMs()): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, windowMs));
 }
 

@@ -4,6 +4,8 @@ import { signMetaPayload } from "../src/lib/whatsapp-signature";
 
 const SECRET = "test_app_secret_value";
 const CRON_SECRET = "test_cron_secret_value_1234567890";
+process.env["WHATSAPP_COALESCE_WINDOW_MS"] = "0";
+
 const PUBLISHABLE = "sb_publishable_jaH1v305MWLN1yWA4UBH1Q_DNl0S5YZ";
 
 // ---------------- shared fake DB ----------------
@@ -18,7 +20,9 @@ vi.mock("@/integrations/supabase/client.server", () => {
   const table = (name: string) => {
     const filters: Row = {};
     const chain: Record<string, unknown> = {};
-    chain["select"] = () => chain;
+    chain["select"] = () =>
+      Object.assign(Promise.resolve({ data: [{ id: "conv-1" }], error: null }), chain);
+    chain["or"] = () => chain;
     chain["order"] = () => chain;
     chain["limit"] = () => chain;
     chain["eq"] = (col: string, val: unknown) => {
