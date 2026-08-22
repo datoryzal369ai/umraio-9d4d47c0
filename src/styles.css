@@ -207,19 +207,18 @@
   font-weight: 900;
   background-image: linear-gradient(
     100deg,
-    color-mix(in oklab, var(--color-platinum) 100%, var(--color-primary)) 0%,
-    color-mix(in oklab, var(--color-foreground) 96%, var(--color-primary)) 22%,
-    color-mix(in oklab, var(--color-primary-glow) 90%, var(--color-foreground)) 48%,
-    var(--color-primary) 76%,
-    color-mix(in oklab, var(--color-primary-glow) 86%, var(--color-primary)) 100%
+    color-mix(in oklab, var(--color-foreground) 100%, var(--color-primary)) 0%,
+    color-mix(in oklab, var(--color-primary-glow) 94%, var(--color-foreground)) 30%,
+    var(--color-primary) 64%,
+    color-mix(in oklab, var(--color-primary-glow) 88%, var(--color-primary)) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   text-shadow:
-    0 -1px 0 color-mix(in oklab, var(--color-platinum) 58%, transparent),
-    0 1px 1px color-mix(in oklab, var(--color-background) 72%, transparent),
-    0 0 28px color-mix(in oklab, var(--color-primary) 32%, transparent);
+    0 -1px 0 color-mix(in oklab, var(--color-foreground) 45%, transparent),
+    0 1px 1px color-mix(in oklab, var(--color-background) 68%, transparent),
+    0 0 26px color-mix(in oklab, var(--color-primary) 28%, transparent);
 
   &::before {
     content: attr(data-text);
@@ -228,14 +227,14 @@
     background-image: linear-gradient(
       100deg,
       color-mix(in oklab, var(--color-platinum) 100%, transparent) 0%,
-      color-mix(in oklab, var(--color-foreground) 85%, transparent) 50%,
+      color-mix(in oklab, var(--color-foreground) 80%, transparent) 55%,
       transparent 100%
     );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    transform: translateY(-1px);
-    opacity: 0.55;
+    transform: translateY(-0.5px);
+    opacity: 0.42;
     pointer-events: none;
     z-index: -1;
   }
@@ -244,9 +243,9 @@
     content: attr(data-text);
     position: absolute;
     inset: 0;
-    color: color-mix(in oklab, var(--color-background) 78%, transparent);
-    transform: translateY(1.5px);
-    opacity: 0.45;
+    color: color-mix(in oklab, var(--color-background) 80%, transparent);
+    transform: translateY(0.75px);
+    opacity: 0.35;
     pointer-events: none;
     z-index: -2;
   }
