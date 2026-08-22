@@ -234,8 +234,17 @@ export function resolveAddress(input: {
       honorific = h;
       honorificSource = "self_stated";
     }
-    const n = detectSelfName(raw);
-    if (n) name = n;
+    // J2 — IDENTITY PRECEDENCE. A stored identity is authoritative; only an
+    // explicit declaration ("Nama saya…", "Panggil saya…", "My name is…") may
+    // replace it. Weak conversational inference never overrides stored data.
+    const declared = detectDeclaredName(raw);
+    if (declared) {
+      name = declared;
+      declaredName = declared;
+    } else if (!input.knownName) {
+      const n = detectSelfName(raw);
+      if (n) name = n;
+    }
     const short =
       /(?:panggil\s+(?:saya|sy)|call\s+me|just\s+call\s+me)\s+([A-Za-z']{2,20})(\s*(?:sahaja|saja|je|jer|only))?/i.exec(
         raw,
