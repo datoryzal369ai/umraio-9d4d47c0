@@ -1,6 +1,6 @@
 import aiLogoAsset from "@/assets/ai-autonomous-intelligence-logo.png.asset.json";
 import renaioMark from "@/assets/renaio-core-mark.png.asset.json";
-import umraioWordmark from "@/assets/umraio-wordmark-tm.png.asset.json";
+
 import { useLocale } from "@/lib/i18n/locale";
 
 /**
@@ -153,33 +153,6 @@ export function IntelligenceArchitecture() {
             </div>
           </div>
 
-
-          <Connector />
-
-          {/* LEVEL 3 — ISLAMIC IMPLEMENTATION LAYER™ */}
-          <div className="w-full rounded-2xl border border-border/60 bg-surface/50 px-5 py-4 backdrop-blur">
-            <p className="text-sm font-semibold tracking-tight text-foreground">
-              Islamic Implementation Layer™
-            </p>
-            <p className="mt-1 text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground/85">
-              {t.governanceRole}
-            </p>
-          </div>
-
-          <Connector />
-
-          {/* LEVEL 4 — UMRAIO® */}
-          <div className="flex w-full flex-col items-center">
-            <img
-              src={umraioWordmark.url}
-              alt="UMRAIO®"
-              loading="lazy"
-              className="h-9 w-auto object-contain sm:h-11"
-            />
-            <p className="mt-2 text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground/85">
-              {t.productRole}
-            </p>
-          </div>
 
           <Connector />
 
