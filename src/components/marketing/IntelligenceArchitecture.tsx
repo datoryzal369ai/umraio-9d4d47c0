@@ -142,9 +142,9 @@ export function IntelligenceArchitecture() {
               src={aiLogoAsset.url}
               alt="ĀI™ — Autonomous Intelligence™"
               loading="lazy"
-              className="h-[36px] w-auto object-contain sm:h-[48px]"
+              className="h-auto w-[130px] object-contain py-2 sm:w-[160px] lg:w-[190px]"
             />
-            <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
+            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
               {t.aiParadigm}
             </p>
             <div className="mt-3 flex flex-col items-center gap-1 text-[11px] font-light text-muted-foreground">
