@@ -227,6 +227,7 @@ export function resolveAddress(input: {
   let name: string | null = null;
   let preferredName: string | null = null;
   let honorificDeclined = false;
+  let declaredName: string | null = null;
 
   for (const raw of input.customerMessages) {
     const h = detectSelfHonorific(raw);
