@@ -20,8 +20,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
   const table = (name: string) => {
     const filters: Row = {};
     const chain: Record<string, unknown> = {};
-    chain["select"] = () =>
-      Object.assign(Promise.resolve({ data: [{ id: "conv-1" }], error: null }), chain);
+    chain["select"] = () => chain;
     chain["or"] = () => chain;
     chain["order"] = () => chain;
     chain["limit"] = () => chain;
@@ -42,9 +41,10 @@ vi.mock("@/integrations/supabase/client.server", () => {
           const dup = { error: { code: "23505", message: "duplicate key" } };
           return Object.assign(Promise.resolve(dup), chain);
         }
+        if (!row["created_at"]) row["created_at"] = new Date().toISOString();
         db.messages.push(row);
       }
-      return Object.assign(Promise.resolve({ error: null }), chain);
+      return Promise.resolve({ error: null });
     };
     chain["maybeSingle"] = async () => {
       if (name === "whatsapp_configs") {
@@ -70,6 +70,20 @@ vi.mock("@/integrations/supabase/client.server", () => {
       return { data: null };
     };
     chain["single"] = async () => ({ data: { id: "x", ai_enabled: true } });
+    // Thenable chain: awaiting a filtered query resolves to rows.
+    chain["then"] = (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) => {
+      let data: unknown = [];
+      if (name === "messages") {
+        data = db.messages.filter(
+          (m) =>
+            m["agency_id"] === filters["agency_id"] &&
+            (filters["conversation_id"] === undefined ||
+              m["conversation_id"] === filters["conversation_id"]),
+        );
+      }
+      if (name === "conversations") data = [{ id: "conv-1" }];
+      return Promise.resolve({ data, error: null }).then(ok, err);
+    };
     return chain;
   };
   return {
