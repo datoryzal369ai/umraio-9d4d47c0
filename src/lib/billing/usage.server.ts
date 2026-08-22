@@ -23,12 +23,22 @@ type Db = SupabaseClient<any, any, any>;
  * tokens are NEVER stored as real usage — the columns stay NULL instead.
  */
 
-export type UsageCategory = "customer_reply" | "internal_operation" | "ai_task";
-export type QuotaBucket = "ai_replies" | "ai_tasks" | "none";
+export type UsageCategory =
+  | "customer_reply"
+  | "internal_operation"
+  | "ai_task"
+  /**
+   * VOICE V1 PREPARATION — one speech-to-text transcription of inbound audio.
+   * Metered by DURATION (seconds), not by event count. Nothing emits this
+   * category yet: voice processing is not implemented.
+   */
+  | "voice_transcription";
+export type QuotaBucket = "ai_replies" | "ai_tasks" | "voice_minutes" | "none";
 
 export function bucketFor(category: UsageCategory): QuotaBucket {
   if (category === "customer_reply") return "ai_replies";
   if (category === "ai_task") return "ai_tasks";
+  if (category === "voice_transcription") return "voice_minutes";
   return "none";
 }
 
@@ -52,6 +62,8 @@ export type UsageEventInput = {
   inputTokens?: number | null;
   outputTokens?: number | null;
   totalTokens?: number | null;
+  /** VOICE V1 PREPARATION — billable audio duration for voice events. */
+  durationSeconds?: number | null;
   meta?: Record<string, unknown>;
 };
 
@@ -78,6 +90,7 @@ export async function recordUsageEvent(supabase: Db, input: UsageEventInput): Pr
     input_tokens: nullableInt(input.inputTokens),
     output_tokens: nullableInt(input.outputTokens),
     total_tokens: nullableInt(input.totalTokens),
+    duration_seconds: nullableInt(input.durationSeconds),
     meta: input.meta ?? {},
   };
 
@@ -130,6 +143,35 @@ async function countCategory(
   return count ?? 0;
 }
 
+/**
+ * VOICE V1 PREPARATION — voice is metered by duration, so the voice bucket
+ * sums `duration_seconds` instead of counting rows.
+ */
+async function sumVoiceSeconds(
+  supabase: Db,
+  agencyId: string,
+  periodStart: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("usage_events")
+    .select("duration_seconds")
+    .eq("agency_id", agencyId)
+    .eq("counts_against", "voice_minutes")
+    .gte("occurred_at", periodStart)
+    .limit(10000);
+  if (error) throw new Error(`usage metering unavailable: ${error.message}`);
+  return ((data ?? []) as Array<{ duration_seconds: number | null }>).reduce(
+    (total, row) => total + (row.duration_seconds ?? 0),
+    0,
+  );
+}
+
+/** Minutes of voice already consumed this calendar month (rounded up). */
+export async function voiceMinutesUsed(supabase: Db, agencyId: string): Promise<number> {
+  const { start } = currentPeriod();
+  return Math.ceil((await sumVoiceSeconds(supabase, agencyId, start)) / 60);
+}
+
 /* ---------------- quota enforcement ---------------- */
 
 export const QUOTA_WARNING_MESSAGE =
@@ -162,6 +204,7 @@ export type QuotaDecision = {
 function limitFor(plan: PlanEntitlement, bucket: QuotaBucket): number {
   if (bucket === "ai_replies") return plan.aiRepliesPerMonth;
   if (bucket === "ai_tasks") return plan.aiTasksPerMonth;
+  if (bucket === "voice_minutes") return plan.voiceMinutesPerMonth;
   return Number.POSITIVE_INFINITY;
 }
 
@@ -191,7 +234,10 @@ export async function checkQuota(
   }
 
   const { start } = currentPeriod();
-  const used = await countBucket(supabase, agencyId, bucket, start);
+  const used =
+    bucket === "voice_minutes"
+      ? Math.ceil((await sumVoiceSeconds(supabase, agencyId, start)) / 60)
+      : await countBucket(supabase, agencyId, bucket, start);
   const limit = limitFor(plan, bucket);
   const ratio = limit > 0 ? used / limit : 1;
 
@@ -242,6 +288,8 @@ export type UsageSummary = {
   replies: { used: number; limit: number; remaining: number; ratio: number };
   tasks: { used: number; limit: number; remaining: number; ratio: number };
   internalOperations: number;
+  /** VOICE V1 PREPARATION — always 0 until voice processing ships. */
+  voice: { usedMinutes: number; limitMinutes: number; remainingMinutes: number };
   daily: Array<{ date: string; replies: number; tasks: number; internal: number }>;
 };
 
@@ -250,11 +298,13 @@ export async function getUsageSummary(supabase: Db, agencyId: string): Promise<U
   const { plan } = await resolveEntitlement(supabase, agencyId);
   const { start, end } = currentPeriod();
 
-  const [replies, tasks, internal] = await Promise.all([
+  const [replies, tasks, internal, voiceSeconds] = await Promise.all([
     countBucket(supabase, agencyId, "ai_replies", start),
     countBucket(supabase, agencyId, "ai_tasks", start),
     countCategory(supabase, agencyId, "internal_operation", start),
+    sumVoiceSeconds(supabase, agencyId, start),
   ]);
+  const voiceMinutes = Math.ceil(voiceSeconds / 60);
 
   const since = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000);
   since.setUTCHours(0, 0, 0, 0);
@@ -306,6 +356,34 @@ export async function getUsageSummary(supabase: Db, agencyId: string): Promise<U
       ratio: ratio(tasks, plan.aiTasksPerMonth),
     },
     internalOperations: internal,
+    voice: {
+      usedMinutes: voiceMinutes,
+      limitMinutes: plan.voiceMinutesPerMonth,
+      remainingMinutes: Math.max(0, plan.voiceMinutesPerMonth - voiceMinutes),
+    },
     daily: [...byDay.entries()].map(([date, v]) => ({ date, ...v })),
   };
+}
+
+/* ---------------- voice quota (preparation) ---------------- */
+
+export const VOICE_QUOTA_EXCEEDED_MESSAGE =
+  "Your monthly UMRAIO® voice allowance has been reached. Upgrade your plan to keep using voice messages.";
+
+/**
+ * VOICE V1 PREPARATION — gate for a FUTURE voice request.
+ *
+ * Called before any media download or ASR call so paid voice processing can
+ * never run past the plan allowance. Fails CLOSED when metering is unavailable.
+ * Nothing calls this yet; no voice minutes are consumed today.
+ */
+export async function assertVoiceQuota(
+  supabase: Db,
+  agencyId: string,
+  requestedSeconds = 0,
+): Promise<QuotaDecision> {
+  const decision = await assertQuota(supabase, agencyId, "voice_transcription");
+  const requestedMinutes = Math.ceil(Math.max(0, requestedSeconds) / 60);
+  if (requestedMinutes > decision.remaining) throw new QuotaError("exceeded");
+  return decision;
 }
