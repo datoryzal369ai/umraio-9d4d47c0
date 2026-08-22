@@ -315,8 +315,14 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             }
           } catch (error) {
             console.error("[whatsapp] AI reply failed", error);
+          } finally {
+            await releaseConversationClaim(supabaseAdmin as never, { agencyId, conversationId });
           }
         } else {
+          // J4 — the AI is muted (human takeover / auto-reply off). Stamp the
+          // mute point so these messages are NEVER replayed when RAIŌ resumes.
+          const { markConversationMuted } = await import("@/lib/whatsapp/coalescing.server");
+          await markConversationMuted(supabaseAdmin as never, { agencyId, conversationId });
           console.log(
             `[whatsapp] auto-reply skipped ai_enabled=${aiEnabled} auto_reply=${config.auto_reply} has_token=${Boolean(config.access_token)}`,
           );
