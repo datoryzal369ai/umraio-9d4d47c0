@@ -317,8 +317,13 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             // whether to reply; the authoritative checks stay below the wait.
             const salesAiModule = import("@/lib/sales-ai.server");
             const prefetch = salesAiModule
-              .then((m) => m.prefetchReplyInputs(supabaseAdmin as never, conversationId))
+              .then((m) =>
+                typeof m.prefetchReplyInputs === "function"
+                  ? m.prefetchReplyInputs(supabaseAdmin as never, conversationId)
+                  : null,
+              )
               .catch(() => null);
+
 
             // Brief accumulation window, then answer the whole burst at once.
             await waitForCoalesceWindow(windowMs);
