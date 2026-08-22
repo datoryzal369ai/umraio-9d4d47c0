@@ -1,4 +1,5 @@
 import {
+  AUDIO_COALESCE_WINDOW_MS,
   CLAIM_STALE_MS,
   COALESCE_WINDOW_MS,
   isClaimStale,
@@ -90,9 +91,10 @@ export async function loadPendingInbound(
 }
 
 /** Effective window; overridable server-side (tests / ops tuning). */
-export function coalesceWindowMs(): number {
+export function coalesceWindowMs(modality: "text" | "audio" = "text"): number {
   const raw = Number(process.env["WHATSAPP_COALESCE_WINDOW_MS"]);
-  return Number.isFinite(raw) && raw >= 0 ? raw : COALESCE_WINDOW_MS;
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return modality === "audio" ? AUDIO_COALESCE_WINDOW_MS : COALESCE_WINDOW_MS;
 }
 
 /** Waits out the coalescing window without blocking anything else. */
@@ -100,4 +102,4 @@ export function waitForCoalesceWindow(windowMs: number = coalesceWindowMs()): Pr
   return new Promise((resolve) => setTimeout(resolve, windowMs));
 }
 
-export { COALESCE_WINDOW_MS, isClaimStale };
+export { AUDIO_COALESCE_WINDOW_MS, COALESCE_WINDOW_MS, isClaimStale };
