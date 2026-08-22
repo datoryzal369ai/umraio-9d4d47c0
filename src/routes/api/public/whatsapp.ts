@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { verifyMetaSignature } from "@/lib/whatsapp-signature";
+import { classifyInboundMessage, persistedModality } from "@/lib/whatsapp/message-classification.core";
 
 type WebhookValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
@@ -217,6 +218,8 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           sender: "customer",
           body: text,
           provider_message_id: providerMessageId,
+          modality: persistedModality(inbound.modality),
+          media_id: inbound.mediaId,
         });
         if (insertError) {
           if (insertError.code === "23505") {
@@ -299,6 +302,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                 conversation_id: conversationId,
                 sender: "ai",
                 body: reply,
+                modality: "text",
               });
               const responseMs = Date.now() - inboundAt.getTime();
               await supabaseAdmin
