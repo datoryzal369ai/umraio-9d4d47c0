@@ -6,7 +6,14 @@ import { classifyInboundMessage, persistedModality } from "@/lib/whatsapp/messag
 type WebhookValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
-  messages?: Array<{ id?: string; from?: string; type?: string; text?: { body?: string } }>;
+  messages?: Array<{
+    id?: string;
+    from?: string;
+    type?: string;
+    text?: { body?: string };
+    audio?: { id?: string; mime_type?: string; voice?: boolean };
+    voice?: { id?: string; mime_type?: string };
+  }>;
 };
 
 type WebhookBody = {
@@ -286,11 +293,16 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             releaseConversationClaim,
             loadPendingInbound,
             waitForCoalesceWindow,
+            coalesceWindowMs,
           } = await import("@/lib/whatsapp/coalescing.server");
+
+          // VOICE V1 — audio turns use the shorter window; text is unchanged.
+          const windowMs = coalesceWindowMs(inbound.modality === "audio" ? "audio" : "text");
 
           const claimed = await claimConversationReply(supabaseAdmin as never, {
             agencyId,
             conversationId,
+            windowMs,
           });
           if (!claimed) {
             console.log(
@@ -301,7 +313,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
           try {
             // Brief accumulation window, then answer the whole burst at once.
-            await waitForCoalesceWindow();
+            await waitForCoalesceWindow(windowMs);
 
             const { data: convState } = await supabaseAdmin
               .from("conversations")
