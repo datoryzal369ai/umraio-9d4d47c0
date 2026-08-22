@@ -153,7 +153,6 @@ export function IntelligenceArchitecture() {
             </div>
           </div>
 
-
           <Connector />
 
           {/* LEVEL 5 — AI AUTONOMOUS BUSINESS EXECUTIVE™ */}
