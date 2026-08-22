@@ -112,10 +112,27 @@ function cleanName(raw: string | undefined): string | null {
 }
 
 
+/**
+ * J2 — DECLARED identity. Only these phrasings are an explicit self-declaration
+ * of how the customer wants to be known, and only these may override an
+ * identity already stored on the lead.
+ */
+const DECLARED_NAME_PATTERNS: RegExp[] = [
+  /\bnama\s+(?:penuh\s+)?(?:saya|aku|sy)\s+(?:ialah\s+|adalah\s+|is\s+)?([A-Za-z' -]{2,40})/i,
+  /\b(?:boleh\s+)?panggil\s+(?:saya|sy|aku)\s+([A-Za-z' -]{2,40})/i,
+  /\bsaya\s+lebih\s+suka\s+dipanggil\s+([A-Za-z' -]{2,40})/i,
+  /\bcall\s+me\s+([A-Za-z' -]{2,40})/i,
+  /\bmy\s+name\s+is\s+([A-Za-z' -]{2,40})/i,
+];
+
+/**
+ * J1 — weaker, INFERRED patterns. `i am` / `i'm` / `this is` must be anchored on
+ * real word boundaries: the previous `i\s*am` matched the substring "iam" inside
+ * Malay words such as "diam" ("Kenapa diam pulak" → false name "Pulak").
+ */
 const NAME_PATTERNS: RegExp[] = [
-  /(?:nama\s+(?:saya|aku|sy)|nama\s+penuh\s+saya)\s+(?:ialah\s+|adalah\s+|is\s+)?([A-Za-z' -]{2,40})/i,
-  /(?:panggil\s+(?:saya|sy|aku)|call\s+me)\s+([A-Za-z' -]{2,40})/i,
-  /(?:my\s+name\s+is|i\s*am|i'?m|this\s+is)\s+([A-Za-z' -]{2,40})/i,
+  ...DECLARED_NAME_PATTERNS,
+  /(?:^|[\s,;:.!?])(?:i\s+am|i'm|im|this\s+is)\s+([A-Za-z' -]{2,40})/i,
   /\b(?:[Ss]aya|[Ss]y|[Aa]ku)\s+([A-Z][A-Za-z']{1,20}(?:\s+[A-Z][A-Za-z']{1,20})?)\b/,
   /\b(?:[Ee]ncik|[Pp]uan|[Tt]uan|[Cc]ik|[Dd]ato'?|[Dd]atuk|[Dd]atin|[Hh]aji|[Hh]ajah|[Uu]staz|[Uu]stazah|[Dd]r\.?|[Mm]r\.?|[Mm]rs\.?|[Mm]s\.?)\s+([A-Z][A-Za-z']{1,20}(?:\s+[A-Z][A-Za-z']{1,20})?)\b/,
 ];
@@ -141,6 +158,21 @@ export type AddressReading = {
 export function detectSelfName(text: string | null | undefined): string | null {
   if (!text) return null;
   for (const re of NAME_PATTERNS) {
+    const m = re.exec(text);
+    const cleaned = cleanName(m?.[1]);
+    if (cleaned) return cleaned;
+  }
+  return null;
+}
+
+/**
+ * J2 — an explicit self-declaration ("Nama saya Ahmad", "Panggil saya Ahmad",
+ * "My name is Ahmad"). Only this may override an identity already stored on the
+ * lead; everything else is a weak inference.
+ */
+export function detectDeclaredName(text: string | null | undefined): string | null {
+  if (!text) return null;
+  for (const re of DECLARED_NAME_PATTERNS) {
     const m = re.exec(text);
     const cleaned = cleanName(m?.[1]);
     if (cleaned) return cleaned;
@@ -195,6 +227,7 @@ export function resolveAddress(input: {
   let name: string | null = null;
   let preferredName: string | null = null;
   let honorificDeclined = false;
+  let declaredName: string | null = null;
 
   for (const raw of input.customerMessages) {
     const h = detectSelfHonorific(raw);
@@ -202,8 +235,17 @@ export function resolveAddress(input: {
       honorific = h;
       honorificSource = "self_stated";
     }
-    const n = detectSelfName(raw);
-    if (n) name = n;
+    // J2 — IDENTITY PRECEDENCE. A stored identity is authoritative; only an
+    // explicit declaration ("Nama saya…", "Panggil saya…", "My name is…") may
+    // replace it. Weak conversational inference never overrides stored data.
+    const declared = detectDeclaredName(raw);
+    if (declared) {
+      name = declared;
+      declaredName = declared;
+    } else if (!input.knownName) {
+      const n = detectSelfName(raw);
+      if (n) name = n;
+    }
     const short =
       /(?:panggil\s+(?:saya|sy)|call\s+me|just\s+call\s+me)\s+([A-Za-z']{2,20})(\s*(?:sahaja|saja|je|jer|only))?/i.exec(
         raw,
@@ -226,6 +268,9 @@ export function resolveAddress(input: {
   }
 
   if (!name && input.knownName) name = cleanName(input.knownName);
+  // An explicit declaration also becomes the preferred form of address, even
+  // when a different identity is already stored on the lead.
+  if (declaredName && !preferredName) preferredName = declaredName;
 
   const display = preferredName ?? name;
   const useHonorific = honorific && !honorificDeclined ? honorific : null;

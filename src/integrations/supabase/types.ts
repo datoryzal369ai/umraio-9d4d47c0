@@ -543,6 +543,9 @@ export type Database = {
         Row: {
           agency_id: string
           ai_enabled: boolean
+          ai_muted_at: string | null
+          ai_reply_claimed_at: string | null
+          ai_reply_due_at: string | null
           channel: Database["public"]["Enums"]["channel"]
           conversation_state: string | null
           created_at: string
@@ -561,6 +564,9 @@ export type Database = {
         Insert: {
           agency_id: string
           ai_enabled?: boolean
+          ai_muted_at?: string | null
+          ai_reply_claimed_at?: string | null
+          ai_reply_due_at?: string | null
           channel?: Database["public"]["Enums"]["channel"]
           conversation_state?: string | null
           created_at?: string
@@ -579,6 +585,9 @@ export type Database = {
         Update: {
           agency_id?: string
           ai_enabled?: boolean
+          ai_muted_at?: string | null
+          ai_reply_claimed_at?: string | null
+          ai_reply_due_at?: string | null
           channel?: Database["public"]["Enums"]["channel"]
           conversation_state?: string | null
           created_at?: string
