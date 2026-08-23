@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LanguageSelector } from "@/components/app/LanguageSelector";
 import { PaymentTestModeBanner } from "@/components/settings/PaymentTestModeBanner";
+import { OwnerTestModePanel } from "@/components/settings/OwnerTestModePanel";
 import { UsagePanel } from "@/components/settings/UsagePanel";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -149,6 +150,7 @@ function SubscriptionPage() {
     <div className="space-y-6">
       <PaymentTestModeBanner mode={availability?.mode ?? null} />
       <UsagePanel />
+      <OwnerTestModePanel />
 
 
       <section className="panel space-y-4 p-5">
