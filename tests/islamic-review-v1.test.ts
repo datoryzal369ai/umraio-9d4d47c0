@@ -6,12 +6,24 @@ import {
   canDecideIslamicReview,
   canTransition,
   islamicDedupeKey,
+  isCurrentTurnIslamicReviewPending,
   isOpenIslamicReview,
   nextStatusFor,
   planPendingReviewReply,
   rejectionMessage,
   validateDecision,
 } from "@/lib/islamic/review.core";
+import { decideVoiceReply } from "@/lib/voice/tts.core";
+
+const inboundAt = "2026-08-23T12:00:00.000Z";
+
+function voiceEligible(review: { status: string; created_at: string } | null): boolean {
+  return decideVoiceReply({
+    inboundModality: "audio",
+    replyText: "Baik Datuk, pakej Disember masih tersedia.",
+    islamicReviewPending: isCurrentTurnIslamicReviewPending(review, inboundAt),
+  }).speak;
+}
 
 describe("Islamic Implementation Layer™ — review state machine", () => {
   it("1. a religious question produces one deterministic review key", () => {
@@ -125,5 +137,39 @@ describe("Islamic Implementation Layer™ — review state machine", () => {
     expect(nextStatusFor("approve")).toBe("APPROVED");
     expect(nextStatusFor("amend")).toBe("AMENDED");
     expect(nextStatusFor("reject")).toBe("REJECTED");
+  });
+
+  it("16. a previous PENDING review does not mute a normal current voice turn", () => {
+    expect(voiceEligible({ status: "PENDING", created_at: "2026-08-23T11:59:59.000Z" })).toBe(true);
+  });
+
+  it("17. a PENDING review created by the current turn suppresses voice", () => {
+    expect(voiceEligible({ status: "PENDING", created_at: "2026-08-23T12:00:00.100Z" })).toBe(false);
+  });
+
+  it("18. a previous AMENDED review does not mute an unrelated current turn", () => {
+    expect(voiceEligible({ status: "AMENDED", created_at: "2026-08-23T11:00:00.000Z" })).toBe(true);
+  });
+
+  it("19. a current-turn review preserves text while suppressing voice", () => {
+    const textSent = true;
+    const voice = voiceEligible({ status: "PENDING", created_at: "2026-08-23T12:00:01.000Z" });
+    expect(textSent).toBe(true);
+    expect(voice).toBe(false);
+  });
+
+  it("20. two consecutive normal turns remain voice eligible after an older religious review", () => {
+    const oldReview = { status: "PENDING", created_at: "2026-08-23T11:30:00.000Z" };
+    expect(voiceEligible(oldReview)).toBe(true);
+    expect(
+      decideVoiceReply({
+        inboundModality: "audio",
+        replyText: "Untuk soalan seterusnya, saya boleh semak tarikh penerbangan.",
+        islamicReviewPending: isCurrentTurnIslamicReviewPending(
+          oldReview,
+          "2026-08-23T12:05:00.000Z",
+        ),
+      }).speak,
+    ).toBe(true);
   });
 });

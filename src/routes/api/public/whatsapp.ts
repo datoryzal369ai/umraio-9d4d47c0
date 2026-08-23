@@ -453,13 +453,14 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             // never re-run intent clarification for it: exactly one holding
             // response, then contextual acknowledgement.
             {
-              const { findOpenReviewForConversation, planPendingReviewReply, markHoldingSent } =
+              const { findCurrentTurnOpenReview, planPendingReviewReply, markHoldingSent } =
                 await import("@/lib/islamic/review.server");
-              const openReview = await findOpenReviewForConversation(
+              const openReview = await findCurrentTurnOpenReview(
                 supabaseAdmin as never,
                 conversationId,
+                inboundAt,
               ).catch((err) => {
-                console.log(`[islamic] open_review_lookup_failed err=${String(err)}`);
+                console.log(`[islamic] current_turn_review_lookup_failed err=${String(err)}`);
                 return null;
               });
               const plan = planPendingReviewReply(openReview);
@@ -593,17 +594,17 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                     .select("voice_persona, voice_controls, voice_name, voice_language")
                     .eq("agency_id", agencyId)
                     .maybeSingle();
-                  // V2.2 REGRESSION FIX — the Islamic mute is scoped to THIS
-                  // turn. A review opened on an earlier turn must never
-                  // silence every later voice reply in the same conversation.
-                  const { data: openIslamic } = await supabaseAdmin
-                    .from("islamic_reviews")
-                    .select("id, status")
-                    .eq("conversation_id", conversationId)
-                    .in("status", ["PENDING", "AMENDED"])
-                    .gte("created_at", inboundAt.toISOString())
-                    .limit(1)
-                    .maybeSingle();
+                  // V2.3 — use the same authoritative current-turn lookup as
+                  // the early loop breaker. Previous-turn reviews stay in the
+                  // review queue without muting this unrelated voice turn.
+                  const { findCurrentTurnOpenReview } = await import(
+                    "@/lib/islamic/review.server"
+                  );
+                  const openIslamic = await findCurrentTurnOpenReview(
+                    supabaseAdmin as never,
+                    conversationId,
+                    inboundAt,
+                  );
                   const voiceLanguage =
                     (voiceSettings?.voice_language as string | undefined) ?? "ms-MY";
                   const decision = decideVoiceReply({
@@ -620,6 +621,10 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                   vlog(
                     "VOICE_ELIGIBILITY",
                     `speak=${decision.speak} reason=${decision.speak ? "eligible" : decision.reason} islamic_turn_review=${Boolean(openIslamic)} voice_language=${voiceLanguage} reply_chars=${reply.length}`,
+                  );
+                  vlog(
+                    "VOICE_ELIGIBILITY_REASON",
+                    `reason=${decision.speak ? "eligible" : decision.reason} islamic_turn_review=${Boolean(openIslamic)}`,
                   );
                   if (!decision.speak) {
                     console.log(`[voice] voice_reply_fallback_text reason=${decision.reason}`);
