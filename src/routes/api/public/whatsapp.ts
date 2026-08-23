@@ -604,7 +604,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                     } else {
                       vlog(
                         "VOICE_TTS_SUCCESS",
-                        `engine=${speech.engine} audio_bytes=${speech.bytes.byteLength} mime_type=${speech.mimeType} latency_ms=${Date.now() - ttsStarted}`,
+                        `VOICE_PROVIDER=${speech.engine} VOICE_AUDIO_FORMAT=${speech.mimeType} VOICE_AUDIO_BYTES=${speech.bytes.byteLength} VOICE_PROVIDER_LATENCY=${Date.now() - ttsStarted} engine=${speech.engine} audio_bytes=${speech.bytes.byteLength} mime_type=${speech.mimeType} latency_ms=${Date.now() - ttsStarted}`,
                       );
                       vlog("VOICE_SEND_START");
                       const { sendWhatsappAudio } = await import("@/lib/whatsapp-send.server");

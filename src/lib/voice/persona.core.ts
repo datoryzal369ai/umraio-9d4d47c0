@@ -84,14 +84,14 @@ export const VOICE_PERSONAS: Record<VoicePersonaKey, VoicePersonaPreset> = {
     "premium_sales_executive",
     "Premium Sales Executive",
     "Warm, confident, calm and unhurried — a senior Malaysian Umrah consultant.",
-    "alloy",
+    "sage",
     { naturalness: 85, warmth: 72, energy: 45, confidence: 78, expression: 55, pace: 62, pause: 65 },
   ),
   warm_malaysian_consultant: preset(
     "warm_malaysian_consultant",
     "Warm Malaysian Consultant",
     "Familiar, kampung-warm and reassuring, still professional.",
-    "shimmer",
+    "coral",
     { naturalness: 92, warmth: 90, energy: 48, confidence: 62, expression: 66, pace: 58, pause: 72 },
   ),
   friendly: preset(
@@ -105,28 +105,28 @@ export const VOICE_PERSONAS: Record<VoicePersonaKey, VoicePersonaPreset> = {
     "professional",
     "Professional",
     "Composed and businesslike without sounding stiff.",
-    "onyx",
+    "ash",
     { naturalness: 70, warmth: 45, energy: 45, confidence: 72, expression: 38, pace: 60, pause: 55 },
   ),
   calm: preset(
     "calm",
     "Calm",
     "Slow, steady and settling — good for anxious first-time pilgrims.",
-    "alloy",
+    "sage",
     { naturalness: 80, warmth: 70, energy: 22, confidence: 60, expression: 35, pace: 40, pause: 80 },
   ),
   confident: preset(
     "confident",
     "Confident",
     "Assured and decisive, closes without pressure.",
-    "onyx",
+    "ash",
     { naturalness: 78, warmth: 52, energy: 62, confidence: 92, expression: 52, pace: 68, pause: 50 },
   ),
   empathetic: preset(
     "empathetic",
     "Empathetic",
     "Soft, patient and attentive to concern.",
-    "shimmer",
+    "coral",
     { naturalness: 86, warmth: 95, energy: 30, confidence: 50, expression: 62, pace: 48, pause: 78 },
   ),
 };
@@ -211,6 +211,7 @@ export function buildVoiceInstructions(controls: VoiceControls, language = "ms-M
       "Speak conversationally rather than reading aloud.",
       "Speak as a human consultant would in a real conversation — never like a news reader, IVR or audiobook narrator.",
     ),
+    "Sound like a real Malaysian customer-service consultant on a phone call: no robotic pronunciation, no monotone, no announcer or radio-presenter delivery, no exaggerated emotion, no long unnatural silences and no rushing.",
     "Pronounce Arabic and Islamic terms respectfully and exactly as written. Never spell out punctuation, symbols, links or reference codes, and never read the text like a news reader, IVR or audiobook narrator.",
   ];
   return parts.join(" ");
