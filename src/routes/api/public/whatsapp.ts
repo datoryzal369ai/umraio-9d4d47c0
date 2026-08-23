@@ -440,7 +440,58 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             }
             console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
 
+            // ISLAMIC IMPLEMENTATION LAYER™ — pending-review loop breaker.
+            // While a religious question is awaiting a qualified reviewer we
+            // never re-run intent clarification for it: exactly one holding
+            // response, then contextual acknowledgement.
+            {
+              const { findOpenReviewForConversation, planPendingReviewReply, markHoldingSent } =
+                await import("@/lib/islamic/review.server");
+              const openReview = await findOpenReviewForConversation(
+                supabaseAdmin as never,
+                conversationId,
+              );
+              const plan = planPendingReviewReply(openReview);
+              if (plan.kind !== "none" && openReview) {
+                console.log(
+                  `[islamic] pending_review_loop_breaker kind=${plan.kind} review=${openReview.id}`,
+                );
+                const sentHold = await sendWhatsappText(
+                  phoneNumberId,
+                  config.access_token,
+                  from,
+                  plan.message,
+                );
+                await supabaseAdmin.from("messages").insert({
+                  agency_id: agencyId,
+                  conversation_id: conversationId,
+                  sender: "ai",
+                  body: plan.message,
+                  modality: "text",
+                });
+                await supabaseAdmin
+                  .from("conversations")
+                  .update({
+                    last_message_at: new Date().toISOString(),
+                    human_attention_required: true,
+                  })
+                  .eq("id", conversationId);
+                if (plan.kind === "holding") {
+                  await markHoldingSent(supabaseAdmin as never, openReview.id);
+                }
+                console.log(
+                  `[whatsapp] conversation_terminal_outcome=islamic_review_pending delivered=${sentHold}`,
+                );
+                await releaseConversationClaim(supabaseAdmin as never, {
+                  agencyId,
+                  conversationId,
+                });
+                return new Response("ok");
+              }
+            }
+
             const { generateAgentReply } = await salesAiModule;
+
             const prefetched = await prefetch;
             let expectedLatestMessageAt: string | null = null;
             for (const m of pending as ReadonlyArray<{ created_at?: string | null }>) {
