@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { applyVerifiedSubscriptionEvent, type ApplyOutcome } from "./paddle-billing.server";
 import type { PaddleSubscriptionEvent } from "./paddle-billing-state.core";
-import { planFromStripePriceId } from "./stripe-mapping.core";
+import { STRIPE_PLAN_MAP, isPurchasablePlan, planFromStripePriceId } from "./stripe-mapping.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -25,11 +25,13 @@ export type StripeEventEnvelope = {
 
 /** Stripe subscription lifecycle events we act on. */
 const SUBSCRIPTION_EVENTS: Record<string, PaddleSubscriptionEvent["type"]> = {
+  "checkout.session.completed": "created",
   "customer.subscription.created": "created",
   "customer.subscription.updated": "updated",
   "customer.subscription.deleted": "canceled",
   "customer.subscription.paused": "updated",
   "customer.subscription.resumed": "updated",
+  "invoice.paid": "updated",
   "invoice.payment_succeeded": "updated",
   "invoice.payment_failed": "payment_failed",
 };
@@ -44,6 +46,7 @@ function stripePriceIdFromSubscription(subscription: any): string | null {
   const item = subscription?.items?.data?.[0];
   return (item?.price?.id as string | undefined) ?? null;
 }
+
 
 export type NormalizedStripeEvent = {
   event: PaddleSubscriptionEvent;
@@ -65,6 +68,50 @@ export function normalizeStripeEvent(
 
   const object = envelope.data?.object ?? {};
   const isInvoice = envelope.type.startsWith("invoice.");
+
+  // Checkout completion is the earliest verified proof of payment. It carries
+  // the agency via client_reference_id even when the subscription object has
+  // not yet been fetched, so we normalize it explicitly.
+  if (envelope.type === "checkout.session.completed") {
+    if (object.mode !== "subscription") return null;
+    if (object.payment_status !== "paid" && object.payment_status !== "no_payment_required") {
+      return null;
+    }
+    const subId =
+      typeof object.subscription === "string"
+        ? object.subscription
+        : ((object.subscription?.id as string | undefined) ?? null);
+    if (!subId) return null;
+
+    const sessionMeta = (object.metadata ?? {}) as Record<string, string | undefined>;
+    const planId = sessionMeta["plan"];
+    const mapping = isPurchasablePlan(planId) ? STRIPE_PLAN_MAP[planId] : null;
+    const sessionAgencyId =
+      (object.client_reference_id as string | undefined) ??
+      sessionMeta["agency_id"] ??
+      sessionMeta["agencyId"] ??
+      null;
+    const sessionCustomerId =
+      typeof object.customer === "string" ? object.customer : (object.customer?.id ?? null);
+
+    return {
+      agencyId: sessionAgencyId,
+      customerId: sessionCustomerId,
+      event: {
+        eventId: envelope.id,
+        type: "created",
+        environment: mode === "live" ? "live" : "sandbox",
+        subscriptionId: subId,
+        customerId: sessionCustomerId,
+        priceExternalId: mapping?.priceExternalId ?? null,
+        status: "active",
+        currentPeriodEnd: null,
+        scheduledCancel: false,
+        occurredAt: toIso(envelope.created) ?? new Date().toISOString(),
+      },
+    };
+  }
+
 
   const subscriptionId: string | null = isInvoice
     ? ((typeof object.subscription === "string"

@@ -46,6 +46,12 @@ type SectionCopy = {
   openingCheckout: string;
   manageBilling: string;
   portalUnavailable: string;
+  subscriptionActive: string;
+  subscriptionPending: string;
+  checkoutSuccess: string;
+  checkoutCancelled: string;
+  activationNextStep: string;
+  connectWhatsapp: string;
 };
 
 export const PRICING_SECTION_COPY: Record<Locale, SectionCopy> = {
@@ -72,7 +78,7 @@ export const PRICING_SECTION_COPY: Record<Locale, SectionCopy> = {
     seats: "Seats",
     renews: "Pembaharuan",
     noActiveSubscription:
-      "Tiada langganan berbayar aktif — pembayaran belum dilaksanakan.",
+      "Tiada langganan berbayar aktif lagi. Pilih pelan untuk membuat pembayaran.",
     selectionRecorded:
       "Pilihan pelan direkod. Tiada bayaran dikutip — pasukan kami akan sahkan pengaktifan.",
     requestActivation: "Minta Pengaktifan",
@@ -84,6 +90,14 @@ export const PRICING_SECTION_COPY: Record<Locale, SectionCopy> = {
     manageBilling: "Urus Bil & Pembayaran",
     portalUnavailable:
       "Tiada langganan aktif untuk diurus lagi.",
+    subscriptionActive: "Langganan berbayar aktif dan disahkan.",
+    subscriptionPending:
+      "Pembayaran diterima. Menunggu pengesahan daripada penyedia pembayaran…",
+    checkoutSuccess: "Pembayaran berjaya. Mengaktifkan pelan anda…",
+    checkoutCancelled: "Pembayaran dibatalkan. Tiada bayaran dikutip.",
+    activationNextStep:
+      "Pelan anda aktif. Langkah seterusnya: sambungkan WhatsApp dan mulakan perbualan pertama.",
+    connectWhatsapp: "Sambung WhatsApp",
   },
   en: {
     eyebrow: "Pricing",
@@ -107,7 +121,7 @@ export const PRICING_SECTION_COPY: Record<Locale, SectionCopy> = {
       "Your selected plan and usage. Paid subscription activation is confirmed by the UMRAIO team.",
     seats: "Seats",
     renews: "Renews",
-    noActiveSubscription: "No active paid subscription — payment is not yet implemented.",
+    noActiveSubscription: "No active paid subscription yet. Choose a plan to pay and activate.",
     selectionRecorded:
       "Plan selection recorded. No payment has been taken — our team confirms activation.",
     requestActivation: "Request Activation",
@@ -118,6 +132,13 @@ export const PRICING_SECTION_COPY: Record<Locale, SectionCopy> = {
     openingCheckout: "Opening checkout…",
     manageBilling: "Manage billing",
     portalUnavailable: "No active subscription to manage yet.",
+    subscriptionActive: "Paid subscription active and verified.",
+    subscriptionPending: "Payment received. Waiting for the provider to confirm activation…",
+    checkoutSuccess: "Payment successful. Activating your plan…",
+    checkoutCancelled: "Checkout cancelled. No payment was taken.",
+    activationNextStep:
+      "Your plan is active. Next: connect WhatsApp and run your first AI conversation.",
+    connectWhatsapp: "Connect WhatsApp",
   },
 };
 

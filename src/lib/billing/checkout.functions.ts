@@ -206,3 +206,52 @@ export const openBillingPortal = createServerFn({ method: "POST" })
       return { error: "portal_unavailable" };
     }
   });
+
+/**
+ * Server-authoritative subscription status for the signed-in agency.
+ * Read-only: it reports what verified billing already granted and never grants
+ * anything itself. The browser uses it for display and for the post-checkout
+ * activation state — it can never be used to escalate a plan.
+ */
+export type BillingStatus = {
+  plan: string;
+  planLabel: string;
+  paid: boolean;
+  founding: boolean;
+  source: string;
+  status: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  pendingDowngradePlan: string | null;
+};
+
+export const getBillingStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<BillingStatus> => {
+    const { supabase, userId } = context;
+    const agencyId = await resolveAgencyId(supabase, userId);
+
+    const { resolveEntitlement } = await import("./entitlements.server");
+    const { readBillingState } = await import("./paddle-billing-state.core");
+
+    const entitlement = await resolveEntitlement(supabase as never, agencyId);
+
+    const { data: row } = await supabase
+      .from("agency_entitlements")
+      .select("overrides")
+      .eq("agency_id", agencyId)
+      .maybeSingle();
+    const billing = readBillingState((row as { overrides?: unknown } | null)?.overrides);
+
+    return {
+      plan: entitlement.plan.code,
+      planLabel: entitlement.plan.label,
+      paid: entitlement.paid,
+      founding: entitlement.founding,
+      source: entitlement.source,
+      status: billing?.status ?? null,
+      currentPeriodEnd: billing?.current_period_end ?? null,
+      cancelAtPeriodEnd: Boolean(billing?.cancel_at_period_end),
+      pendingDowngradePlan: billing?.pending_downgrade?.plan ?? null,
+    };
+  });
