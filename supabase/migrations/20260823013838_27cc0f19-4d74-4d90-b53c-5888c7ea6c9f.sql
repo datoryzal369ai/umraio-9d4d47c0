@@ -1,0 +1,2 @@
+ALTER TABLE public.messages DROP CONSTRAINT IF EXISTS messages_modality_check;
+ALTER TABLE public.messages ADD CONSTRAINT messages_modality_check CHECK (modality = ANY (ARRAY['text'::text, 'audio'::text, 'image'::text]));
