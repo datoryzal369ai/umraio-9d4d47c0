@@ -118,7 +118,9 @@ export async function synthesizeSpeech(input: {
 }): Promise<TtsResult> {
   const engine = input.engine ?? selectVoiceEngine();
   const started = Date.now();
-  const result = await engine.synthesize({ text: input.text, voice: input.voice });
+  const result = await engine.synthesize(
+    input.voice ? { text: input.text, voice: input.voice } : { text: input.text },
+  );
   if (result.ok) {
     console.log(
       `[voice] xiaozhi_tts_success engine=${engine.name} bytes=${result.bytes.byteLength} latency_ms=${Date.now() - started}`,
