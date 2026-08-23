@@ -7,7 +7,8 @@
  * or cares that the message arrived as audio.
  *
  * Ordering guarantee (callers must preserve it):
- *   C2 idempotency  →  voice quota  →  media download  →  limits  →  ASR  →  meter
+ *   C2 idempotency  →  voice quota (gate 1, fail-closed)  →  media download  →
+ *   limits  →  voice quota (gate 2, duration-aware)  →  ASR  →  meter
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { QuotaError, assertVoiceQuota, recordUsageEvent } from "@/lib/billing/usage.server";
@@ -45,7 +46,8 @@ export async function ingestVoiceNote(
   const startedAt = Date.now();
   console.log(`[voice] audio_received agency_id=${args.agencyId} media_id=${args.mediaId}`);
 
-  // 1. QUOTA — before any paid work. A rejected quota never reaches ASR.
+  // 1. QUOTA (gate 1) — before any paid work, including the media download.
+  // Requests 0 seconds: it only proves the bucket is not already exhausted.
   try {
     await assertVoiceQuota(supabase, args.agencyId, 0);
     console.log(`[voice] quota_decision=allowed agency_id=${args.agencyId}`);
@@ -73,6 +75,23 @@ export async function ingestVoiceNote(
     return reject(limits.reason);
   }
   console.log(`[voice] audio_duration_estimate_s=${limits.durationSeconds}`);
+
+  // 3b. QUOTA (authoritative, duration-aware) — the first gate only proved the
+  // bucket was not already exhausted. Now that the note's duration is known we
+  // re-check with the actual cost, so a note that would CROSS the monthly
+  // allowance is rejected BEFORE any paid ASR or AI work happens.
+  try {
+    await assertVoiceQuota(supabase, args.agencyId, limits.durationSeconds);
+    console.log(
+      `[voice] quota_decision=allowed stage=duration_aware requested_s=${limits.durationSeconds} agency_id=${args.agencyId}`,
+    );
+  } catch (error) {
+    const kind = error instanceof QuotaError ? error.kind : "error";
+    console.log(
+      `[voice] quota_decision=denied stage=duration_aware kind=${kind} requested_s=${limits.durationSeconds} agency_id=${args.agencyId}`,
+    );
+    return reject("quota_exceeded");
+  }
 
   // 4. ASR.
   console.log("[voice] asr_started model=" + ASR_MODEL);
