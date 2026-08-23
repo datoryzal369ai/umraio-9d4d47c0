@@ -4,6 +4,7 @@ import { sendWhatsappText } from "../whatsapp-send.server";
 import {
   ISLAMIC_AUDIT_EVENTS,
   islamicDedupeKey,
+  isCurrentTurnIslamicReviewPending,
   isOpenIslamicReview,
   planPendingReviewReply,
   rejectionMessage,
@@ -196,6 +197,28 @@ export async function findOpenReviewForConversation(
     .limit(1)
     .maybeSingle();
   return (data as IslamicReviewRow | null) ?? null;
+}
+
+/**
+ * Authoritative turn-scoped review lookup used by both the early loop breaker
+ * and outbound voice eligibility. An older open review remains actionable for
+ * reviewers, but is never returned as a blocker for this turn.
+ */
+export async function findCurrentTurnOpenReview(
+  supabase: Db,
+  conversationId: string,
+  inboundAt: Date | string,
+): Promise<IslamicReviewRow | null> {
+  const inboundTimestamp = inboundAt instanceof Date ? inboundAt.toISOString() : inboundAt;
+  console.log(
+    `[islamic] ISLAMIC_REVIEW_LOOKUP conversation_id=${conversationId} inbound_at=${inboundTimestamp}`,
+  );
+  const review = await findOpenReviewForConversation(supabase, conversationId);
+  const currentTurnMatch = isCurrentTurnIslamicReviewPending(review, inboundAt);
+  console.log(
+    `[islamic] ISLAMIC_REVIEW_RESULT conversation_id=${conversationId} inbound_at=${inboundTimestamp} review_created_at=${review?.created_at ?? "none"} current_turn_match=${currentTurnMatch} status=${review?.status ?? "none"}`,
+  );
+  return currentTurnMatch ? review : null;
 }
 
 export { planPendingReviewReply, isOpenIslamicReview };

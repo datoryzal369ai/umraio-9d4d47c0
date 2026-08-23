@@ -26,6 +26,21 @@ export function isOpenIslamicReview(status: string): boolean {
   return OPEN_ISLAMIC_REVIEW_STATUSES.includes(status as IslamicReviewStatus);
 }
 
+/**
+ * A pending review may affect only the inbound turn that created it. Reviews
+ * opened before this turn remain in the human queue but cannot mute a later,
+ * unrelated reply in the same conversation.
+ */
+export function isCurrentTurnIslamicReviewPending(
+  review: { status: string; created_at: string } | null,
+  inboundAt: Date | string,
+): boolean {
+  if (!review || !isOpenIslamicReview(review.status)) return false;
+  const reviewCreatedAt = Date.parse(review.created_at);
+  const turnStartedAt = inboundAt instanceof Date ? inboundAt.getTime() : Date.parse(inboundAt);
+  return Number.isFinite(reviewCreatedAt) && Number.isFinite(turnStartedAt) && reviewCreatedAt >= turnStartedAt;
+}
+
 export function nextStatusFor(decision: IslamicReviewDecision): IslamicReviewStatus {
   return decision === "approve" ? "APPROVED" : decision === "amend" ? "AMENDED" : "REJECTED";
 }
