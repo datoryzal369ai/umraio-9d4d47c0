@@ -1125,6 +1125,7 @@ export async function generateAgentReply(
   conversationId: string,
   warm?: { prefetched: PrefetchedReplyInputs | null; expectedLatestMessageAt: string | null },
 ): Promise<string> {
+  const turnStartedAt = new Date().toISOString();
   // Reuse the warm read ONLY when no new message landed during the wait.
   const reusable =
     warm?.prefetched &&
@@ -1355,6 +1356,39 @@ export async function generateAgentReply(
     evaluation_score: null,
     failure_reason: null,
   });
+
+  // IIL V2.4 — DETERMINISTIC ESCALATION GUARANTEE. A HIGH_RISK turn always
+  // opens exactly one expert review carrying the AI-generated draft, even when
+  // the model neglected to call request_expert_review. BASIC / GUIDANCE /
+  // SENSITIVE turns are never escalated here.
+  try {
+    const lastCustomerTurn = [...ctx.messages].reverse().find((m) => m.sender === "customer");
+    const turnRisk = classifyIslamicRisk(lastCustomerTurn?.body);
+    if (turnRisk.tier === "HIGH_RISK") {
+      const { createOrReuseIslamicReview, findOpenReviewForConversation } = await import(
+        "./islamic/review.server"
+      );
+      const existing = await findOpenReviewForConversation(supabase, ctx.conversation.id as string);
+      const alreadyOpenedThisTurn = Boolean(existing && existing.created_at >= turnStartedAt);
+      if (!alreadyOpenedThisTurn) {
+        const outcome = await createOrReuseIslamicReview(supabase, {
+          agencyId,
+          conversationId: ctx.conversation.id as string,
+          leadId: (ctx.conversation.lead_id as string | null) ?? null,
+          question: (lastCustomerTurn?.body ?? "").slice(0, 2000),
+          topic: "other",
+          riskLevel: "HIGH_RISK",
+          escalationReason: turnRisk.reason,
+          draftAnswer: text || null,
+        });
+        console.log(
+          `[islamic] ISLAMIC_ESCALATION_GUARANTEE recorded=${outcome.recorded} deduplicated=${outcome.deduplicated} reason=${turnRisk.reason}`,
+        );
+      }
+    }
+  } catch (error) {
+    console.warn("[islamic] escalation guarantee skipped", (error as Error).message);
+  }
 
   return text || "Maaf, boleh ulang semula soalan tuan/puan?";
 }
