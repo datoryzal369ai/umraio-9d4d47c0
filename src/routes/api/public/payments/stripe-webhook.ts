@@ -35,14 +35,38 @@ export const Route = createFileRoute("/api/public/payments/stripe-webhook")({
           );
 
           if (!normalized) {
-            console.log("[stripe] unhandled event", envelope["type"]);
+            console.log(`[stripe] event=${String(envelope["type"])} label=event_ignored`);
             return Response.json({ received: true });
           }
 
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const outcome = await applyVerifiedStripeEvent(supabaseAdmin as never, normalized);
-          console.log("[stripe] event applied", envelope["type"], outcome);
+
+          // Telemetry: never logs card data, keys or personal data.
+          const label = !outcome.applied
+            ? outcome.reason === "duplicate"
+              ? "duplicate_event_ignored"
+              : outcome.reason === "no_agency"
+                ? "agency_unresolved"
+                : "price_unmapped"
+            : envelope["type"] === "invoice.payment_failed"
+              ? "payment_failed"
+              : envelope["type"] === "customer.subscription.deleted"
+                ? "subscription_cancelled"
+                : normalized.event.type === "created"
+                  ? "subscription_activated"
+                  : "subscription_updated";
+
+          console.log(
+            `[stripe] event=${String(envelope["type"])} label=${label}` +
+              (outcome.applied
+                ? ` agency=${outcome.agencyId} plan=${outcome.effectivePlan} entitlement=${
+                    outcome.effectivePlan === "trial" ? "revoked" : "activated"
+                  }`
+                : ""),
+          );
           return Response.json({ received: true });
+
         } catch (error) {
           console.error("[stripe] webhook processing error", error);
           return new Response("Webhook error", { status: 500 });
