@@ -57,8 +57,9 @@ export const setOwnerTestMode = createServerFn({ method: "POST" })
     }
     return input;
   })
-
+  .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+
     const { readOwnerTestOverride, resolveOwnerTestModeContext } = await import(
       "./owner-test-mode.server"
     );
