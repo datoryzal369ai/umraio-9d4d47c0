@@ -124,7 +124,7 @@ export function OwnerTestModePanel() {
           disabled={mutation.isPending}
           onClick={() => mutation.mutate({ enabled: false })}
         >
-          Turn Test Mode OFF
+          {mutation.isPending ? "Turning off…" : "Turn Test Mode OFF"}
         </Button>
       ) : (
         <div className="mt-4 space-y-3">
