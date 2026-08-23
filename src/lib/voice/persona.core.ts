@@ -7,6 +7,8 @@
  * honour are declared unsupported instead of being faked.
  */
 
+import { languageInstruction } from "./language.core";
+
 export const VOICE_CONTROL_KEYS = [
   "naturalness",
   "warmth",
@@ -209,7 +211,7 @@ export function buildVoiceInstructions(controls: VoiceControls, language = "ms-M
       "Speak conversationally rather than reading aloud.",
       "Speak as a human consultant would in a real conversation — never like a news reader, IVR or audiobook narrator.",
     ),
-    "Pronounce Malay words with Malaysian pronunciation and Arabic terms respectfully and exactly as written. Never spell out punctuation, symbols, links or reference codes.",
+    "Pronounce Arabic and Islamic terms respectfully and exactly as written. Never spell out punctuation, symbols, links or reference codes, and never read the text like a news reader, IVR or audiobook narrator.",
   ];
   return parts.join(" ");
 }
