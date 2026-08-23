@@ -399,6 +399,15 @@ function systemPrompt(
       redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
     ),
     conversionSignalInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
+    // CONVERSATIONAL VALIDATION GUARD — understand first, confirm only when needed.
+    continuityInstruction(
+      readContinuity({
+        turns: ctx.messages.map((m) => ({ sender: m.sender, body: m.body })),
+        latestCustomerMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
+        modality: inferModalityFromBody(lastCustomer?.body),
+      }),
+    ),
+
     conversationIntelligenceInstruction(intel),
     // STEP 3I.1 — AI SALES ELITE™ (state, single next best action, closing mode).
     eliteSalesInstruction(buildEliteIntelligence(ctx, intel)),
