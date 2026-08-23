@@ -16,6 +16,10 @@ type ReviewRow = {
   conversation_id: string | null;
   question: string;
   topic: string;
+  risk_level: string | null;
+  escalation_reason: string | null;
+  ai_draft_answer: string | null;
+  ai_sources: string | null;
   status: string;
   reviewer_id: string | null;
   approved_answer: string | null;
@@ -25,6 +29,11 @@ type ReviewRow = {
   reference: string | null;
   created_at: string;
   decided_at: string | null;
+};
+
+const RISK_TONE: Record<string, string> = {
+  HIGH_RISK: "border-destructive/40 text-destructive",
+  SENSITIVE: "border-amber-500/40 text-amber-400",
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -51,7 +60,7 @@ function ReviewCard({
     rejectionReason?: string;
   }) => void;
 }) {
-  const [answer, setAnswer] = useState(review.approved_answer ?? "");
+  const [answer, setAnswer] = useState(review.approved_answer ?? review.ai_draft_answer ?? "");
   const [reason, setReason] = useState("");
   const open = review.status === "PENDING" || review.status === "AMENDED";
 
@@ -60,6 +69,11 @@ function ReviewCard({
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline" className={cn(STATUS_TONE[review.status] ?? "")}>
           {review.status}
+        </Badge>
+        <Badge variant="outline" className={RISK_TONE[review.risk_level ?? ""] ?? ""}>
+          {review.risk_level === "SENSITIVE"
+            ? "SENSITIVE · CASE-SPECIFIC"
+            : "HIGH-RISK · FATWA / CASE-SPECIFIC"}
         </Badge>
         <Badge variant="outline">{review.topic.replace("_", " ")}</Badge>
         {review.reference ? (
@@ -70,6 +84,24 @@ function ReviewCard({
         </span>
       </div>
       <p className="mt-2 text-sm font-medium text-foreground">{review.question}</p>
+      {review.escalation_reason ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Reason for escalation: {review.escalation_reason.replace(/_/g, " ")}
+        </p>
+      ) : null}
+      {review.ai_draft_answer ? (
+        <div className="mt-2 rounded-md border border-dashed border-primary/40 bg-primary/5 p-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+            AI-generated draft — human review required
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+            {review.ai_draft_answer}
+          </p>
+          {review.ai_sources ? (
+            <p className="mt-1 text-xs text-muted-foreground">Sources: {review.ai_sources}</p>
+          ) : null}
+        </div>
+      ) : null}
       <p className="mt-1 text-xs text-muted-foreground">
         Conversation: {review.conversation_id ? review.conversation_id.slice(0, 8) : "—"} · Approver:{" "}
         {review.reviewer_id ? review.reviewer_id.slice(0, 8) : "unassigned"} · Delivery:{" "}
@@ -192,11 +224,13 @@ export function IslamicReviewQueue() {
         </span>
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground">
-            Islamic Implementation Layer™ — Review Queue
+            Islamic Implementation Layer™ — Expert Review Queue
           </h2>
           <p className="text-sm text-muted-foreground">
-            Religious questions are verified by a qualified human here. Approved answers are sent to
-            the customer exactly as written — the AI never regenerates them.
+            AI handles established Islamic knowledge automatically. High-risk, complex or
+            fatwa-level questions are escalated here for qualified human experts, who approve, amend
+            or reject the AI-generated draft. Approved answers are sent to the customer exactly as
+            written — the AI never regenerates them.
           </p>
         </div>
       </header>
@@ -204,7 +238,10 @@ export function IslamicReviewQueue() {
       {query.isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : !reviews.length ? (
-        <p className="text-sm text-muted-foreground">No Islamic reviews yet.</p>
+        <p className="text-sm text-muted-foreground">
+          No escalations. Basic and ordinary Islamic questions are answered automatically and never
+          enter this queue.
+        </p>
       ) : (
         <div className="space-y-5">
           {groups.map(([status, rows]) =>
