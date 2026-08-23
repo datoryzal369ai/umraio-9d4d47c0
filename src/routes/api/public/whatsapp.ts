@@ -477,6 +477,50 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               );
               const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
 
+              // VOICE REPLY V1 — a voice turn is answered in voice AND text.
+              // The text above already landed, so any failure here is silent to
+              // the customer and simply leaves a text-only answer.
+              if (sent && inbound.modality === "audio") {
+                try {
+                  const { decideVoiceReply, isDeliverableAudio } = await import(
+                    "@/lib/voice/tts.core"
+                  );
+                  const decision = decideVoiceReply({
+                    inboundModality: inbound.modality,
+                    replyText: reply,
+                  });
+                  if (!decision.speak) {
+                    console.log(`[voice] voice_reply_fallback_text reason=${decision.reason}`);
+                  } else {
+                    console.log("[voice] voice_reply_requested");
+                    const ttsStarted = Date.now();
+                    const { synthesizeSpeech } = await import("@/lib/voice/tts.server");
+                    const speech = await synthesizeSpeech({ text: decision.text });
+                    if (!speech.ok || !isDeliverableAudio({ byteLength: speech.bytes.byteLength })) {
+                      console.log(
+                        `[voice] voice_reply_fallback_text reason=${speech.ok ? "audio_too_large" : speech.kind}`,
+                      );
+                    } else {
+                      const { sendWhatsappAudio } = await import("@/lib/whatsapp-send.server");
+                      const voiceSent = await sendWhatsappAudio(
+                        phoneNumberId,
+                        config.access_token,
+                        from,
+                        { bytes: speech.bytes, mimeType: speech.mimeType },
+                      );
+                      console.log(
+                        `[voice] ${voiceSent ? "whatsapp_voice_sent" : "voice_reply_fallback_text reason=send_failed"} voice_reply_latency_bucket=${latencyBucketLabel(Date.now() - ttsStarted)}`,
+                      );
+                    }
+                  }
+                } catch (error) {
+                  console.error(
+                    `[voice] voice_reply_fallback_text reason=${error instanceof Error ? error.name : "unknown"}`,
+                  );
+                }
+              }
+
+
               await supabaseAdmin.from("messages").insert({
                 agency_id: agencyId,
                 conversation_id: conversationId,
