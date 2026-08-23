@@ -61,7 +61,7 @@ export const lovableVoiceEngine: VoiceEngine = {
   async synthesize({ text, voice, speed, instructions }) {
     const apiKey = process.env["LOVABLE_API_KEY"];
     if (!apiKey) {
-      console.error("[voice] xiaozhi_tts_failed category=config engine=lovable");
+      console.error("[voice] tts_failed engine=lovable category=config");
       return { ok: false, kind: "config", engine: "lovable" };
     }
     let res: Response;
@@ -86,20 +86,20 @@ export const lovableVoiceEngine: VoiceEngine = {
       });
     } catch (error) {
       console.error(
-        `[voice] xiaozhi_tts_failed category=network name=${error instanceof Error ? error.name : "unknown"}`,
+        `[voice] tts_failed engine=lovable category=network name=${error instanceof Error ? error.name : "unknown"}`,
       );
       return { ok: false, kind: "provider", engine: "lovable" };
     }
 
     if (!res.ok) {
       const kind = classify(res.status);
-      console.error(`[voice] xiaozhi_tts_failed category=${kind} status=${res.status}`);
+      console.error(`[voice] tts_failed engine=lovable category=${kind} status=${res.status}`);
       return { ok: false, kind, engine: "lovable" };
     }
 
     const bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.byteLength === 0) {
-      console.error("[voice] xiaozhi_tts_failed category=empty_audio");
+      console.error("[voice] tts_failed engine=lovable category=empty_audio");
       return { ok: false, kind: "provider", engine: "lovable" };
     }
     return { ok: true, bytes, mimeType: OUTBOUND_AUDIO_MIME, engine: "lovable" };
@@ -114,7 +114,7 @@ export const lovableVoiceEngine: VoiceEngine = {
 export const xiaozhiVoiceEngine: VoiceEngine = {
   name: "xiaozhi",
   async synthesize() {
-    console.error("[voice] xiaozhi_tts_failed category=unsupported_engine");
+    console.error("[voice] tts_failed engine=xiaozhi category=unsupported_engine");
     return { ok: false, kind: "unsupported_engine", engine: "xiaozhi" };
   },
 };
@@ -138,7 +138,7 @@ export async function synthesizeSpeech(
   });
   if (result.ok) {
     console.log(
-      `[voice] xiaozhi_tts_success engine=${engine.name} bytes=${result.bytes.byteLength} latency_ms=${Date.now() - started}`,
+      `[voice] tts_success engine=${engine.name} bytes=${result.bytes.byteLength} latency_ms=${Date.now() - started}`,
     );
   }
   return result;
