@@ -183,11 +183,19 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             return new Response("ok");
           }
           const { ingestVoiceNote } = await import("@/lib/voice/inbound.server");
+          // voice_language is the agency's dedicated spoken language; it steers
+          // transcription too so Malaysian Malay is never heard as Indonesian.
+          const { data: inboundVoiceSettings } = await supabaseAdmin
+            .from("agency_settings")
+            .select("voice_language")
+            .eq("agency_id", agencyId)
+            .maybeSingle();
           const voice = await ingestVoiceNote(supabaseAdmin as never, {
             agencyId,
             mediaId: inbound.mediaId,
             accessToken: config.access_token,
             providerMessageId,
+            voiceLanguage: (inboundVoiceSettings?.voice_language as string | null) ?? null,
           });
           if (!voice.ok) {
             // Never silently drop, never fabricate a transcript, never let the
@@ -579,7 +587,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                   // verbatim and a PENDING review is never spoken at all.
                   const { data: voiceSettings } = await supabaseAdmin
                     .from("agency_settings")
-                    .select("voice_persona, voice_controls, voice_name, ai_language")
+                    .select("voice_persona, voice_controls, voice_name, voice_language")
                     .eq("agency_id", agencyId)
                     .maybeSingle();
                   const { data: openIslamic } = await supabaseAdmin
@@ -597,7 +605,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                       controls: (voiceSettings?.voice_controls ?? {}) as Record<string, unknown>,
                       voice: voiceSettings?.voice_name ?? null,
                     },
-                    language: (voiceSettings?.ai_language as string | undefined) ?? "ms-MY",
+                    language: (voiceSettings?.voice_language as string | undefined) ?? "ms-MY",
                     islamicReviewPending: Boolean(openIslamic),
                   });
                   if (!decision.speak) {
