@@ -578,6 +578,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               // answer is delivered and persisted. Any failure here leaves a
               // complete text-only answer and never blocks the turn.
               if (sent && inbound.modality === "audio") {
+                const vlog = (stage: string, extra = "") =>
+                  console.log(`[voice] ${stage} conversation_id=${conversationId}${extra ? ` ${extra}` : ""}`);
+                vlog("VOICE_OUTBOUND_START");
                 try {
                   const { decideVoiceReply, isDeliverableAudio } = await import(
                     "@/lib/voice/tts.core"
@@ -590,13 +593,19 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                     .select("voice_persona, voice_controls, voice_name, voice_language")
                     .eq("agency_id", agencyId)
                     .maybeSingle();
+                  // V2.2 REGRESSION FIX — the Islamic mute is scoped to THIS
+                  // turn. A review opened on an earlier turn must never
+                  // silence every later voice reply in the same conversation.
                   const { data: openIslamic } = await supabaseAdmin
                     .from("islamic_reviews")
                     .select("id, status")
                     .eq("conversation_id", conversationId)
                     .in("status", ["PENDING", "AMENDED"])
+                    .gte("created_at", inboundAt.toISOString())
                     .limit(1)
                     .maybeSingle();
+                  const voiceLanguage =
+                    (voiceSettings?.voice_language as string | undefined) ?? "ms-MY";
                   const decision = decideVoiceReply({
                     inboundModality: inbound.modality,
                     replyText: reply,
@@ -605,17 +614,21 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                       controls: (voiceSettings?.voice_controls ?? {}) as Record<string, unknown>,
                       voice: voiceSettings?.voice_name ?? null,
                     },
-                    language: (voiceSettings?.voice_language as string | undefined) ?? "ms-MY",
+                    language: voiceLanguage,
                     islamicReviewPending: Boolean(openIslamic),
                   });
+                  vlog(
+                    "VOICE_ELIGIBILITY",
+                    `speak=${decision.speak} reason=${decision.speak ? "eligible" : decision.reason} islamic_turn_review=${Boolean(openIslamic)} voice_language=${voiceLanguage} reply_chars=${reply.length}`,
+                  );
                   if (!decision.speak) {
                     console.log(`[voice] voice_reply_fallback_text reason=${decision.reason}`);
                   } else {
-                    console.log("[voice] tts_started");
                     const ttsStarted = Date.now();
                     const { synthesizeSpeech } = await import("@/lib/voice/tts.server");
-                    console.log(
-                      `[voice] persona=${decision.presentation.personaKey} speed=${decision.presentation.speed} length_class=${decision.presentation.lengthClass}`,
+                    vlog(
+                      "VOICE_TTS_START",
+                      `persona=${decision.presentation.personaKey} voice_name=${decision.presentation.voice} speed=${decision.presentation.speed} length_class=${decision.presentation.lengthClass} spoken_chars=${decision.text.length}`,
                     );
                     const speech = await synthesizeSpeech({
                       text: decision.text,
@@ -624,17 +637,29 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                       instructions: decision.presentation.instructions,
                     });
                     if (!speech.ok || !isDeliverableAudio({ byteLength: speech.bytes.byteLength })) {
+                      vlog(
+                        "VOICE_TTS_FAILURE",
+                        `reason=${speech.ok ? "audio_too_large" : speech.kind}`,
+                      );
                       console.log(
                         `[voice] tts_failed reason=${speech.ok ? "audio_too_large" : speech.kind}`,
                       );
                     } else {
-                      console.log("[voice] tts_completed audio_send_started");
+                      vlog(
+                        "VOICE_TTS_SUCCESS",
+                        `engine=${speech.engine} audio_bytes=${speech.bytes.byteLength} mime_type=${speech.mimeType} latency_ms=${Date.now() - ttsStarted}`,
+                      );
+                      vlog("VOICE_SEND_START");
                       const { sendWhatsappAudio } = await import("@/lib/whatsapp-send.server");
                       const voiceSent = await sendWhatsappAudio(
                         phoneNumberId,
                         config.access_token,
                         from,
                         { bytes: speech.bytes, mimeType: speech.mimeType },
+                      );
+                      vlog(
+                        voiceSent ? "VOICE_SEND_SUCCESS" : "VOICE_SEND_FAILURE",
+                        `voice_reply_latency_bucket=${latencyBucketLabel(Date.now() - ttsStarted)}`,
                       );
                       console.log(
                         `[voice] ${voiceSent ? "audio_send_succeeded" : "audio_send_failed"} voice_reply_latency_bucket=${latencyBucketLabel(Date.now() - ttsStarted)}`,
@@ -645,8 +670,11 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                   console.error(
                     `[voice] tts_failed reason=${error instanceof Error ? error.name : "unknown"} fallback=text_only`,
                   );
+                } finally {
+                  vlog("VOICE_OUTBOUND_COMPLETE");
                 }
               }
+
 
 
               // A quotation is only "sent" once the message actually left.
