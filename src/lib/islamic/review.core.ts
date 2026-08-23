@@ -32,10 +32,23 @@ export function isOpenIslamicReview(status: string): boolean {
  * unrelated reply in the same conversation.
  */
 export function isCurrentTurnIslamicReviewPending(
-  review: { status: string; created_at: string } | null,
+  review: { status: string; created_at: string; question?: string | null } | null,
   inboundAt: Date | string,
+  currentQuestion?: string | null,
 ): boolean {
   if (!review || !isOpenIslamicReview(review.status)) return false;
+  if (currentQuestion !== undefined) {
+    const normalise = (value: string | null | undefined) =>
+      (value ?? "")
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[^\p{Letter}\p{Number}\s]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const reviewQuestion = normalise(review.question);
+    const inboundQuestion = normalise(currentQuestion);
+    return Boolean(reviewQuestion) && reviewQuestion === inboundQuestion;
+  }
   const reviewCreatedAt = Date.parse(review.created_at);
   const turnStartedAt = inboundAt instanceof Date ? inboundAt.getTime() : Date.parse(inboundAt);
   return Number.isFinite(reviewCreatedAt) && Number.isFinite(turnStartedAt) && reviewCreatedAt >= turnStartedAt;

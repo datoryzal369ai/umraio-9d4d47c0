@@ -334,6 +334,11 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         if (!conversationId) return new Response("ok");
 
         const inboundAt = new Date();
+        if (inbound.modality === "audio") {
+          console.log(
+            `[voice] VOICE_INBOUND_START conversation_id=${conversationId} message_id=${providerMessageId ?? "none"} inbound_at=${inboundAt.toISOString()} transcript=${JSON.stringify(text)}`,
+          );
+        }
         // IDEMPOTENCY (authoritative gate): the DB unique index on
         // (agency_id, provider_message_id) makes concurrent duplicate deliveries
         // resolve to exactly one processed message. A conflict = stop, no AI, no send.
@@ -448,61 +453,6 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             }
             console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
 
-            // ISLAMIC IMPLEMENTATION LAYER™ — pending-review loop breaker.
-            // While a religious question is awaiting a qualified reviewer we
-            // never re-run intent clarification for it: exactly one holding
-            // response, then contextual acknowledgement.
-            {
-              const { findCurrentTurnOpenReview, planPendingReviewReply, markHoldingSent } =
-                await import("@/lib/islamic/review.server");
-              const openReview = await findCurrentTurnOpenReview(
-                supabaseAdmin as never,
-                conversationId,
-                inboundAt,
-              ).catch((err) => {
-                console.log(`[islamic] current_turn_review_lookup_failed err=${String(err)}`);
-                return null;
-              });
-              const plan = planPendingReviewReply(openReview);
-              if (plan.kind !== "none" && openReview) {
-
-                console.log(
-                  `[islamic] pending_review_loop_breaker kind=${plan.kind} review=${openReview.id}`,
-                );
-                const sentHold = await sendWhatsappText(
-                  phoneNumberId,
-                  config.access_token,
-                  from,
-                  plan.message,
-                );
-                await supabaseAdmin.from("messages").insert({
-                  agency_id: agencyId,
-                  conversation_id: conversationId,
-                  sender: "ai",
-                  body: plan.message,
-                  modality: "text",
-                });
-                await supabaseAdmin
-                  .from("conversations")
-                  .update({
-                    last_message_at: new Date().toISOString(),
-                    human_attention_required: true,
-                  })
-                  .eq("id", conversationId);
-                if (plan.kind === "holding") {
-                  await markHoldingSent(supabaseAdmin as never, openReview.id);
-                }
-                console.log(
-                  `[whatsapp] conversation_terminal_outcome=islamic_review_pending delivered=${sentHold}`,
-                );
-                await releaseConversationClaim(supabaseAdmin as never, {
-                  agencyId,
-                  conversationId,
-                });
-                return new Response("ok");
-              }
-            }
-
             const { generateAgentReply } = await salesAiModule;
 
             const prefetched = await prefetch;
@@ -604,6 +554,8 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                     supabaseAdmin as never,
                     conversationId,
                     inboundAt,
+                     text,
+                     "voice_eligibility",
                   );
                   const voiceLanguage =
                     (voiceSettings?.voice_language as string | undefined) ?? "ms-MY";
@@ -672,6 +624,10 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                     }
                   }
                 } catch (error) {
+                  vlog(
+                    "VOICE_TTS_FAILURE",
+                    `reason=${error instanceof Error ? error.name : "unknown"}`,
+                  );
                   console.error(
                     `[voice] tts_failed reason=${error instanceof Error ? error.name : "unknown"} fallback=text_only`,
                   );

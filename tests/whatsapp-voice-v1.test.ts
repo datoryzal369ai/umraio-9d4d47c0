@@ -25,6 +25,9 @@ const state = {
   mediaFetches: 0,
   asrCalls: 0,
   usage: [] as Row[],
+  reviews: [] as Row[],
+  ttsCalls: 0,
+  audioSends: 0,
   quotaAllowed: true,
   media: { ok: true, bytes: 40_000 } as { ok: boolean; bytes: number; reason?: string },
   asr: { ok: true, text: "Salam, saya nak tanya pakej umrah bulan Mac" } as {
@@ -42,6 +45,8 @@ vi.mock("@/integrations/supabase/client.server", () => {
     chain["or"] = () => chain;
     chain["order"] = () => chain;
     chain["limit"] = () => chain;
+    chain["in"] = () => chain;
+    chain["is"] = () => chain;
     chain["gte"] = () => chain;
     chain["eq"] = (col: string, val: unknown) => {
       filters[col] = val;
@@ -83,6 +88,12 @@ vi.mock("@/integrations/supabase/client.server", () => {
       }
       if (name === "leads") return { data: { id: "lead-1" } };
       if (name === "conversations") return { data: { id: "conv-1", ai_enabled: true } };
+      if (name === "islamic_reviews") {
+        const review = [...state.reviews].reverse().find((row) =>
+          row["conversation_id"] === filters["conversation_id"]
+        );
+        return { data: review ?? null };
+      }
       return { data: null };
     };
     chain["single"] = async () => ({ data: { id: "x", ai_enabled: true } });
@@ -102,6 +113,17 @@ vi.mock("@/integrations/supabase/client.server", () => {
 vi.mock("@/lib/sales-ai.server", () => ({
   generateAgentReply: async () => {
     state.aiCalls += 1;
+    if (state.asr.text?.includes("fatwa")) {
+      state.reviews.push({
+        id: `review-${state.reviews.length + 1}`,
+        conversation_id: "conv-1",
+        question: state.asr.text,
+        status: "PENDING",
+        holding_sent_at: null,
+        created_at: new Date(Date.now() + 10).toISOString(),
+      });
+      return "Baik Datuk, soalan itu saya dah terima. Saya sedang dapatkan semakan daripada pembimbing agama.";
+    }
     return "Waalaikumsalam Tuan, boleh saya bantu?";
   },
   computeLeadScore: () => 50,
@@ -215,18 +237,30 @@ beforeEach(() => {
   state.mediaFetches = 0;
   state.asrCalls = 0;
   state.usage = [];
+  state.reviews = [];
+  state.ttsCalls = 0;
+  state.audioSends = 0;
   state.quotaAllowed = true;
   state.media = { ok: true, bytes: 40_000 };
   state.asr = { ok: true, text: "Salam, saya nak tanya pakej umrah bulan Mac" };
   process.env["META_APP_SECRET"] = SECRET;
   fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
+    if (url.includes("ai.gateway.lovable.dev/v1/audio/speech")) {
+      state.ttsCalls += 1;
+      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+    }
+    if (url.endsWith("/media")) {
+      return new Response(JSON.stringify({ id: "outbound-media-1" }), { status: 200 });
+    }
     if (url.includes("/messages")) {
       const parsed = JSON.parse(String((init as RequestInit).body)) as {
         text?: { body?: string };
+        type?: string;
       };
       // Typing indicators post to the same endpoint with no text body.
       if (parsed.text?.body) state.outboundBodies.push(parsed.text.body);
+      if (parsed.type === "audio") state.audioSends += 1;
     }
     return new Response("{}", { status: 200 });
   });
@@ -389,5 +423,44 @@ describe("VOICE V1 — webhook pipeline", () => {
     expect(res.status).toBe(401);
     expect(state.mediaFetches).toBe(0);
     expect(state.asrCalls).toBe(0);
+  });
+
+  it.each([
+    "Saya nak tanya pasal pakej Umrah 12 hari.",
+    "Berapa harga pakej?",
+    "Apa maksud Talbiyah?",
+  ])(
+    "V2.5.1 old PENDING review does not block current voice: %s",
+    async (transcript) => {
+      state.reviews.push({
+        id: "review-old",
+        conversation_id: "conv-1",
+        question: "Boleh minta fatwa tentang keadaan khusus saya?",
+        status: "PENDING",
+        holding_sent_at: null,
+        created_at: "2026-08-23T10:00:00.000Z",
+      });
+      state.asr = { ok: true, text: transcript };
+
+      await send(audioMsg(`wamid.${transcript.length}`));
+
+      expect(state.aiCalls).toBe(1);
+      expect(state.outboundBodies).not.toContainEqual(expect.stringContaining("pembimbing agama"));
+      expect(state.ttsCalls).toBe(1);
+      expect(state.audioSends).toBe(1);
+      expect(state.reviews).toHaveLength(1);
+    },
+  );
+
+  it("V2.5.1 current HIGH_RISK voice creates review and suppresses only its audio", async () => {
+    state.asr = { ok: true, text: "Boleh minta fatwa tentang keadaan khusus saya?" };
+
+    await send(audioMsg("wamid.HIGH-RISK"));
+
+    expect(state.reviews).toHaveLength(1);
+    expect(state.reviews[0]?.["question"]).toBe(state.asr.text);
+    expect(state.outboundBodies).toContainEqual(expect.stringContaining("pembimbing agama"));
+    expect(state.ttsCalls).toBe(0);
+    expect(state.audioSends).toBe(0);
   });
 });
