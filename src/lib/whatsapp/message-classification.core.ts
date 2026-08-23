@@ -83,6 +83,7 @@ export function classifyInboundMessage(
       from,
       senderSource,
       text,
+      caption: null,
       mediaId: null,
       providerMessageId,
       processable: Boolean(from && text.trim()),
@@ -98,6 +99,25 @@ export function classifyInboundMessage(
       senderSource,
       // Preparation phase: no transcript exists yet, and we never invent one.
       text: "",
+      caption: null,
+      mediaId,
+      providerMessageId,
+      processable: Boolean(from && mediaId),
+    };
+  }
+
+  // IMAGE V1 — the image itself is understood later by the vision gateway.
+  if (rawType === "image") {
+    const mediaId = (message?.image?.id ?? "").trim() || null;
+    const caption = (message?.image?.caption ?? "").trim() || null;
+    return {
+      modality: "image",
+      rawType,
+      from,
+      senderSource,
+      // No description exists yet, and we never invent one.
+      text: "",
+      caption,
       mediaId,
       providerMessageId,
       processable: Boolean(from && mediaId),
@@ -110,6 +130,7 @@ export function classifyInboundMessage(
     from,
     senderSource,
     text: "",
+    caption: null,
     mediaId: null,
     providerMessageId,
     processable: false,
@@ -118,6 +139,9 @@ export function classifyInboundMessage(
 
 
 /** Persisted modality for the `messages` table (unsupported never persists). */
-export function persistedModality(modality: InboundModality): "text" | "audio" {
-  return modality === "audio" ? "audio" : "text";
+export function persistedModality(modality: InboundModality): "text" | "audio" | "image" {
+  if (modality === "audio") return "audio";
+  if (modality === "image") return "image";
+  return "text";
+
 }
