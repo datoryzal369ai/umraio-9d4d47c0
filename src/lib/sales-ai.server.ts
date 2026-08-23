@@ -20,7 +20,7 @@ import {
   detectReligiousRulingRequest,
   RELIGIOUS_BOUNDARY_INSTRUCTION,
 } from "./islamic/policy.core";
-import { createIslamicPolicyChecker, requestExpertReview } from "./islamic/policy.server";
+import { createIslamicPolicyChecker } from "./islamic/policy.server";
 import {
   DOMAIN_ISOLATION_INSTRUCTION,
   conversionSignalInstruction,
