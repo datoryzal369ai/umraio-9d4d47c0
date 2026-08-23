@@ -195,7 +195,12 @@ export const PLAN_ENTITLEMENTS: Record<PlanCode, PlanEntitlement> = {
   },
 };
 
-export const DEFAULT_PLAN: PlanCode = "founding";
+/**
+ * Commercial rule: NO CONFIRMED PAYMENT → NO PAID ENTITLEMENT.
+ * Agencies without a verified subscription sit on the free trial envelope.
+ */
+export const DEFAULT_PLAN: PlanCode = "trial";
+
 
 function isPlanCode(value: unknown): value is PlanCode {
   return typeof value === "string" && value in PLAN_ENTITLEMENTS;
