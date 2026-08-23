@@ -1,0 +1,120 @@
+import { createServerFn } from "@tanstack/react-start";
+
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+import {
+  canManageTestOverride,
+  validateEnableRequest,
+  type EnableTestOverrideInput,
+} from "./owner-test-mode.core";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+async function resolveAgency(supabase: any, userId: string): Promise<string> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("agency_id")
+    .eq("id", userId)
+    .maybeSingle();
+  const agencyId = data?.agency_id as string | undefined;
+  if (!agencyId) throw new Error("No agency found for this account");
+  return agencyId;
+}
+
+async function rolesFor(supabase: any, userId: string): Promise<string[]> {
+  const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+  return ((data ?? []) as { role: string }[]).map((r) => r.role);
+}
+
+/** Owner Test Mode status + recent audit trail (owner-only for the audit). */
+export const getOwnerTestMode = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const agencyId = await resolveAgency(supabase, userId);
+    const roles = await rolesFor(supabase, userId);
+    const canManage = canManageTestOverride(roles);
+
+    const { readOwnerTestOverride } = await import("./owner-test-mode.server");
+    const state = await readOwnerTestOverride(supabase, agencyId);
+
+    let audit: Array<Record<string, unknown>> = [];
+    if (canManage) {
+      const { data } = await supabase
+        .from("owner_test_override_events")
+        .select("id, action, categories, reason, expires_at, created_at, actor_id")
+        .eq("agency_id", agencyId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      audit = (data ?? []) as Array<Record<string, unknown>>;
+    }
+
+    return { state, canManage, audit };
+  });
+
+/**
+ * Enable/disable Owner Test Mode. Owner-only, agency-scoped, confirmation and
+ * reason required. Writes an immutable audit event. Touches no usage counter,
+ * plan, entitlement or billing record.
+ */
+export const setOwnerTestMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { enabled: boolean } & EnableTestOverrideInput) => input)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const agencyId = await resolveAgency(supabase, userId);
+    const roles = await rolesFor(supabase, userId);
+    if (!canManageTestOverride(roles)) {
+      throw new Error("Only the agency owner can change Owner Test Mode.");
+    }
+
+    if (data?.enabled) {
+      const plan = validateEnableRequest(data);
+      const { error } = await supabase.from("owner_test_overrides").upsert(
+        {
+          agency_id: agencyId,
+          enabled: true,
+          categories: plan.categories,
+          reason: plan.reason,
+          enabled_by: userId,
+          enabled_at: new Date().toISOString(),
+          expires_at: plan.expiresAt,
+        },
+        { onConflict: "agency_id" },
+      );
+      if (error) throw new Error(error.message);
+
+      await supabase.from("owner_test_override_events").insert({
+        agency_id: agencyId,
+        actor_id: userId,
+        action: "enabled",
+        categories: plan.categories,
+        reason: plan.reason,
+        expires_at: plan.expiresAt,
+      });
+    } else {
+      const { error } = await supabase.from("owner_test_overrides").upsert(
+        {
+          agency_id: agencyId,
+          enabled: false,
+          categories: [],
+          reason: null,
+          enabled_by: userId,
+          enabled_at: null,
+          expires_at: null,
+        },
+        { onConflict: "agency_id" },
+      );
+      if (error) throw new Error(error.message);
+
+      await supabase.from("owner_test_override_events").insert({
+        agency_id: agencyId,
+        actor_id: userId,
+        action: "disabled",
+        categories: [],
+        reason: typeof data?.reason === "string" ? data.reason.slice(0, 500) : null,
+      });
+    }
+
+    const { readOwnerTestOverride } = await import("./owner-test-mode.server");
+    return { state: await readOwnerTestOverride(supabase, agencyId) };
+  });
