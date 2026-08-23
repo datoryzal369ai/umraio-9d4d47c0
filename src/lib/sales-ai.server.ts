@@ -27,6 +27,12 @@ import {
   intentAnchorInstruction,
 } from "./sales-intent.core";
 import {
+  continuityInstruction,
+  inferModalityFromBody,
+  readContinuity,
+} from "@/lib/sales/context-continuity.core";
+
+import {
   buildConversationIntelligence,
   buildHandoffBrief,
   conversationIntelligenceInstruction,
