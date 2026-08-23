@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LanguageSelector } from "@/components/app/LanguageSelector";
 import { PaymentTestModeBanner } from "@/components/settings/PaymentTestModeBanner";
+import { BuildInfoBanner } from "@/components/settings/BuildInfoBanner";
 import { OwnerTestModePanel } from "@/components/settings/OwnerTestModePanel";
 import { UsagePanel } from "@/components/settings/UsagePanel";
 import { useAuth } from "@/hooks/useAuth";
