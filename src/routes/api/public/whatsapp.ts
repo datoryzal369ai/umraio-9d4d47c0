@@ -74,13 +74,23 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         console.log(
           `[whatsapp] webhook received phone_number_id=${phoneNumberId ?? "none"} type=${message?.type ?? "none"} messages=${value?.messages?.length ?? 0}`,
         );
-        if (!message || !phoneNumberId) return new Response("ok");
+        if (!message || !phoneNumberId) {
+          console.log(
+            `[whatsapp] inbound_dropped reason=missing_message_or_phone_id phone_number_id=${phoneNumberId ?? "none"} messages_count=${value?.messages?.length ?? 0} has_from=${Boolean(message?.from)} message_type=${message?.type ?? "none"}`,
+          );
+          return new Response("ok");
+        }
 
         // VOICE V1 PREP (1) — classify BEFORE any modality-specific work.
         const inbound = classifyInboundMessage(message);
         const from = inbound.from;
         const providerMessageId = inbound.providerMessageId;
-        if (!from) return new Response("ok");
+        if (!from) {
+          console.log(
+            `[whatsapp] inbound_dropped reason=missing_sender phone_number_id=${phoneNumberId} provider_message_id=${providerMessageId ?? "none"} message_type=${message.type ?? "none"} from_present=false`,
+          );
+          return new Response("ok");
+        }
 
         // VOICE V1 PREP (1) — agency/config/access-token resolution is HOISTED
         // above the modality branch: audio retrieval will need the authenticated
