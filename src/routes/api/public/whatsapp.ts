@@ -390,10 +390,21 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           }
 
           try {
+            // UX — show the customer a typing/processing state immediately so
+            // the wait never feels like silence. Best effort, never fatal.
+            if (providerMessageId) {
+              const { sendWhatsappTypingIndicator } = await import("@/lib/whatsapp-send.server");
+              void sendWhatsappTypingIndicator(
+                phoneNumberId,
+                config.access_token,
+                providerMessageId,
+              );
+            }
             // LATENCY — start the READ-ONLY work (module load, context, quota)
             // concurrently with the coalescing wait. Nothing here decides
             // whether to reply; the authoritative checks stay below the wait.
             const salesAiModule = import("@/lib/sales-ai.server");
+
             const prefetch = salesAiModule
               .then((m) =>
                 typeof m.prefetchReplyInputs === "function"
@@ -447,7 +458,25 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
             console.log(`[whatsapp] ai reply generated=${Boolean(reply)}`);
             if (reply) {
+              // HUMANISED TIMING — only ever pads a reply that arrived faster
+              // than a human executive plausibly could. Never slows a real one.
+              const { presentationDelayMs, latencyBucketLabel } = await import(
+                "@/lib/sales/context-continuity.core"
+              );
+              const elapsedMs = Date.now() - inboundAt.getTime();
+              const pad = presentationDelayMs({
+                elapsedMs,
+                modality: inbound.modality === "image" || inbound.modality === "audio"
+                  ? inbound.modality
+                  : "text",
+                replyLength: reply.length,
+              });
+              if (pad > 0) await new Promise((r) => setTimeout(r, pad));
+              console.log(
+                `[whatsapp] response_latency_bucket=${latencyBucketLabel(elapsedMs + pad)} presentation_delay_ms=${pad} modality=${inbound.modality}`,
+              );
               const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
+
               await supabaseAdmin.from("messages").insert({
                 agency_id: agencyId,
                 conversation_id: conversationId,

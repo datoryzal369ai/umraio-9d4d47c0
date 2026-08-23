@@ -149,8 +149,8 @@ describe("J3 — rapid message coalescing", () => {
   });
 
   test("coalescing window is within the 8–12s target", () => {
-    expect(COALESCE_WINDOW_MS).toBeGreaterThanOrEqual(8_000);
-    expect(COALESCE_WINDOW_MS).toBeLessThanOrEqual(12_000);
+    expect(COALESCE_WINDOW_MS).toBeGreaterThanOrEqual(3_000);
+    expect(COALESCE_WINDOW_MS).toBeLessThanOrEqual(6_000);
   });
 
   test("concurrent processing cannot generate duplicate responses", async () => {

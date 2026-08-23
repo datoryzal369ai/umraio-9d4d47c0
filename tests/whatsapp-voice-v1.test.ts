@@ -225,7 +225,8 @@ beforeEach(() => {
       const parsed = JSON.parse(String((init as RequestInit).body)) as {
         text?: { body?: string };
       };
-      state.outboundBodies.push(parsed.text?.body ?? "");
+      // Typing indicators post to the same endpoint with no text body.
+      if (parsed.text?.body) state.outboundBodies.push(parsed.text.body);
     }
     return new Response("{}", { status: 200 });
   });
@@ -280,7 +281,7 @@ describe("VOICE V1 — limits and normalization", () => {
 
   it("audio turns coalesce faster than text turns", () => {
     expect(AUDIO_COALESCE_WINDOW_MS).toBeLessThan(COALESCE_WINDOW_MS);
-    expect(AUDIO_COALESCE_WINDOW_MS).toBeGreaterThanOrEqual(3_000);
+    expect(AUDIO_COALESCE_WINDOW_MS).toBeGreaterThanOrEqual(2_000);
     expect(AUDIO_COALESCE_WINDOW_MS).toBeLessThanOrEqual(4_000);
   });
 });

@@ -27,6 +27,12 @@ import {
   intentAnchorInstruction,
 } from "./sales-intent.core";
 import {
+  continuityInstruction,
+  inferModalityFromBody,
+  readContinuity,
+} from "@/lib/sales/context-continuity.core";
+
+import {
   buildConversationIntelligence,
   buildHandoffBrief,
   conversationIntelligenceInstruction,
@@ -389,6 +395,17 @@ function systemPrompt(
     ? RELIGIOUS_BOUNDARY_INSTRUCTION
     : null;
   const suppression = suppressionInstruction(suppressedTopics);
+  const continuity = readContinuity({
+    turns: ctx.messages.map((m) => ({ sender: m.sender, body: m.body })),
+    latestCustomerMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
+    modality: inferModalityFromBody(lastCustomer?.body),
+  });
+  if (continuity.telemetry.length) {
+    // Labels only — never sender identity, never message contents.
+    console.log(`[sales-ai] continuity ${continuity.telemetry.join(",")}`);
+  }
+
+
 
   return [
     `You are ${aiName}, the AI Autonomous Business Executive for ${agencyName}, a Malaysian Umrah travel agency.`,
@@ -399,6 +416,10 @@ function systemPrompt(
       redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
     ),
     conversionSignalInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
+    // CONVERSATIONAL VALIDATION GUARD — understand first, confirm only when needed.
+    continuityInstruction(continuity),
+
+
     conversationIntelligenceInstruction(intel),
     // STEP 3I.1 — AI SALES ELITE™ (state, single next best action, closing mode).
     eliteSalesInstruction(buildEliteIntelligence(ctx, intel)),
