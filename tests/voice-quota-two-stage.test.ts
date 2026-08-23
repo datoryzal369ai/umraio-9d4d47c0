@@ -74,10 +74,11 @@ describe("two-stage voice quota gate", () => {
 
   it("rejects a note that would cross the monthly limit before ASR or AI", async () => {
     quota.remainingMinutes = 0;
-    // exhausted bucket: gate 1 already denies, media is never fetched
     const exhausted = await ingest();
     expect(exhausted.ok).toBe(false);
-    expect(calls).toEqual(["quota:0"]);
+    if (!exhausted.ok) expect(exhausted.reason).toBe("quota_exceeded");
+    // denied by the duration-aware gate; ASR and metering never run
+    expect(calls).toEqual(["quota:0", "media", "quota:20"]);
   });
 
   it("denies at the duration-aware gate when only the crossing note exceeds the allowance", async () => {
