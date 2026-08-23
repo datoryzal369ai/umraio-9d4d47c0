@@ -6,7 +6,10 @@
  * `audio` is classified and reserved, never transcribed.
  */
 
-export type InboundModality = "text" | "audio" | "image" | "unsupported";
+export type InboundModality = "text" | "audio" | "image" | "document" | "unsupported";
+
+/** DOCUMENT V1 — only PDFs are classified as documents in this step. */
+export const SUPPORTED_DOCUMENT_MIME = "application/pdf";
 
 export type InboundWebhookMessage = {
   id?: string;
