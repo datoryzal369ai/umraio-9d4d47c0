@@ -8,33 +8,17 @@ import {
   type EnableTestOverrideInput,
 } from "./owner-test-mode.core";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-async function resolveAgency(supabase: any, userId: string): Promise<string> {
-  const { data } = await supabase
-    .from("profiles")
-    .select("agency_id")
-    .eq("id", userId)
-    .maybeSingle();
-  const agencyId = data?.agency_id as string | undefined;
-  if (!agencyId) throw new Error("No agency found for this account");
-  return agencyId;
-}
-
-async function rolesFor(supabase: any, userId: string): Promise<string[]> {
-  const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-  return ((data ?? []) as { role: string }[]).map((r) => r.role);
-}
-
 /** Owner Test Mode status + recent audit trail (owner-only for the audit). */
 export const getOwnerTestMode = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const agencyId = await resolveAgency(supabase, userId);
-    const roles = await rolesFor(supabase, userId);
+    const { readOwnerTestOverride, resolveOwnerTestModeContext } = await import(
+      "./owner-test-mode.server"
+    );
+    const { agencyId, roles } = await resolveOwnerTestModeContext(supabase, userId);
     const canManage = canManageTestOverride(roles);
 
-    const { readOwnerTestOverride } = await import("./owner-test-mode.server");
     const state = await readOwnerTestOverride(supabase, agencyId);
 
     type AuditRow = {
@@ -70,8 +54,10 @@ export const setOwnerTestMode = createServerFn({ method: "POST" })
   .inputValidator((input: { enabled: boolean } & EnableTestOverrideInput) => input)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const agencyId = await resolveAgency(supabase, userId);
-    const roles = await rolesFor(supabase, userId);
+    const { readOwnerTestOverride, resolveOwnerTestModeContext } = await import(
+      "./owner-test-mode.server"
+    );
+    const { agencyId, roles } = await resolveOwnerTestModeContext(supabase, userId);
     if (!canManageTestOverride(roles)) {
       throw new Error("Only the agency owner can change Owner Test Mode.");
     }
@@ -124,6 +110,5 @@ export const setOwnerTestMode = createServerFn({ method: "POST" })
       });
     }
 
-    const { readOwnerTestOverride } = await import("./owner-test-mode.server");
     return { state: await readOwnerTestOverride(supabase, agencyId) };
   });

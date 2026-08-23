@@ -11,6 +11,29 @@ import {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
 
+/** Resolve the authenticated user's agency and roles for owner-only controls. */
+export async function resolveOwnerTestModeContext(
+  supabase: Db,
+  userId: string,
+): Promise<{ agencyId: string; roles: string[] }> {
+  const [{ data: profile, error: profileError }, { data: roleRows, error: rolesError }] =
+    await Promise.all([
+      supabase.from("profiles").select("agency_id").eq("id", userId).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", userId),
+    ]);
+
+  if (profileError) throw new Error(profileError.message);
+  if (rolesError) throw new Error(rolesError.message);
+
+  const agencyId = (profile as { agency_id?: string | null } | null)?.agency_id;
+  if (!agencyId) throw new Error("No agency found for this account");
+
+  return {
+    agencyId,
+    roles: ((roleRows ?? []) as { role: string }[]).map(({ role }) => role),
+  };
+}
+
 /**
  * OWNER TEST MODE — server read path.
  *

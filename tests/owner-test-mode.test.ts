@@ -11,7 +11,11 @@ import {
   validateEnableRequest,
   type OwnerTestOverrideState,
 } from "@/lib/testing/owner-test-mode.core";
-import { isQuotaOverrideActive, readOwnerTestOverride } from "@/lib/testing/owner-test-mode.server";
+import {
+  isQuotaOverrideActive,
+  readOwnerTestOverride,
+  resolveOwnerTestModeContext,
+} from "@/lib/testing/owner-test-mode.server";
 
 const NOW = new Date("2026-08-23T10:00:00.000Z");
 
@@ -56,6 +60,35 @@ describe("owner test mode — authorization", () => {
     expect(canManageTestOverride(["islamic_approver"])).toBe(false);
     expect(canManageTestOverride([])).toBe(false);
     expect(canManageTestOverride(null)).toBe(false);
+  });
+
+  it("resolves the authenticated profile agency and enum role row", async () => {
+    const contextDb = {
+      from(table: string) {
+        if (table === "profiles") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { agency_id: "agency-a" },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: async () => ({ data: [{ role: "owner" }], error: null }),
+          }),
+        };
+      },
+    } as never;
+
+    await expect(resolveOwnerTestModeContext(contextDb, "owner-a")).resolves.toEqual({
+      agencyId: "agency-a",
+      roles: ["owner"],
+    });
   });
 });
 
