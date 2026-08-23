@@ -47,16 +47,32 @@ export function OwnerTestModePanel() {
   const [confirmed, setConfirmed] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: (input: Parameters<typeof setOwnerTestMode>[0] extends never ? never : any) =>
-      save(input),
-    onSuccess: () => {
+    mutationFn: (input: {
+      enabled: boolean;
+      confirm?: boolean;
+      reason?: string;
+      categories?: TestOverrideCategory[];
+      hours?: number;
+    }) => save({ data: input }),
+    onSuccess: (result, variables) => {
       setConfirmed(false);
+      toast.success(
+        variables.enabled ? "Owner Test Mode enabled." : "Owner Test Mode turned off.",
+      );
+      void queryClient.setQueryData(["owner-test-mode"], (prev: unknown) =>
+        prev && typeof prev === "object" ? { ...(prev as object), state: result.state } : prev,
+      );
       void queryClient.invalidateQueries({ queryKey: ["owner-test-mode"] });
       void queryClient.invalidateQueries({ queryKey: ["usage-overview"] });
     },
-    onError: (error: unknown) =>
-      toast.error(error instanceof Error ? error.message : "Could not update Owner Test Mode."),
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : "Owner Test Mode could not be enabled.";
+      console.error("[owner-test-mode] mutation failed", error);
+      toast.error("Owner Test Mode could not be enabled.", { description: message });
+    },
   });
+
 
   if (isLoading) return <Skeleton className="h-40 w-full rounded-2xl" />;
   if (!data?.canManage) return null;
@@ -108,7 +124,7 @@ export function OwnerTestModePanel() {
           disabled={mutation.isPending}
           onClick={() => mutation.mutate({ enabled: false })}
         >
-          Turn Test Mode OFF
+          {mutation.isPending ? "Turning off…" : "Turn Test Mode OFF"}
         </Button>
       ) : (
         <div className="mt-4 space-y-3">
@@ -163,19 +179,25 @@ export function OwnerTestModePanel() {
           </label>
 
           <Button
-            disabled={!confirmed || mutation.isPending || selected.length === 0}
+            disabled={
+              !confirmed ||
+              mutation.isPending ||
+              selected.length === 0 ||
+              reason.trim().length < MIN_REASON_LENGTH
+            }
             onClick={() =>
               mutation.mutate({
                 enabled: true,
                 confirm: true,
-                reason,
+                reason: reason.trim(),
                 categories: selected,
-                hours,
+                hours: Math.min(MAX_TEST_OVERRIDE_HOURS, Math.max(1, Math.round(hours || 1))),
               })
             }
           >
-            Enable Owner Test Mode
+            {mutation.isPending ? "Enabling…" : "Enable Owner Test Mode"}
           </Button>
+
         </div>
       )}
 
