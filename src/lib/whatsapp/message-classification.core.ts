@@ -53,6 +53,13 @@ export type ClassifiedInbound = {
   mediaId: string | null;
   providerMessageId: string | null;
 
+  /** DOCUMENT V1 — original filename, verbatim. Null unless a document. */
+  filename: string | null;
+  /** DOCUMENT V1 — declared MIME type. Null unless a document. */
+  mimeType: string | null;
+  /** DOCUMENT V1 — declared size in bytes. Null unless known. */
+  fileSize: number | null;
+
   /** True only when the message carries everything needed to be processed. */
   processable: boolean;
 };
