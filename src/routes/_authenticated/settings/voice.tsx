@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { AudioLines, Info, Sparkles } from "lucide-react";
+import { AudioLines, Gauge, Info, Languages, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { fetchAgency, fetchSettings, updateSettings } from "@/lib/settings";
+import { getUsageOverview } from "@/lib/billing/usage.functions";
+import {
+  DEFAULT_VOICE_LANGUAGE,
+  VOICE_LANGUAGES,
+  resolveVoiceLanguage,
+  type VoiceLanguage,
+} from "@/lib/voice/language.core";
 import { prepareSpokenResponse } from "@/lib/voice/presentation.core";
 import {
   VOICE_CONTROL_KEYS,
@@ -99,7 +106,10 @@ function VoiceSettingsPage() {
     enabled: Boolean(agency?.id),
   });
 
+  const { data: usage } = useQuery({ queryKey: ["usage-overview"], queryFn: getUsageOverview });
+
   const [persona, setPersona] = useState<VoicePersonaKey>(DEFAULT_VOICE_PERSONA);
+  const [language, setLanguage] = useState<VoiceLanguage>(DEFAULT_VOICE_LANGUAGE);
   const [controls, setControls] = useState(VOICE_PERSONAS[DEFAULT_VOICE_PERSONA].controls);
 
   useEffect(() => {
@@ -111,6 +121,7 @@ function VoiceSettingsPage() {
     });
     setPersona(resolved.key);
     setControls(resolved.controls);
+    setLanguage(resolveVoiceLanguage(settings.voice_language));
   }, [settings]);
 
   const mutation = useMutation({
@@ -118,6 +129,7 @@ function VoiceSettingsPage() {
       updateSettings(settings!.id, {
         voice_persona: persona,
         voice_controls: controls,
+        voice_language: language,
       } as never),
     onSuccess: () => {
       toast.success("Voice persona saved.");
@@ -129,6 +141,7 @@ function VoiceSettingsPage() {
   const preview = prepareSpokenResponse({
     replyText: SAMPLE,
     persona: { persona, controls },
+    language,
   });
 
   if (isLoading || !settings) return <Skeleton className="h-96 w-full rounded-xl" />;
@@ -177,6 +190,93 @@ function VoiceSettingsPage() {
             );
           })}
         </div>
+      </section>
+
+      <section className="panel space-y-4 p-5">
+        <header className="flex items-start gap-3">
+          <div className="rounded-xl border border-border/60 bg-surface p-2.5">
+            <Languages className="size-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-display text-base font-semibold tracking-tight">Voice language</h2>
+            <p className="text-xs text-muted-foreground">
+              The spoken language for voice notes. This is separate from your written AI reply
+              language. Malaysian Malay is enforced explicitly — the engine is instructed never to
+              drift into Bahasa Indonesia.
+            </p>
+          </div>
+        </header>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {VOICE_LANGUAGES.map((option) => {
+            const active = language === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setLanguage(option.value)}
+                className={cn(
+                  "rounded-xl border p-3 text-left text-sm transition-colors",
+                  active
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-surface hover:border-primary/40",
+                )}
+              >
+                <span className="font-medium">{option.label}</span>
+                {option.value === DEFAULT_VOICE_LANGUAGE ? (
+                  <Badge variant="outline" className="ml-2 text-[10px]">
+                    Default
+                  </Badge>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Voice notes you receive are transcribed with this language hint too. “Auto-detect” lets
+          the model decide, which is best for mixed Malay-English speech.
+        </p>
+      </section>
+
+      <section className="panel space-y-3 p-5">
+        <header className="flex items-start gap-3">
+          <div className="rounded-xl border border-border/60 bg-surface p-2.5">
+            <Gauge className="size-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-display text-base font-semibold tracking-tight">Voice usage</h2>
+            <p className="text-xs text-muted-foreground">
+              Voice minutes are metered per calendar month against your active plan.
+            </p>
+          </div>
+        </header>
+        {usage ? (
+          <>
+            <p className="text-sm">
+              <span className="font-medium">
+                {usage.voice.usedMinutes} / {usage.voice.limitMinutes} minutes
+              </span>{" "}
+              used this month · {usage.voice.remainingMinutes} remaining
+            </p>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-surface">
+              <div
+                className={cn(
+                  "h-full rounded-full",
+                  usage.voice.remainingMinutes === 0 ? "bg-destructive" : "bg-primary",
+                )}
+                style={{
+                  width: `${Math.min(100, usage.voice.limitMinutes > 0 ? (usage.voice.usedMinutes / usage.voice.limitMinutes) * 100 : 0)}%`,
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Active plan: {usage.plan.label}. When the allowance is reached, UMRAIO tells the
+              customer plainly that voice is unavailable and continues in text — it never pretends
+              the voice note failed.
+            </p>
+          </>
+        ) : (
+          <Skeleton className="h-16 w-full rounded-lg" />
+        )}
       </section>
 
       <section className="panel space-y-5 p-5">
