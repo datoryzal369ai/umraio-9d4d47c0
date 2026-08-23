@@ -20,21 +20,42 @@ export type VoiceReplyDecision =
 
 /**
  * Strip anything that is meaningful to the eye but noise to the ear:
- * markdown, bullets, emoji, raw URLs. The wording itself is never rewritten.
+ * markdown, bullets, emoji, raw URLs, and internal reference codes
+ * (IIL-MT5..., HO-ABC123, quotation ids) which must NEVER be read aloud.
+ * The wording itself is never rewritten — only presentation is cleaned so the
+ * engine phrases natural Malay sentences instead of reciting punctuation.
  */
 export function toSpeakableText(raw: string): string {
   return raw
     .replace(/https?:\/\/\S+/g, "")
+    .replace(/\b[A-Z]{2,4}-[A-Z0-9]{3,}\b/g, "")
+    .replace(/\((?:ruj|ref|rujukan|reference)[^)]*\)/gi, "")
     .replace(/[*_`#>~]/g, "")
     .replace(/^\s*[-•]\s*/gm, "")
     .replace(
       /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2190}-\u{21FF}]/gu,
       "",
     )
+    // Natural sentence segmentation: a line break in chat is a breath, not a
+    // silent gap; dashes and colons become short pauses instead of odd runs.
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/:\s*/g, ": ")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .replace(/([.!?])(?=[^\s])/g, "$1 ")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{2,}/g, "\n")
+    .split("\n")
+    .map((line) => {
+      const l = line.trim();
+      if (!l) return "";
+      return /[.!?,:]$/.test(l) ? l : `${l}.`;
+    })
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
+
 
 /**
  * A spoken reply is only produced for a turn that ARRIVED as voice, and only

@@ -388,6 +388,8 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             );
             return new Response("ok");
           }
+          console.log(`[whatsapp] inbound_claimed modality=${inbound.modality}`);
+
 
           try {
             // UX — show the customer a typing/processing state immediately so
@@ -475,51 +477,12 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               console.log(
                 `[whatsapp] response_latency_bucket=${latencyBucketLabel(elapsedMs + pad)} presentation_delay_ms=${pad} modality=${inbound.modality}`,
               );
+              // RELIABILITY CONTRACT — TEXT FIRST, ALWAYS.
+              // Nothing in the voice/presentation layer may run before the
+              // text answer has been sent AND persisted.
+              console.log("[whatsapp] text_send_started");
               const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
-
-              // VOICE REPLY V1 — a voice turn is answered in voice AND text.
-              // The text above already landed, so any failure here is silent to
-              // the customer and simply leaves a text-only answer.
-              if (sent && inbound.modality === "audio") {
-                try {
-                  const { decideVoiceReply, isDeliverableAudio } = await import(
-                    "@/lib/voice/tts.core"
-                  );
-                  const decision = decideVoiceReply({
-                    inboundModality: inbound.modality,
-                    replyText: reply,
-                  });
-                  if (!decision.speak) {
-                    console.log(`[voice] voice_reply_fallback_text reason=${decision.reason}`);
-                  } else {
-                    console.log("[voice] voice_reply_requested");
-                    const ttsStarted = Date.now();
-                    const { synthesizeSpeech } = await import("@/lib/voice/tts.server");
-                    const speech = await synthesizeSpeech({ text: decision.text });
-                    if (!speech.ok || !isDeliverableAudio({ byteLength: speech.bytes.byteLength })) {
-                      console.log(
-                        `[voice] voice_reply_fallback_text reason=${speech.ok ? "audio_too_large" : speech.kind}`,
-                      );
-                    } else {
-                      const { sendWhatsappAudio } = await import("@/lib/whatsapp-send.server");
-                      const voiceSent = await sendWhatsappAudio(
-                        phoneNumberId,
-                        config.access_token,
-                        from,
-                        { bytes: speech.bytes, mimeType: speech.mimeType },
-                      );
-                      console.log(
-                        `[voice] ${voiceSent ? "whatsapp_voice_sent" : "voice_reply_fallback_text reason=send_failed"} voice_reply_latency_bucket=${latencyBucketLabel(Date.now() - ttsStarted)}`,
-                      );
-                    }
-                  }
-                } catch (error) {
-                  console.error(
-                    `[voice] voice_reply_fallback_text reason=${error instanceof Error ? error.name : "unknown"}`,
-                  );
-                }
-              }
-
+              console.log(`[whatsapp] ${sent ? "text_send_succeeded" : "text_send_failed"}`);
 
               await supabaseAdmin.from("messages").insert({
                 agency_id: agencyId,
@@ -544,6 +507,54 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                 entity_id: conversationId,
                 meta: { response_ms: responseMs, delivered: sent, preview: reply.slice(0, 160) },
               });
+              console.log(
+                `[whatsapp] conversation_terminal_outcome=text_reply_sent delivered=${sent} latency_bucket=${latencyBucketLabel(responseMs)}`,
+              );
+
+              // VOICE REPLY V1 — strictly best-effort, strictly AFTER the text
+              // answer is delivered and persisted. Any failure here leaves a
+              // complete text-only answer and never blocks the turn.
+              if (sent && inbound.modality === "audio") {
+                try {
+                  const { decideVoiceReply, isDeliverableAudio } = await import(
+                    "@/lib/voice/tts.core"
+                  );
+                  const decision = decideVoiceReply({
+                    inboundModality: inbound.modality,
+                    replyText: reply,
+                  });
+                  if (!decision.speak) {
+                    console.log(`[voice] voice_reply_fallback_text reason=${decision.reason}`);
+                  } else {
+                    console.log("[voice] tts_started");
+                    const ttsStarted = Date.now();
+                    const { synthesizeSpeech } = await import("@/lib/voice/tts.server");
+                    const speech = await synthesizeSpeech({ text: decision.text });
+                    if (!speech.ok || !isDeliverableAudio({ byteLength: speech.bytes.byteLength })) {
+                      console.log(
+                        `[voice] tts_failed reason=${speech.ok ? "audio_too_large" : speech.kind}`,
+                      );
+                    } else {
+                      console.log("[voice] tts_completed audio_send_started");
+                      const { sendWhatsappAudio } = await import("@/lib/whatsapp-send.server");
+                      const voiceSent = await sendWhatsappAudio(
+                        phoneNumberId,
+                        config.access_token,
+                        from,
+                        { bytes: speech.bytes, mimeType: speech.mimeType },
+                      );
+                      console.log(
+                        `[voice] ${voiceSent ? "audio_send_succeeded" : "audio_send_failed"} voice_reply_latency_bucket=${latencyBucketLabel(Date.now() - ttsStarted)}`,
+                      );
+                    }
+                  }
+                } catch (error) {
+                  console.error(
+                    `[voice] tts_failed reason=${error instanceof Error ? error.name : "unknown"} fallback=text_only`,
+                  );
+                }
+              }
+
 
               // A quotation is only "sent" once the message actually left.
               if (sent) {
@@ -564,12 +575,22 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                   });
                 }
               }
+            } else {
+              // No silent failures: an empty generation is an explicit,
+              // observable terminal outcome.
+              console.log(
+                `[whatsapp] conversation_terminal_outcome=no_reply_generated failure_stage=ai_generation modality=${inbound.modality}`,
+              );
             }
           } catch (error) {
-            console.error("[whatsapp] AI reply failed", error);
+            console.error(
+              `[whatsapp] conversation_terminal_outcome=error failure_stage=reply_pipeline reason=${error instanceof Error ? error.name : "unknown"}`,
+              error,
+            );
           } finally {
             await releaseConversationClaim(supabaseAdmin as never, { agencyId, conversationId });
           }
+
         } else {
           // J4 — the AI is muted (human takeover / auto-reply off). Stamp the
           // mute point so these messages are NEVER replayed when RAIŌ resumes.
