@@ -104,6 +104,9 @@ export function classifyInboundMessage(
       caption: null,
       mediaId: null,
       providerMessageId,
+      filename: null,
+      mimeType: null,
+      fileSize: null,
       processable: Boolean(from && text.trim()),
     };
   }
