@@ -13,7 +13,9 @@ type WebhookValue = {
     text?: { body?: string };
     audio?: { id?: string; mime_type?: string; voice?: boolean };
     voice?: { id?: string; mime_type?: string };
+    image?: { id?: string; mime_type?: string; caption?: string };
   }>;
+
 };
 
 type WebhookBody = {
