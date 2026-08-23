@@ -145,3 +145,49 @@ describe("WhatsApp outbound voice", () => {
     ).toBe(false);
   });
 });
+
+describe("voice context continuity", () => {
+  it("resolves a spoken affirmative against the previous UMRAIO question and keeps prior context", async () => {
+    const { readContinuity, continuityInstruction, inferModalityFromBody } = await import(
+      "../src/lib/sales/context-continuity.core"
+    );
+    const turns = [
+      { sender: "customer", body: "Saya nak pakej Umrah untuk keluarga" },
+      { sender: "ai", body: "[Gambar daripada pelanggan] poster pakej" },
+      { sender: "ai", body: "Tuan nak saya semak pakej keluarga bulan Disember?" },
+    ];
+    for (const spoken of ["Ya", "Betul", "Okay", "Baik", "Ya, boleh"]) {
+      const read = readContinuity({
+        turns,
+        latestCustomerMessage: spoken,
+        modality: "audio",
+      });
+      expect(read.affirmativeResolved).toBe(true);
+      expect(read.intentStatus).toBe("resolved");
+      expect(read.pendingQuestion).toContain("Disember");
+      expect(continuityInstruction(read)).toContain("AFFIRMATIVE BINDING");
+    }
+    expect(inferModalityFromBody("[Gambar daripada pelanggan] poster")).toBe("image");
+  });
+
+  it("keeps a consequential voice turn behind one explicit confirmation", async () => {
+    const { readContinuity } = await import("../src/lib/sales/context-continuity.core");
+    const read = readContinuity({
+      turns: [{ sender: "ai", body: "Tuan nak saya teruskan bayaran deposit?" }],
+      latestCustomerMessage: "Ya, buat deposit",
+      modality: "audio",
+    });
+    expect(read.requiresConfirmation).toBe(true);
+  });
+
+  it("pads a fast voice reply into a natural window without long silence", async () => {
+    const { presentationDelayMs, latencyBucket } = await import(
+      "../src/lib/sales/context-continuity.core"
+    );
+    expect(latencyBucket({ modality: "audio", replyLength: 120 })).toBe("considered");
+    const pad = presentationDelayMs({ elapsedMs: 400, modality: "audio", replyLength: 120 });
+    expect(pad).toBeGreaterThan(0);
+    expect(pad).toBeLessThanOrEqual(1_500);
+    expect(presentationDelayMs({ elapsedMs: 6_000, modality: "audio", replyLength: 120 })).toBe(0);
+  });
+});
