@@ -275,8 +275,19 @@ export async function assertQuota(
     );
     throw new QuotaError("unavailable"); // fail closed
   }
-  if (!decision.allowed) throw new QuotaError("exceeded");
+  if (!decision.allowed) {
+    // OWNER TEST MODE — the ONLY bypass of the allowance gate. It does not
+    // change counters, plan or billing, and applies to this agency only.
+    if (decision.bucket !== "none" && (await isQuotaOverrideActive(supabase, agencyId, decision.bucket))) {
+      console.warn(
+        `[usage] owner_test_mode bypass bucket=${decision.bucket} agency=${agencyId} used=${decision.used} limit=${decision.limit}`,
+      );
+      return { ...decision, allowed: true, overridden: true };
+    }
+    throw new QuotaError("exceeded");
+  }
   return decision;
+
 }
 
 /* ---------------- summaries ---------------- */
