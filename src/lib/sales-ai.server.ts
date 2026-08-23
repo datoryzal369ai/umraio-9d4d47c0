@@ -395,6 +395,17 @@ function systemPrompt(
     ? RELIGIOUS_BOUNDARY_INSTRUCTION
     : null;
   const suppression = suppressionInstruction(suppressedTopics);
+  const continuity = readContinuity({
+    turns: ctx.messages.map((m) => ({ sender: m.sender, body: m.body })),
+    latestCustomerMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
+    modality: inferModalityFromBody(lastCustomer?.body),
+  });
+  if (continuity.telemetry.length) {
+    // Labels only — never sender identity, never message contents.
+    console.log(`[sales-ai] continuity ${continuity.telemetry.join(",")}`);
+  }
+
+
 
   return [
     `You are ${aiName}, the AI Autonomous Business Executive for ${agencyName}, a Malaysian Umrah travel agency.`,
