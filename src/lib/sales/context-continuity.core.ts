@@ -232,3 +232,14 @@ export function latencyBucketLabel(elapsedMs: number): string {
   if (elapsedMs < 8_000) return "6_8s";
   return "gt_8s";
 }
+
+/**
+ * Modality of the latest customer turn, inferred from the grounded observation
+ * markers the media pipelines already write (no schema dependency).
+ */
+export function inferModalityFromBody(body: string | null | undefined): ContinuityModality {
+  const t = (body ?? "").trim();
+  if (/^\[Gambar daripada pelanggan\]/.test(t)) return "image";
+  if (/^\[Nota suara|^\[Voice note/i.test(t)) return "audio";
+  return "text";
+}
