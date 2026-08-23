@@ -123,6 +123,9 @@ export function classifyInboundMessage(
       caption: null,
       mediaId,
       providerMessageId,
+      filename: null,
+      mimeType: null,
+      fileSize: null,
       processable: Boolean(from && mediaId),
     };
   }
