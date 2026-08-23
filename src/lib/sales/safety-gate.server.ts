@@ -16,7 +16,20 @@ type Db = SupabaseClient<any, any, any>;
 export type SafetyGateResult = {
   blocked: boolean;
   reason: "opt_out" | "human_requested" | null;
+  /**
+   * RELIABILITY: a blocked turn is still a TERMINAL OUTCOME the customer can
+   * see. Silence is never an acceptable answer — the pipeline sends this single
+   * closing acknowledgement, then stops.
+   */
+  customerMessage: string | null;
 };
+
+/** Final, non-promotional acknowledgement sent once when the AI stands down. */
+export const OPT_OUT_ACK =
+  "Baik, saya hentikan mesej automatik untuk nombor ini. Terima kasih dan maaf jika mengganggu. Jika perlukan bantuan pada bila-bila masa, hantar mesej semula ya.";
+export const HUMAN_HANDOFF_ACK =
+  "Baik, saya sambungkan kepada rakan sekerja kami. Mohon tunggu sebentar ya.";
+
 
 async function cancelPendingFollowups(
   supabase: Db,
