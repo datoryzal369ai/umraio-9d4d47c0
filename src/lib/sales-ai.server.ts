@@ -1028,7 +1028,7 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
             review_recorded: false,
             classification: risk.tier ?? "NONE",
             instruction:
-              "No review was opened: this is established basic/general Islamic knowledge, not a ruling request. Answer the customer NOW from approved knowledge, without issuing a ruling and without telling the customer that anyone is reviewing it.",
+              "No review was opened: this is established basic or ordinary Islamic knowledge, not a high-risk ruling request. Answer the customer NOW from approved knowledge, adding a short 'secara umum' qualification if useful, without issuing a personal ruling and without telling the customer that anyone is reviewing it.",
           };
         }
         // ISLAMIC IMPLEMENTATION LAYER™ — dedicated review domain.
