@@ -388,6 +388,8 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             );
             return new Response("ok");
           }
+          console.log(`[whatsapp] inbound_claimed modality=${inbound.modality}`);
+
 
           try {
             // UX — show the customer a typing/processing state immediately so
