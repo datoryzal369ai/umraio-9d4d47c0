@@ -179,19 +179,25 @@ export function OwnerTestModePanel() {
           </label>
 
           <Button
-            disabled={!confirmed || mutation.isPending || selected.length === 0}
+            disabled={
+              !confirmed ||
+              mutation.isPending ||
+              selected.length === 0 ||
+              reason.trim().length < MIN_REASON_LENGTH
+            }
             onClick={() =>
               mutation.mutate({
                 enabled: true,
                 confirm: true,
-                reason,
+                reason: reason.trim(),
                 categories: selected,
-                hours,
+                hours: Math.min(MAX_TEST_OVERRIDE_HOURS, Math.max(1, Math.round(hours || 1))),
               })
             }
           >
-            Enable Owner Test Mode
+            {mutation.isPending ? "Enabling…" : "Enable Owner Test Mode"}
           </Button>
+
         </div>
       )}
 
