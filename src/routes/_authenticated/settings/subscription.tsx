@@ -149,6 +149,7 @@ function SubscriptionPage() {
   return (
     <div className="space-y-6">
       <PaymentTestModeBanner mode={availability?.mode ?? null} />
+      <BuildInfoBanner />
       <UsagePanel />
       <OwnerTestModePanel />
 
