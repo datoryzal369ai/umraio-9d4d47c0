@@ -172,4 +172,55 @@ describe("Islamic Implementation Layer™ — review state machine", () => {
       }).speak,
     ).toBe(true);
   });
+
+  it.each([
+    ["Saya nak tanya pasal pakej Umrah 12 hari.", "Baik Datuk, pakej 12 hari tersedia."],
+    ["Berapa harga pakej?", "Harga pakej bermula daripada lima ribu ringgit."],
+    ["Apa maksud Talbiyah?", "Talbiyah ialah seruan menyahut panggilan Allah."],
+  ])(
+    "21. an older pending review cannot block a current voice turn: %s",
+    (currentQuestion, replyText) => {
+      const oldReview = {
+        status: "PENDING",
+        created_at: "2026-08-23T12:00:01.000Z",
+        question: "Boleh minta fatwa tentang keadaan khusus saya?",
+      };
+      const currentTurnMatch = isCurrentTurnIslamicReviewPending(
+        oldReview,
+        inboundAt,
+        currentQuestion,
+      );
+      const voice = decideVoiceReply({
+        inboundModality: "audio",
+        replyText,
+        islamicReviewPending: currentTurnMatch,
+      });
+      expect(currentTurnMatch).toBe(false);
+      expect(planPendingReviewReply(currentTurnMatch ? oldReview : null).kind).toBe("none");
+      expect(voice.speak).toBe(true);
+    },
+  );
+
+  it("22. a current high-risk voice turn creates the matching suppression identity", () => {
+    const question = "Boleh minta fatwa tentang keadaan khusus saya?";
+    const currentReview = {
+      status: "PENDING",
+      created_at: "2026-08-23T12:00:01.000Z",
+      question,
+    };
+    const currentTurnMatch = isCurrentTurnIslamicReviewPending(
+      currentReview,
+      inboundAt,
+      question,
+    );
+    expect(currentTurnMatch).toBe(true);
+    expect(planPendingReviewReply(currentReview).kind).toBe("holding");
+    expect(
+      decideVoiceReply({
+        inboundModality: "audio",
+        replyText: ISLAMIC_HOLDING_MESSAGE,
+        islamicReviewPending: currentTurnMatch,
+      }),
+    ).toEqual({ speak: false, reason: "pending_islamic_review" });
+  });
 });

@@ -220,15 +220,18 @@ export async function findCurrentTurnOpenReview(
   supabase: Db,
   conversationId: string,
   inboundAt: Date | string,
+  currentQuestion: string,
+  action = "reply_pipeline",
 ): Promise<IslamicReviewRow | null> {
   const inboundTimestamp = inboundAt instanceof Date ? inboundAt.toISOString() : inboundAt;
-  console.log(
-    `[islamic] ISLAMIC_REVIEW_LOOKUP conversation_id=${conversationId} inbound_at=${inboundTimestamp}`,
-  );
   const review = await findOpenReviewForConversation(supabase, conversationId);
-  const currentTurnMatch = isCurrentTurnIslamicReviewPending(review, inboundAt);
+  const currentTurnMatch = isCurrentTurnIslamicReviewPending(review, inboundAt, currentQuestion);
+  const previousReview = Boolean(review) && !currentTurnMatch;
   console.log(
-    `[islamic] ISLAMIC_REVIEW_RESULT conversation_id=${conversationId} inbound_at=${inboundTimestamp} review_created_at=${review?.created_at ?? "none"} current_turn_match=${currentTurnMatch} status=${review?.status ?? "none"}`,
+    `[islamic] ISLAMIC_REVIEW_LOOKUP conversation_id=${conversationId} current_inbound_timestamp=${inboundTimestamp} review_id=${review?.id ?? "none"} review_created_at=${review?.created_at ?? "none"} review_status=${review?.status ?? "none"} current_turn_match=${currentTurnMatch}`,
+  );
+  console.log(
+    `[islamic] ISLAMIC_REVIEW_RESULT conversation_id=${conversationId} previous_review=${previousReview} current_turn_match=${currentTurnMatch} action=${currentTurnMatch ? action : "continue_current_turn"}`,
   );
   return currentTurnMatch ? review : null;
 }
