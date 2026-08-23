@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Link, createFileRoute, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Check, CreditCard, Sparkles, Users } from "lucide-react";
@@ -12,6 +13,7 @@ import { PaymentTestModeBanner } from "@/components/settings/PaymentTestModeBann
 import { UsagePanel } from "@/components/settings/UsagePanel";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  getBillingStatus,
   getCheckoutAvailability,
   openBillingPortal,
   prepareCheckout,
@@ -32,6 +34,12 @@ import { cn } from "@/lib/utils";
 
 
 export const Route = createFileRoute("/_authenticated/settings/subscription")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    checkout:
+      search["checkout"] === "success" || search["checkout"] === "cancelled"
+        ? (search["checkout"] as "success" | "cancelled")
+        : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Subscription & Plan — UMRAIO" },
@@ -71,6 +79,27 @@ function SubscriptionPage() {
     staleTime: 5 * 60 * 1000,
   });
   const checkoutAvailable = availability?.available === true;
+  // Server-authoritative subscription state. Entitlement is written only by the
+  // signature-verified Stripe webhook; this is a read-only view of the result.
+  const readBillingStatus = useServerFn(getBillingStatus);
+  const { checkout } = useSearch({ from: "/_authenticated/settings/subscription" });
+  const [awaitingWebhook, setAwaitingWebhook] = useState(checkout === "success");
+  const { data: billing } = useQuery({
+    queryKey: ["billing-status"],
+    queryFn: () => readBillingStatus({}),
+    refetchInterval: awaitingWebhook ? 3000 : false,
+  });
+
+  useEffect(() => {
+    if (checkout === "success") toast.success(copy.checkoutSuccess);
+    if (checkout === "cancelled") toast.info(copy.checkoutCancelled);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkout]);
+
+  useEffect(() => {
+    if (billing?.paid) setAwaitingWebhook(false);
+  }, [billing?.paid]);
+
   const manageBilling = useServerFn(openBillingPortal);
   const portal = useMutation({
     mutationFn: async () => manageBilling({}),
@@ -142,11 +171,15 @@ function SubscriptionPage() {
               {copy.selectedPlanHeading}
             </p>
             <p className="mt-1 font-display text-lg font-bold">{current.name}</p>
-            <Badge variant="secondary" className="mt-2 capitalize">
-              {settings.plan_status}
+            <Badge variant={billing?.paid ? "default" : "secondary"} className="mt-2 capitalize">
+              {billing?.paid ? (billing.status ?? "active") : settings.plan_status}
             </Badge>
             <p className="mt-2 text-xs text-muted-foreground">
-              {copy.noActiveSubscription}
+              {billing?.paid
+                ? copy.subscriptionActive
+                : awaitingWebhook
+                  ? copy.subscriptionPending
+                  : copy.noActiveSubscription}
             </p>
           </div>
           <div className="rounded-xl border border-border bg-surface p-4">
@@ -159,10 +192,23 @@ function SubscriptionPage() {
           <div className="rounded-xl border border-border bg-surface p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{copy.renews}</p>
             <p className="mt-1 font-display text-lg font-bold">
-              {settings.renews_at ? new Date(settings.renews_at).toLocaleDateString() : "—"}
+              {billing?.currentPeriodEnd
+                ? new Date(billing.currentPeriodEnd).toLocaleDateString()
+                : settings.renews_at
+                  ? new Date(settings.renews_at).toLocaleDateString()
+                  : "—"}
             </p>
           </div>
         </div>
+
+        {billing?.paid ? (
+          <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
+            <p className="text-sm font-medium">{copy.activationNextStep}</p>
+            <Button asChild size="sm" className="mt-3">
+              <Link to="/settings/whatsapp">{copy.connectWhatsapp}</Link>
+            </Button>
+          </div>
+        ) : null}
 
         {checkoutAvailable ? (
           <Button
