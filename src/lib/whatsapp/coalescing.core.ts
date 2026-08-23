@@ -8,8 +8,13 @@
  * Nothing here touches C1 (cron auth) or C2 (provider_message_id idempotency).
  */
 
-/** Time RAIŌ waits for additional rapid messages before answering. */
-export const COALESCE_WINDOW_MS = 9_000;
+/**
+ * Time RAIŌ waits for additional rapid messages before answering.
+ *
+ * COMMERCIAL READINESS: tuned down from 9s so a normal conversational turn
+ * lands in the 2.5–4s human range while still coalescing a rapid burst.
+ */
+export const COALESCE_WINDOW_MS = 4_000;
 
 /**
  * VOICE V1 — audio-originated turns already spent time in media retrieval and
