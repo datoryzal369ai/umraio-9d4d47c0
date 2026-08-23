@@ -996,14 +996,17 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
       validate: (input) =>
         input.question.trim() ? null : "A concrete question is required for expert review.",
       execute: async ({ question, topic }, tctx) => {
-        const outcome = await requestExpertReview(tctx.supabase, {
+        // ISLAMIC IMPLEMENTATION LAYER™ — dedicated review domain.
+        // Never an ai_tasks row, never the sales approval queue.
+        const { createOrReuseIslamicReview } = await import("./islamic/review.server");
+        const outcome = await createOrReuseIslamicReview(tctx.supabase, {
           agencyId: tctx.agencyId,
-          title: `Religious guidance review needed (${topic})`,
-          body: question,
-          entity: "conversation",
-          entityId: ctx.conversation.id,
-          meta: { topic, lead_id: leadId, conversation_id: ctx.conversation.id },
+          conversationId: ctx.conversation.id,
+          leadId,
+          question,
+          topic,
         });
+
         if (!outcome.recorded) {
           return {
             review_recorded: false,
