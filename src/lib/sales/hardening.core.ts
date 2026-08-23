@@ -84,12 +84,26 @@ export function maskNegatedSpans(normalized: string): string {
  * FIX 1 — opt-out / do-not-contact
  * ------------------------------------------------------------------ */
 
+/**
+ * Verbs that mean "reaching out to me" in Malay/English. Opt-out is only ever
+ * inferred from CONTACT verbs.
+ *
+ * INCIDENT 2026-08-23: a wildcard `jangan <anything> lagi` rule classified
+ * "awak jangan tanya lagi" (stop asking me questions — ordinary conversational
+ * impatience) as a permanent DO-NOT-CONTACT, which silenced the whole
+ * conversation. Conversational verbs (tanya/soal/ulang/sebut) MUST NOT
+ * ever trigger an opt-out.
+ */
+const CONTACT_VERBS =
+  "whatsapp|wasap|wassap|wsap|mesej|message|msg|sms|contact|hubungi|call|telefon|tepon|hantar|kirim|ganggu|kacau|spam|promo|promosi|iklan|follow\\s?up|followup";
+
 const OPT_OUT_PATTERNS: RegExp[] = [
   /\b(saya\s+)?(tak|tidak)\s+(ber)?minat\b/,
   /\bnot\s+interested\b/,
-  /\bjangan\s+(whatsapp|wasap|wassap|mesej|message|contact|hubungi|call|telefon|hantar|follow\s?up)\b/,
-  /\bjangan\s+\w+\s+(saya\s+)?lagi\b/,
-  /\bstop\s+(whatsapp|wasap|mesej|message|messages|messaging|contact(ing)?|calling|texting|sending)\b/,
+  new RegExp(`\\bjangan\\s+(${CONTACT_VERBS})\\b`),
+  new RegExp(`\\bjangan\\s+(${CONTACT_VERBS})\\s+(saya|aku|i)?\\s*lagi\\b`),
+  new RegExp(`\\b(berhenti|stop)\\s+(${CONTACT_VERBS})\\b`),
+  /\bstop\s+(messages|messaging|contacting|calling|texting|sending)\b/,
   /\b(tak|tidak)\s+(nak|mahu)\s+(terima|dapat)\s+(promosi|promotion|mesej|message|iklan)\b/,
   /\bremove\s+(my|saya\s+punya)\s+(number|no|nombor|contact)\b/,
   /\b(buang|padam)\s+(nombor|no)\s+saya\b/,
@@ -99,12 +113,10 @@ const OPT_OUT_PATTERNS: RegExp[] = [
   /\bremove\s+me\b/,
   /\bunsubscribe\b/,
   /\bopt\s?out\b/,
-  /\b(tak|tidak)\s+(nak|mahu)\s+lagi\b/,
+  new RegExp(`\\b(tak|tidak)\\s+(nak|mahu)\\s+(${CONTACT_VERBS})\\b`),
   /\btak\s+payah\s+follow\s?up\b/,
-  /\bjangan\s+follow\s?up\b/,
-  /\b(dah|sudah)\s+cukup\b/,
-  /^cukup[\s.!]*$/,
 ];
+
 
 export type OptOutReading = { optedOut: boolean; matched: string | null };
 
