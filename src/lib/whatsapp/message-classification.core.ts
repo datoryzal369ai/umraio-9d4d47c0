@@ -19,6 +19,14 @@ export type InboundWebhookMessage = {
   audio?: { id?: string; mime_type?: string; voice?: boolean };
   voice?: { id?: string; mime_type?: string };
   image?: { id?: string; mime_type?: string; caption?: string; sha256?: string };
+  document?: {
+    id?: string;
+    filename?: string;
+    mime_type?: string;
+    file_size?: number;
+    caption?: string;
+    sha256?: string;
+  };
 };
 
 
