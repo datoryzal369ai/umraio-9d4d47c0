@@ -450,9 +450,13 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               const openReview = await findOpenReviewForConversation(
                 supabaseAdmin as never,
                 conversationId,
-              );
+              ).catch((err) => {
+                console.log(`[islamic] open_review_lookup_failed err=${String(err)}`);
+                return null;
+              });
               const plan = planPendingReviewReply(openReview);
               if (plan.kind !== "none" && openReview) {
+
                 console.log(
                   `[islamic] pending_review_loop_breaker kind=${plan.kind} review=${openReview.id}`,
                 );
