@@ -199,6 +199,13 @@ export type QuotaDecision = {
   ratio: number;
   warning: boolean;
   plan: PlanEntitlement;
+  /**
+   * OWNER TEST MODE — true when this call was allowed past an exhausted
+   * allowance by the agency owner's temporary test override. Usage counters,
+   * plan limits and billing state are unchanged; `used`/`limit` stay truthful.
+   */
+  overridden?: boolean;
+
 };
 
 function limitFor(plan: PlanEntitlement, bucket: QuotaBucket): number {
