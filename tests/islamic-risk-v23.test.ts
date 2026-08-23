@@ -37,7 +37,6 @@ describe("ISLAMIC IMPLEMENTATION LAYER V2.3 — BASIC auto-answer", () => {
 describe("ISLAMIC IMPLEMENTATION LAYER V2.3 — HIGH_RISK still reviewed", () => {
   const highRisk = [
     "Adakah tawaf saya sah kalau saya terlupa satu perkara?",
-    "Apakah hukum melakukan perkara ini?",
     "Adakah saya perlu bayar dam dalam keadaan saya?",
     "Boleh minta fatwa pasal ini?",
     "Ini halal atau haram?",
@@ -49,6 +48,13 @@ describe("ISLAMIC IMPLEMENTATION LAYER V2.3 — HIGH_RISK still reviewed", () =>
       expect(requiresIslamicReview(tier(q))).toBe(true);
     });
   }
+});
+
+describe("V2.4 refinement — vague act questions are SENSITIVE, not auto-HIGH_RISK", () => {
+  it("Apakah hukum melakukan perkara ini? → SENSITIVE", () => {
+    expect(tier("Apakah hukum melakukan perkara ini?")).toBe("SENSITIVE");
+    expect(requiresIslamicReview("SENSITIVE")).toBe(false);
+  });
 });
 
 describe("keywords alone never escalate", () => {
