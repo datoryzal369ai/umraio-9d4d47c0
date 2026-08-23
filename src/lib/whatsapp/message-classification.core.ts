@@ -6,7 +6,7 @@
  * `audio` is classified and reserved, never transcribed.
  */
 
-export type InboundModality = "text" | "audio" | "unsupported";
+export type InboundModality = "text" | "audio" | "image" | "unsupported";
 
 export type InboundWebhookMessage = {
   id?: string;
@@ -15,7 +15,9 @@ export type InboundWebhookMessage = {
   text?: { body?: string };
   audio?: { id?: string; mime_type?: string; voice?: boolean };
   voice?: { id?: string; mime_type?: string };
+  image?: { id?: string; mime_type?: string; caption?: string; sha256?: string };
 };
+
 
 export type SenderSource = "from" | "wa_id" | "none";
 
