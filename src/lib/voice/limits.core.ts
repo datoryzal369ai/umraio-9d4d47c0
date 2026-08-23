@@ -44,8 +44,11 @@ export const VOICE_FALLBACK_MESSAGE =
 export const VOICE_TOO_LONG_MESSAGE =
   "Maaf, voice note itu agak panjang. Boleh hantar voice note lebih pendek (bawah 30 saat) atau taip mesej anda?";
 
+/**
+ * Quota is a TRUTHFUL, distinct reason — never the generic processing failure.
+ */
 export const VOICE_QUOTA_MESSAGE =
-  "Maaf, saya tak dapat memproses voice note buat masa ini. Boleh taip mesej anda?";
+  "Maaf Datuk, penggunaan voice bulan ini dah mencapai had. Datuk boleh taip mesej di sini, atau sambung semula voice selepas had diperbaharui.";
 
 export function fallbackMessageFor(reason: VoiceRejection): string {
   if (reason === "too_long" || reason === "too_large") return VOICE_TOO_LONG_MESSAGE;

@@ -12,6 +12,7 @@
  * is summarised away, softened or invented.
  */
 
+import { resolveVoiceLanguage, usesMalayNormalisation } from "./language.core";
 import { normaliseMalaySpeech } from "./malay-speech.core";
 import {
   buildVoiceInstructions,
@@ -188,8 +189,9 @@ export function classifySpokenLength(seconds: number): SpokenLengthClass {
 export function prepareSpokenResponse(input: VoicePresentationInput): VoicePresentation {
   const persona = resolvePersona(input.persona);
   const controls = persona.controls;
-  const language = input.language ?? "ms-MY";
-  const isMalay = language.toLowerCase().startsWith("ms") || language === "auto";
+  // voice_language is authoritative; a missing value means Malaysian Malay.
+  const language = resolveVoiceLanguage(input.language);
+  const isMalay = usesMalayNormalisation(language);
 
   let text = stripForSpeech(input.replyText ?? "");
   text = listsToSpokenStructure(text);
