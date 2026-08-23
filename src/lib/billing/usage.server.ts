@@ -404,6 +404,17 @@ export async function assertVoiceQuota(
 ): Promise<QuotaDecision> {
   const decision = await assertQuota(supabase, agencyId, "voice_transcription");
   const requestedMinutes = Math.ceil(Math.max(0, requestedSeconds) / 60);
-  if (requestedMinutes > decision.remaining) throw new QuotaError("exceeded");
+  if (requestedMinutes > decision.remaining) {
+    // OWNER TEST MODE — allowance-only bypass; ASR/TTS still run for real and
+    // real failures still surface honestly.
+    if (decision.overridden || (await isQuotaOverrideActive(supabase, agencyId, "voice_minutes"))) {
+      console.warn(
+        `[usage] owner_test_mode bypass bucket=voice_minutes agency=${agencyId} requested_seconds=${Math.max(0, requestedSeconds)}`,
+      );
+      return { ...decision, allowed: true, overridden: true };
+    }
+    throw new QuotaError("exceeded");
+  }
+
   return decision;
 }
