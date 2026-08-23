@@ -150,6 +150,11 @@ export const xiaozhiVoiceEngine: VoiceEngine = {
       return { ok: false, kind: "unsupported_engine", engine: "xiaozhi" };
     }
     const apiKey = (process.env["XIAOZHI_TTS_API_KEY"] ?? "").trim();
+    // Which TTS backend the self-hosted XiaoZhi gateway should select
+    // (edge / doubao / minimax / cosyvoice / fishaudio ...). XiaoZhi is the
+    // orchestration layer; naturalness comes from this provider.
+    const provider = (process.env["XIAOZHI_TTS_PROVIDER"] ?? "").trim();
+    const format = (process.env["XIAOZHI_TTS_FORMAT"] ?? "ogg_opus").trim();
     let res: Response;
     try {
       res = await fetch(endpoint, {
@@ -161,12 +166,14 @@ export const xiaozhiVoiceEngine: VoiceEngine = {
         body: JSON.stringify({
           text,
           voice: voice ?? process.env["XIAOZHI_TTS_VOICE"] ?? undefined,
+          ...(provider ? { provider } : {}),
           ...(typeof speed === "number" ? { speed } : {}),
           ...(instructions ? { instructions } : {}),
-          format: "ogg_opus",
+          format,
           language: "ms-MY",
         }),
       });
+
     } catch (error) {
       console.error(
         `[voice] tts_failed engine=xiaozhi category=network name=${error instanceof Error ? error.name : "unknown"}`,
