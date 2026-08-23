@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { applyVerifiedSubscriptionEvent, type ApplyOutcome } from "./paddle-billing.server";
 import type { PaddleSubscriptionEvent } from "./paddle-billing-state.core";
-import { planFromStripePriceId } from "./stripe-mapping.core";
+import { STRIPE_PLAN_MAP, isPurchasablePlan, planFromStripePriceId } from "./stripe-mapping.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -25,11 +25,13 @@ export type StripeEventEnvelope = {
 
 /** Stripe subscription lifecycle events we act on. */
 const SUBSCRIPTION_EVENTS: Record<string, PaddleSubscriptionEvent["type"]> = {
+  "checkout.session.completed": "created",
   "customer.subscription.created": "created",
   "customer.subscription.updated": "updated",
   "customer.subscription.deleted": "canceled",
   "customer.subscription.paused": "updated",
   "customer.subscription.resumed": "updated",
+  "invoice.paid": "updated",
   "invoice.payment_succeeded": "updated",
   "invoice.payment_failed": "payment_failed",
 };
@@ -44,6 +46,7 @@ function stripePriceIdFromSubscription(subscription: any): string | null {
   const item = subscription?.items?.data?.[0];
   return (item?.price?.id as string | undefined) ?? null;
 }
+
 
 export type NormalizedStripeEvent = {
   event: PaddleSubscriptionEvent;
