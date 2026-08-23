@@ -67,7 +67,8 @@ export const lovableVoiceEngine: VoiceEngine = {
           // Complete OGG/Opus file — exactly what Meta accepts as a voice note.
           response_format: "opus",
           instructions:
-            "Speak as a warm, confident Malaysian Umrah travel executive. Natural pace, respectful tone.",
+            "You are a warm, confident Malaysian Umrah travel executive speaking Bahasa Melayu on a WhatsApp voice note. Speak conversationally, not like a news reader: unhurried pace, gentle warmth, natural rises and falls, a short breath at commas and a real pause at full stops. Pronounce Malay words with Malaysian pronunciation and Arabic terms respectfully. Never spell out punctuation, symbols, links or reference codes.",
+
         }),
       });
     } catch (error) {
