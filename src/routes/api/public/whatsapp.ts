@@ -195,7 +195,42 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           text = voice.transcript;
         }
 
+        // IMAGE V1 — the image becomes a grounded text observation here and
+        // then enters the EXISTING text pipeline unchanged. No second brain,
+        // no fabricated contents, no raw bytes persisted.
+        if (inbound.modality === "image") {
+          if (!inbound.mediaId || !config.access_token) {
+            console.error(
+              `[whatsapp] image not processable agency_id=${agencyId} has_media=${Boolean(inbound.mediaId)} has_token=${Boolean(config.access_token)}`,
+            );
+            return new Response("ok");
+          }
+          const { ingestInboundImage } = await import("@/lib/vision/inbound.server");
+          const vision = await ingestInboundImage(supabaseAdmin as never, {
+            agencyId,
+            mediaId: inbound.mediaId,
+            accessToken: config.access_token,
+            providerMessageId,
+            caption: inbound.caption,
+          });
+          if (!vision.ok) {
+            // Never fabricate image contents — ask honestly for a clearer image.
+            await sendWhatsappText(phoneNumberId, config.access_token, from, vision.customerMessage);
+            await supabaseAdmin.from("activity_log").insert({
+              agency_id: agencyId,
+              actor: "ai",
+              action: "Image could not be processed",
+              entity: "lead",
+              entity_id: null,
+              meta: { reason: vision.reason, from },
+            });
+            return new Response("ok");
+          }
+          text = vision.text;
+        }
+
         if (!text.trim()) return new Response("ok");
+
 
 
 
