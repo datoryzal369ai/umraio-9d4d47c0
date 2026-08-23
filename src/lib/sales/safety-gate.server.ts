@@ -103,7 +103,7 @@ export async function applySafetyGate(args: {
       meta: { lead_id: leadId },
     });
 
-    return { blocked: true, reason: "opt_out" };
+    return { blocked: true, reason: "opt_out", customerMessage: OPT_OUT_ACK };
   }
 
   if (intel.humanRequested) {
@@ -144,8 +144,8 @@ export async function applySafetyGate(args: {
       meta: { lead_id: leadId },
     });
 
-    return { blocked: true, reason: "human_requested" };
+    return { blocked: true, reason: "human_requested", customerMessage: HUMAN_HANDOFF_ACK };
   }
 
-  return { blocked: false, reason: null };
+  return { blocked: false, reason: null, customerMessage: null };
 }
