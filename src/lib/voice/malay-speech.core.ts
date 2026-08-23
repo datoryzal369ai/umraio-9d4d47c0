@@ -176,6 +176,18 @@ export function normaliseMalaySpeech(text: string): string {
     return words ? `${words} peratus` : m;
   });
 
+  // Decimals ("3.5" → "tiga perpuluhan lima") BEFORE bare integers, otherwise
+  // the two halves would be spoken as two unrelated numbers.
+  out = out.replace(/\b(\d+)\.(\d+)\b/g, (m, intPart, fracPart) => {
+    const head = malayNumber(Number(intPart));
+    if (!head) return m;
+    const tail = String(fracPart)
+      .split("")
+      .map((d: string) => ONES[Number(d)]!)
+      .join(" ");
+    return `${head} perpuluhan ${tail}`;
+  });
+
   // Bare integers with thousands separators or plain digits.
   out = out.replace(/\b\d[\d,]*\b/g, (m) => {
     const cleaned = m.replace(/,/g, "");

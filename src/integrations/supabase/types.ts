@@ -183,6 +183,7 @@ export type Database = {
           seats: number
           updated_at: string
           voice_controls: Json
+          voice_language: string
           voice_name: string | null
           voice_persona: string
         }
@@ -221,6 +222,7 @@ export type Database = {
           seats?: number
           updated_at?: string
           voice_controls?: Json
+          voice_language?: string
           voice_name?: string | null
           voice_persona?: string
         }
@@ -259,6 +261,7 @@ export type Database = {
           seats?: number
           updated_at?: string
           voice_controls?: Json
+          voice_language?: string
           voice_name?: string | null
           voice_persona?: string
         }

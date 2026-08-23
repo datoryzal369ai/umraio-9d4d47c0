@@ -5,6 +5,7 @@
  * fabricated content. On any failure we return a typed error and the caller
  * sends an honest fallback — never a guessed sales answer.
  */
+import { asrLanguageFor } from "./language.core";
 import { normalizeTranscript } from "./limits.core";
 
 export const ASR_MODEL = "openai/gpt-4o-transcribe";
@@ -36,13 +37,16 @@ function sleep(ms: number) {
 }
 
 /**
- * Language handling: `language` is intentionally omitted so the model
- * auto-detects. Malay, English and mixed Malay-English speech are all
- * transcribed as spoken.
+ * Language handling: the agency's `voice_language` supplies an ISO-639-1 hint
+ * that the transcription model accepts (`language`). For "auto" — or any
+ * unknown value — the parameter is omitted and the model auto-detects, which
+ * keeps mixed Malay-English speech transcribed as spoken. No unsupported
+ * parameter is ever invented.
  */
 export async function transcribeAudio(input: {
   bytes: Uint8Array;
   mimeType: string;
+  language?: string | null;
 }): Promise<AsrResult> {
   const apiKey = process.env["LOVABLE_API_KEY"];
   if (!apiKey) {
@@ -61,6 +65,8 @@ export async function transcribeAudio(input: {
     const form = new FormData();
     form.append("model", ASR_MODEL);
     form.append("file", blob, `voice-note.${ext}`);
+    const asrLanguage = input.language === undefined ? null : asrLanguageFor(input.language);
+    if (asrLanguage) form.append("language", asrLanguage);
 
     let res: Response;
     try {

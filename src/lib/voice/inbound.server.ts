@@ -38,6 +38,8 @@ export async function ingestVoiceNote(
     accessToken: string;
     /** Meta message id — makes usage metering idempotent across replays. */
     providerMessageId: string | null;
+    /** Agency voice_language; omitted/null keeps model auto-detection. */
+    voiceLanguage?: string | null;
   },
 ): Promise<VoiceIngestResult> {
   const startedAt = Date.now();
@@ -74,7 +76,11 @@ export async function ingestVoiceNote(
 
   // 4. ASR.
   console.log("[voice] asr_started model=" + ASR_MODEL);
-  const asr = await transcribeAudio({ bytes: media.bytes, mimeType: media.mimeType });
+  const asr = await transcribeAudio({
+    bytes: media.bytes,
+    mimeType: media.mimeType,
+    ...(args.voiceLanguage === undefined ? {} : { language: args.voiceLanguage }),
+  });
   if (!asr.ok) {
     // A failed transcription is NEVER charged as a successful one.
     await recordUsageEvent(supabase, {
