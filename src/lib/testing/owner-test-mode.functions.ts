@@ -51,8 +51,13 @@ export const getOwnerTestMode = createServerFn({ method: "GET" })
  */
 export const setOwnerTestMode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { enabled: boolean } & EnableTestOverrideInput) => input)
-  .handler(async ({ data, context }) => {
+  .inputValidator((input: { enabled: boolean } & EnableTestOverrideInput) => {
+    if (!input || typeof input.enabled !== "boolean") {
+      throw new Error("Owner Test Mode request is missing the enabled flag.");
+    }
+    return input;
+  })
+
     const { supabase, userId } = context;
     const { readOwnerTestOverride, resolveOwnerTestModeContext } = await import(
       "./owner-test-mode.server"
