@@ -20,7 +20,7 @@ import {
   detectReligiousRulingRequest,
   RELIGIOUS_BOUNDARY_INSTRUCTION,
 } from "./islamic/policy.core";
-import { createIslamicPolicyChecker, requestExpertReview } from "./islamic/policy.server";
+import { createIslamicPolicyChecker } from "./islamic/policy.server";
 import {
   DOMAIN_ISOLATION_INSTRUCTION,
   conversionSignalInstruction,
@@ -996,14 +996,17 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
       validate: (input) =>
         input.question.trim() ? null : "A concrete question is required for expert review.",
       execute: async ({ question, topic }, tctx) => {
-        const outcome = await requestExpertReview(tctx.supabase, {
+        // ISLAMIC IMPLEMENTATION LAYER™ — dedicated review domain.
+        // Never an ai_tasks row, never the sales approval queue.
+        const { createOrReuseIslamicReview } = await import("./islamic/review.server");
+        const outcome = await createOrReuseIslamicReview(tctx.supabase, {
           agencyId: tctx.agencyId,
-          title: `Religious guidance review needed (${topic})`,
-          body: question,
-          entity: "conversation",
-          entityId: ctx.conversation.id,
-          meta: { topic, lead_id: leadId, conversation_id: ctx.conversation.id },
+          conversationId: ctx.conversation.id,
+          leadId,
+          question,
+          topic,
         });
+
         if (!outcome.recorded) {
           return {
             review_recorded: false,
@@ -1017,12 +1020,15 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
           .eq("id", ctx.conversation.id);
         return {
           review_recorded: true,
+          review_id: outcome.reviewId,
           reference: outcome.reference,
-          review_status: "PENDING_EXPERT_REVIEW",
+          duplicate_suppressed: outcome.deduplicated,
+          review_status: "PENDING",
           ai_still_enabled: true,
           instruction:
-            "Tell the customer truthfully that you are not a religious authority and the question has been flagged for a qualified person to review. Do not give a ruling yourself. Continue helping with the travel side of the enquiry.",
+            "Tell the customer ONCE, briefly, that you are not a religious authority and the question is now with a qualified reviewer. Do NOT ask the customer to reconfirm or restate the question. Do not give a ruling yourself. Continue helping with the travel side of the enquiry.",
         };
+
       },
     },
   ];

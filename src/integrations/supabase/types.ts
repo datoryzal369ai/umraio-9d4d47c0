@@ -961,6 +961,94 @@ export type Database = {
           },
         ]
       }
+      islamic_reviews: {
+        Row: {
+          agency_id: string
+          amendment_notes: string | null
+          approved_answer: string | null
+          conversation_id: string | null
+          created_at: string
+          decided_at: string | null
+          dedupe_key: string
+          delivered_at: string | null
+          delivery_status: string
+          holding_sent_at: string | null
+          id: string
+          lead_id: string | null
+          question: string
+          reference: string | null
+          rejection_reason: string | null
+          reviewer_id: string | null
+          status: string
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          amendment_notes?: string | null
+          approved_answer?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          dedupe_key: string
+          delivered_at?: string | null
+          delivery_status?: string
+          holding_sent_at?: string | null
+          id?: string
+          lead_id?: string | null
+          question: string
+          reference?: string | null
+          rejection_reason?: string | null
+          reviewer_id?: string | null
+          status?: string
+          topic?: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          amendment_notes?: string | null
+          approved_answer?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          dedupe_key?: string
+          delivered_at?: string | null
+          delivery_status?: string
+          holding_sent_at?: string | null
+          id?: string
+          lead_id?: string | null
+          question?: string
+          reference?: string | null
+          rejection_reason?: string | null
+          reviewer_id?: string | null
+          status?: string
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "islamic_reviews_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "islamic_reviews_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "islamic_reviews_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_articles: {
         Row: {
           agency_id: string
@@ -1744,7 +1832,7 @@ export type Database = {
         | "processing"
         | "completed"
         | "waiting_approval"
-      app_role: "owner" | "admin" | "agent"
+      app_role: "owner" | "admin" | "agent" | "islamic_approver"
       channel: "whatsapp" | "web" | "manual"
       followup_status: "pending" | "sent" | "skipped" | "failed"
       kb_category:
@@ -1908,7 +1996,7 @@ export const Constants = {
         "completed",
         "waiting_approval",
       ],
-      app_role: ["owner", "admin", "agent"],
+      app_role: ["owner", "admin", "agent", "islamic_approver"],
       channel: ["whatsapp", "web", "manual"],
       followup_status: ["pending", "sent", "skipped", "failed"],
       kb_category: [

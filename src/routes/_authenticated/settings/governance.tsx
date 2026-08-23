@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, ScrollText, UserCheck, PackageCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { IslamicReviewQueue } from "@/components/islamic/IslamicReviewQueue";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   REVIEW_STATUS_LABEL,
@@ -84,6 +85,8 @@ function GovernancePage() {
           {copy.hero.note}
         </p>
       </div>
+
+      <IslamicReviewQueue />
 
       <Section
         icon={ScrollText}
