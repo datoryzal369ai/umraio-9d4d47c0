@@ -16,7 +16,11 @@ import {
 } from "./ai/tool-registry.server";
 import { hashContext, recordExperience } from "./ai/evaluation.server";
 import { assertQuota, recordUsageEvent } from "./billing/usage.server";
-import { classifyIslamicRisk, islamicRiskInstruction } from "./islamic/risk.core";
+import {
+  classifyIslamicRisk,
+  islamicRiskInstruction,
+  mayEscalateIslamicReview,
+} from "./islamic/risk.core";
 
 import { createIslamicPolicyChecker } from "./islamic/policy.server";
 import {
@@ -988,23 +992,38 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
     {
       name: "request_expert_review",
       description:
-        "Islamic Implementation Layer™: route a religious or Shariah-related question to a qualified human reviewer. Call this whenever the customer asks for a religious ruling, or asks whether something is halal/haram/wajib/sah. Only after it returns review_recorded=true may you tell the customer that a qualified person has been asked to review.",
+        "Islamic Implementation Layer™ ESCALATION ONLY: route a HIGH-RISK or genuinely case-specific religious question to a qualified human expert, together with your AI-generated draft answer. Use it ONLY for fatwa requests, serious halal/haram determinations, personal validity questions, dam/fidyah/kafarah cases, talaq, faraid and Islamic financial/legal rulings. NEVER use it for established educational knowledge or ordinary guidance — answer those yourself. Only after it returns review_recorded=true may you tell the customer that a qualified person has been asked to review.",
       permission: "external",
       deterministicSafe: true,
       inputSchema: z.object({
         question: z.string().describe("The customer's religious question, in one sentence"),
         topic: z.enum(["ritual", "halal_status", "financial", "mahram", "other"]),
+        draft_answer: z
+          .string()
+          .optional()
+          .describe(
+            "Your best structured draft answer for the human expert to approve, amend or reject. Never sent to the customer unapproved.",
+          ),
+        sources: z
+          .string()
+          .optional()
+          .describe("Approved knowledge sources you relied on for the draft, comma separated."),
+        escalation_reason: z
+          .string()
+          .optional()
+          .describe("One short sentence explaining why this needs a qualified human expert."),
       }),
       validate: (input) =>
         input.question.trim() ? null : "A concrete question is required for expert review.",
-      execute: async ({ question, topic }, tctx) => {
-        // V2.3 — server-authoritative risk gate. BASIC / GUIDANCE questions
-        // never open a review, even if the model asks for one.
+      execute: async ({ question, topic, draft_answer, sources, escalation_reason }, tctx) => {
+        // V2.4 — server-authoritative risk gate. BASIC / GUIDANCE questions
+        // never open a review, even if the model asks for one. SENSITIVE may
+        // escalate only when the model judges individual judgement is needed.
         const risk = classifyIslamicRisk(question);
         console.log(
           `[islamic] ISLAMIC_RISK_CLASSIFICATION stage=request_expert_review classification=${risk.tier ?? "NONE"} reason=${risk.reason} conversation_id=${ctx.conversation.id}`,
         );
-        if (risk.tier !== "HIGH_RISK") {
+        if (!mayEscalateIslamicReview(risk.tier)) {
           return {
             review_recorded: false,
             classification: risk.tier ?? "NONE",
@@ -1022,6 +1041,10 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
           leadId,
           question,
           topic,
+          riskLevel: risk.tier ?? "HIGH_RISK",
+          escalationReason: escalation_reason ?? risk.reason,
+          draftAnswer: draft_answer ?? null,
+          sources: sources ?? null,
         });
 
         if (!outcome.recorded) {
