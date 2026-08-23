@@ -209,11 +209,13 @@ describe("PREP 3 — message classification", () => {
     }
   });
 
-  it("persisted modality only ever yields text or audio", () => {
+  it("persisted modality maps each supported modality", () => {
     expect(persistedModality("text")).toBe("text");
     expect(persistedModality("audio")).toBe("audio");
+    expect(persistedModality("image")).toBe("image");
     expect(persistedModality("unsupported")).toBe("text");
   });
+
 });
 
 describe("PREP 1/2/3 — webhook behaviour", () => {
