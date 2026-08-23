@@ -95,9 +95,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         // VOICE V1 PREP (1) — agency/config/access-token resolution is HOISTED
         // above the modality branch: audio retrieval will need the authenticated
         // Meta token before anything else. Tenant resolution semantics unchanged.
-        let config: { id: string; agency_id: string; access_token: string; auto_reply: boolean } | null = null;
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        let config: { id: string; agency_id: string; access_token: string | null; auto_reply: boolean } | null = null;
         try {
-          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const { data } = await supabaseAdmin
             .from("whatsapp_configs")
             .select("id, agency_id, access_token, auto_reply")
