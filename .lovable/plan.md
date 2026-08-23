@@ -1,50 +1,26 @@
-# WhatsApp inbound drop — diagnosis and minimum safe fix
+# Voice E2E V2.5.1 — turn-scoped review fix
 
-## What the live logs show (published site, 23 Aug 2026)
+## Scope
+- Do not change Islamic classification, review state transitions, billing/quota, STT/TTS engines, language, security, or authentication.
+- Do not publish.
 
-Mahadhir's two controlled texts (00:33:02.546Z and 00:33:10.515Z) DID reach production and passed every early stage:
+## Root cause to correct
+The active webhook still contains a pre-AI `pending_review_loop_breaker`. It queries the latest open review for the conversation and can return the exact holding message before sales AI and the voice pipeline run. Timestamp comparison is not a reliable turn identity under concurrent/coalesced processing, so an older review can be mistaken for the current voice turn.
 
-- Request reached `POST https://umraio.com/api/public/whatsapp` → 200
-- `webhook_signature_valid=true`
-- `phone_number_id=1232996883231810` present and correct
-- `type=text messages=1` — a genuine inbound message, not a status callback
+## Implementation
+1. Remove the pre-AI holding/acknowledgement early-return block from the WhatsApp webhook. A prior open review will remain in the review queue but cannot intercept a new inbound turn.
+2. Keep one shared `findCurrentTurnOpenReview()` check after AI generation for both text and voice semantics. Current HIGH_RISK generation may create a review; the post-generation check suppresses voice only for that current turn.
+3. Add the requested structured trace markers without logging customer identity:
+   - `VOICE_INBOUND_START` with conversation/message/timestamp/transcript
+   - detailed `ISLAMIC_REVIEW_LOOKUP` and `ISLAMIC_REVIEW_RESULT` including review ID, creation time, status, previous-review/current-turn flags, and action
+   - `VOICE_ELIGIBILITY`, TTS, send, and completion markers
+4. Keep text-first delivery unchanged. Current HIGH_RISK receives its generated holding text and review; normal sales/basic/guidance voice proceeds to TTS and audio send.
 
-They then hit the newly published diagnostic branch:
-
-```text
-[whatsapp] inbound_dropped reason=missing_sender
-  phone_number_id=1232996883231810
-  provider_message_id=wamid.HBgTTVkuMTA0MzEwMjEyMTk2MjE3OB...
-  message_type=text from_present=false
-```
-
-For contrast, the owner's own text at 00:33:53 passed the same gate, reached `agency identified`, generated a reply and sent it successfully at 00:34:13. So config resolution, persistence, `auto_reply`, `ai_enabled`, access token, quota and outbound send are all healthy. Nothing downstream is broken.
-
-## Root cause (confirmed)
-
-The failing branch is the sender guard in `src/routes/api/public/whatsapp.ts` (the `if (!from)` return, around lines 88–93). `classifyInboundMessage` reads only `messages[0].from`, and for Mahadhir's messages that field is absent.
-
-Decoding the `wamid` shows the sender identity Meta attached is `MY.1043102121962178` — not an E.164 phone number. This is Meta's newer privacy/identity form (LID / username-style sender identity) rather than the classic `from: "60176927864"`. Messages carrying that identity arrive without the phone in `from`, so UMRAIO drops them before any tenant work — correctly returning 200 so Meta does not retry-storm, which is why it looked silent.
-
-This is a production blocker for any sender whose account presents this identity form.
-
-## Step 1 — observability correction (safe, needed to pin the exact field)
-
-The logs prove `from` is missing, but not which field DOES carry the identity. One observability-only change, no behaviour change:
-
-- In the `missing_sender` branch, log the **key names present** on `value.contacts[0]` and `messages[0]` (e.g. `contact_keys=wa_id,profile message_keys=id,type,text,...`) plus booleans such as `has_wa_id`, `has_sender_identity`. Log key names and presence booleans only — never the identity values themselves.
-
-That single line on the next inbound from Mahadhir names the exact field to read.
-
-## Step 2 — functional fix (NOT implemented until you approve)
-
-Once the field is named, the minimum safe fix is a **sender-resolution fallback only**:
-
-- In `classifyInboundMessage` (or at the route's sender resolution), when `messages[0].from` is empty, fall back in order to `value.contacts[0].wa_id`, then whatever identity field Step 1 reveals.
-- Everything downstream stays byte-identical: the resolved identity continues to be used as the lead `phone` / conversation `external_id`, so tenant isolation, idempotency, coalescing and quota logic are untouched.
-
-Consideration to confirm with you before implementing: if the identity is a LID rather than a phone number, the resulting lead will be keyed on that identity instead of `60176927864`, and outbound replies address the LID. That is how Meta expects it to work, but it means such leads won't auto-merge with an existing phone-keyed lead for the same person. No merge logic is in scope here.
-
-## Out of scope
-
-No changes to Meta/WABA settings, AI logic, outbound sending, quota, schema, or sender-eligibility rules.
+## Regression validation
+- Add route-level regression coverage for an existing PENDING review followed by each voice transcript:
+  - “Saya nak tanya pasal pakej Umrah 12 hari.” → normal sales text + voice/TTS, no holding/new review.
+  - “Berapa harga pakej?” → text + voice/TTS, no holding/new review.
+  - “Apa maksud Talbiyah?” → BASIC answer + voice/TTS, no holding/new review.
+  - Current HIGH_RISK voice → review created, holding text allowed, voice suppressed.
+- Run the focused Islamic/WhatsApp voice suites.
+- Execute the mandatory same-conversation Preview E2E and verify logs plus actual outbound audio for each required turn. If a real inbound WhatsApp voice note cannot be initiated from available tooling, report that limitation rather than claiming success.
