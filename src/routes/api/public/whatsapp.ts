@@ -458,7 +458,25 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
             console.log(`[whatsapp] ai reply generated=${Boolean(reply)}`);
             if (reply) {
+              // HUMANISED TIMING — only ever pads a reply that arrived faster
+              // than a human executive plausibly could. Never slows a real one.
+              const { presentationDelayMs, latencyBucketLabel } = await import(
+                "@/lib/sales/context-continuity.core"
+              );
+              const elapsedMs = Date.now() - inboundAt.getTime();
+              const pad = presentationDelayMs({
+                elapsedMs,
+                modality: inbound.modality === "image" || inbound.modality === "audio"
+                  ? inbound.modality
+                  : "text",
+                replyLength: reply.length,
+              });
+              if (pad > 0) await new Promise((r) => setTimeout(r, pad));
+              console.log(
+                `[whatsapp] response_latency_bucket=${latencyBucketLabel(elapsedMs + pad)} presentation_delay_ms=${pad} modality=${inbound.modality}`,
+              );
               const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
+
               await supabaseAdmin.from("messages").insert({
                 agency_id: agencyId,
                 conversation_id: conversationId,
