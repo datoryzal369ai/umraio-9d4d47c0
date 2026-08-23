@@ -390,10 +390,14 @@ function systemPrompt(
   const tone = s?.ai_tone ?? "warm";
   const useKb = s?.kb_auto_use ?? true;
   const lastCustomer = [...ctx.messages].reverse().find((m) => m.sender === "customer");
-  const religiousBoundary = detectReligiousRulingRequest(lastCustomer?.body)
-    .isReligiousRulingRequest
-    ? RELIGIOUS_BOUNDARY_INSTRUCTION
-    : null;
+  // ISLAMIC IMPLEMENTATION LAYER™ V2.3 — risk-based routing. Basic Islamic
+  // knowledge is answered directly; only HIGH_RISK reaches a human reviewer.
+  const islamicRisk = classifyIslamicRisk(lastCustomer?.body);
+  console.log(
+    `[islamic] ISLAMIC_RISK_CLASSIFICATION classification=${islamicRisk.tier ?? "NONE"} reason=${islamicRisk.reason} conversation_id=${ctx.conversation.id}`,
+  );
+  const religiousBoundary = islamicRiskInstruction(islamicRisk.tier);
+
   const suppression = suppressionInstruction(suppressedTopics);
   const continuity = readContinuity({
     turns: ctx.messages.map((m) => ({ sender: m.sender, body: m.body })),
