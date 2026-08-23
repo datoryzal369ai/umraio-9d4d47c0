@@ -573,12 +573,22 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                   });
                 }
               }
+            } else {
+              // No silent failures: an empty generation is an explicit,
+              // observable terminal outcome.
+              console.log(
+                `[whatsapp] conversation_terminal_outcome=no_reply_generated failure_stage=ai_generation modality=${inbound.modality}`,
+              );
             }
           } catch (error) {
-            console.error("[whatsapp] AI reply failed", error);
+            console.error(
+              `[whatsapp] conversation_terminal_outcome=error failure_stage=reply_pipeline reason=${error instanceof Error ? error.name : "unknown"}`,
+              error,
+            );
           } finally {
             await releaseConversationClaim(supabaseAdmin as never, { agencyId, conversationId });
           }
+
         } else {
           // J4 — the AI is muted (human takeover / auto-reply off). Stamp the
           // mute point so these messages are NEVER replayed when RAIŌ resumes.
