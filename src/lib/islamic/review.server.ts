@@ -17,7 +17,7 @@ import {
 type Db = SupabaseClient<any, any, any>;
 
 const SELECT_COLUMNS =
-  "id, agency_id, conversation_id, lead_id, question, topic, status, reviewer_id, approved_answer, rejection_reason, amendment_notes, holding_sent_at, delivered_at, delivery_status, reference, created_at, decided_at";
+  "id, agency_id, conversation_id, lead_id, question, topic, risk_level, escalation_reason, ai_draft_answer, ai_sources, status, reviewer_id, approved_answer, rejection_reason, amendment_notes, holding_sent_at, delivered_at, delivery_status, reference, created_at, decided_at";
 
 export type IslamicReviewRow = {
   id: string;
@@ -26,6 +26,10 @@ export type IslamicReviewRow = {
   lead_id: string | null;
   question: string;
   topic: string;
+  risk_level?: string | null;
+  escalation_reason?: string | null;
+  ai_draft_answer?: string | null;
+  ai_sources?: string | null;
   status: string;
   reviewer_id: string | null;
   approved_answer: string | null;
@@ -78,6 +82,10 @@ export async function createOrReuseIslamicReview(
     leadId?: string | null;
     question: string;
     topic: string;
+    riskLevel?: string;
+    escalationReason?: string | null;
+    draftAnswer?: string | null;
+    sources?: string | null;
   },
 ): Promise<{ recorded: boolean; reviewId: string | null; deduplicated: boolean; reference: string | null }> {
   const dedupeKey = islamicDedupeKey(args.topic, args.question);
@@ -116,6 +124,10 @@ export async function createOrReuseIslamicReview(
       question: args.question.slice(0, 2000),
       topic: args.topic,
       dedupe_key: dedupeKey,
+      risk_level: args.riskLevel ?? "HIGH_RISK",
+      escalation_reason: args.escalationReason ?? null,
+      ai_draft_answer: (args.draftAnswer ?? "").slice(0, 4000) || null,
+      ai_sources: (args.sources ?? "").slice(0, 2000) || null,
       status: "PENDING",
       reference,
     })

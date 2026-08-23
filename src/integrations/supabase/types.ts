@@ -976,6 +976,8 @@ export type Database = {
       islamic_reviews: {
         Row: {
           agency_id: string
+          ai_draft_answer: string | null
+          ai_sources: string | null
           amendment_notes: string | null
           approved_answer: string | null
           conversation_id: string | null
@@ -984,6 +986,7 @@ export type Database = {
           dedupe_key: string
           delivered_at: string | null
           delivery_status: string
+          escalation_reason: string | null
           holding_sent_at: string | null
           id: string
           lead_id: string | null
@@ -991,12 +994,15 @@ export type Database = {
           reference: string | null
           rejection_reason: string | null
           reviewer_id: string | null
+          risk_level: string
           status: string
           topic: string
           updated_at: string
         }
         Insert: {
           agency_id: string
+          ai_draft_answer?: string | null
+          ai_sources?: string | null
           amendment_notes?: string | null
           approved_answer?: string | null
           conversation_id?: string | null
@@ -1005,6 +1011,7 @@ export type Database = {
           dedupe_key: string
           delivered_at?: string | null
           delivery_status?: string
+          escalation_reason?: string | null
           holding_sent_at?: string | null
           id?: string
           lead_id?: string | null
@@ -1012,12 +1019,15 @@ export type Database = {
           reference?: string | null
           rejection_reason?: string | null
           reviewer_id?: string | null
+          risk_level?: string
           status?: string
           topic?: string
           updated_at?: string
         }
         Update: {
           agency_id?: string
+          ai_draft_answer?: string | null
+          ai_sources?: string | null
           amendment_notes?: string | null
           approved_answer?: string | null
           conversation_id?: string | null
@@ -1026,6 +1036,7 @@ export type Database = {
           dedupe_key?: string
           delivered_at?: string | null
           delivery_status?: string
+          escalation_reason?: string | null
           holding_sent_at?: string | null
           id?: string
           lead_id?: string | null
@@ -1033,6 +1044,7 @@ export type Database = {
           reference?: string | null
           rejection_reason?: string | null
           reviewer_id?: string | null
+          risk_level?: string
           status?: string
           topic?: string
           updated_at?: string

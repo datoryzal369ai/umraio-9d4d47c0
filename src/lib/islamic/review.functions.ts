@@ -34,7 +34,7 @@ export const listIslamicReviews = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("islamic_reviews")
       .select(
-        "id, conversation_id, lead_id, question, topic, status, reviewer_id, approved_answer, rejection_reason, amendment_notes, delivery_status, reference, created_at, decided_at",
+        "id, conversation_id, lead_id, question, topic, risk_level, escalation_reason, ai_draft_answer, ai_sources, status, reviewer_id, approved_answer, rejection_reason, amendment_notes, delivery_status, reference, created_at, decided_at",
       )
       .eq("agency_id", agencyId)
       .order("created_at", { ascending: false })

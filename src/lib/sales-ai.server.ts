@@ -16,7 +16,11 @@ import {
 } from "./ai/tool-registry.server";
 import { hashContext, recordExperience } from "./ai/evaluation.server";
 import { assertQuota, recordUsageEvent } from "./billing/usage.server";
-import { classifyIslamicRisk, islamicRiskInstruction } from "./islamic/risk.core";
+import {
+  classifyIslamicRisk,
+  islamicRiskInstruction,
+  mayEscalateIslamicReview,
+} from "./islamic/risk.core";
 
 import { createIslamicPolicyChecker } from "./islamic/policy.server";
 import {
@@ -988,28 +992,43 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
     {
       name: "request_expert_review",
       description:
-        "Islamic Implementation Layer™: route a religious or Shariah-related question to a qualified human reviewer. Call this whenever the customer asks for a religious ruling, or asks whether something is halal/haram/wajib/sah. Only after it returns review_recorded=true may you tell the customer that a qualified person has been asked to review.",
+        "Islamic Implementation Layer™ ESCALATION ONLY: route a HIGH-RISK or genuinely case-specific religious question to a qualified human expert, together with your AI-generated draft answer. Use it ONLY for fatwa requests, serious halal/haram determinations, personal validity questions, dam/fidyah/kafarah cases, talaq, faraid and Islamic financial/legal rulings. NEVER use it for established educational knowledge or ordinary guidance — answer those yourself. Only after it returns review_recorded=true may you tell the customer that a qualified person has been asked to review.",
       permission: "external",
       deterministicSafe: true,
       inputSchema: z.object({
         question: z.string().describe("The customer's religious question, in one sentence"),
         topic: z.enum(["ritual", "halal_status", "financial", "mahram", "other"]),
+        draft_answer: z
+          .string()
+          .optional()
+          .describe(
+            "Your best structured draft answer for the human expert to approve, amend or reject. Never sent to the customer unapproved.",
+          ),
+        sources: z
+          .string()
+          .optional()
+          .describe("Approved knowledge sources you relied on for the draft, comma separated."),
+        escalation_reason: z
+          .string()
+          .optional()
+          .describe("One short sentence explaining why this needs a qualified human expert."),
       }),
       validate: (input) =>
         input.question.trim() ? null : "A concrete question is required for expert review.",
-      execute: async ({ question, topic }, tctx) => {
-        // V2.3 — server-authoritative risk gate. BASIC / GUIDANCE questions
-        // never open a review, even if the model asks for one.
+      execute: async ({ question, topic, draft_answer, sources, escalation_reason }, tctx) => {
+        // V2.4 — server-authoritative risk gate. BASIC / GUIDANCE questions
+        // never open a review, even if the model asks for one. SENSITIVE may
+        // escalate only when the model judges individual judgement is needed.
         const risk = classifyIslamicRisk(question);
         console.log(
           `[islamic] ISLAMIC_RISK_CLASSIFICATION stage=request_expert_review classification=${risk.tier ?? "NONE"} reason=${risk.reason} conversation_id=${ctx.conversation.id}`,
         );
-        if (risk.tier !== "HIGH_RISK") {
+        if (!mayEscalateIslamicReview(risk.tier)) {
           return {
             review_recorded: false,
             classification: risk.tier ?? "NONE",
             instruction:
-              "No review was opened: this is established basic/general Islamic knowledge, not a ruling request. Answer the customer NOW from approved knowledge, without issuing a ruling and without telling the customer that anyone is reviewing it.",
+              "No review was opened: this is established basic or ordinary Islamic knowledge, not a high-risk ruling request. Answer the customer NOW from approved knowledge, adding a short 'secara umum' qualification if useful, without issuing a personal ruling and without telling the customer that anyone is reviewing it.",
           };
         }
         // ISLAMIC IMPLEMENTATION LAYER™ — dedicated review domain.
@@ -1022,6 +1041,10 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
           leadId,
           question,
           topic,
+          riskLevel: risk.tier ?? "HIGH_RISK",
+          escalationReason: escalation_reason ?? risk.reason,
+          draftAnswer: draft_answer ?? null,
+          sources: sources ?? null,
         });
 
         if (!outcome.recorded) {
@@ -1102,6 +1125,7 @@ export async function generateAgentReply(
   conversationId: string,
   warm?: { prefetched: PrefetchedReplyInputs | null; expectedLatestMessageAt: string | null },
 ): Promise<string> {
+  const turnStartedAt = new Date().toISOString();
   // Reuse the warm read ONLY when no new message landed during the wait.
   const reusable =
     warm?.prefetched &&
@@ -1332,6 +1356,39 @@ export async function generateAgentReply(
     evaluation_score: null,
     failure_reason: null,
   });
+
+  // IIL V2.4 — DETERMINISTIC ESCALATION GUARANTEE. A HIGH_RISK turn always
+  // opens exactly one expert review carrying the AI-generated draft, even when
+  // the model neglected to call request_expert_review. BASIC / GUIDANCE /
+  // SENSITIVE turns are never escalated here.
+  try {
+    const lastCustomerTurn = [...ctx.messages].reverse().find((m) => m.sender === "customer");
+    const turnRisk = classifyIslamicRisk(lastCustomerTurn?.body);
+    if (turnRisk.tier === "HIGH_RISK") {
+      const { createOrReuseIslamicReview, findOpenReviewForConversation } = await import(
+        "./islamic/review.server"
+      );
+      const existing = await findOpenReviewForConversation(supabase, ctx.conversation.id as string);
+      const alreadyOpenedThisTurn = Boolean(existing && existing.created_at >= turnStartedAt);
+      if (!alreadyOpenedThisTurn) {
+        const outcome = await createOrReuseIslamicReview(supabase, {
+          agencyId,
+          conversationId: ctx.conversation.id as string,
+          leadId: (ctx.conversation.lead_id as string | null) ?? null,
+          question: (lastCustomerTurn?.body ?? "").slice(0, 2000),
+          topic: "other",
+          riskLevel: "HIGH_RISK",
+          escalationReason: turnRisk.reason,
+          draftAnswer: text || null,
+        });
+        console.log(
+          `[islamic] ISLAMIC_ESCALATION_GUARANTEE recorded=${outcome.recorded} deduplicated=${outcome.deduplicated} reason=${turnRisk.reason}`,
+        );
+      }
+    }
+  } catch (error) {
+    console.warn("[islamic] escalation guarantee skipped", (error as Error).message);
+  }
 
   return text || "Maaf, boleh ulang semula soalan tuan/puan?";
 }
