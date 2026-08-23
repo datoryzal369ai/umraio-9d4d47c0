@@ -998,9 +998,24 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
       validate: (input) =>
         input.question.trim() ? null : "A concrete question is required for expert review.",
       execute: async ({ question, topic }, tctx) => {
+        // V2.3 — server-authoritative risk gate. BASIC / GUIDANCE questions
+        // never open a review, even if the model asks for one.
+        const risk = classifyIslamicRisk(question);
+        console.log(
+          `[islamic] ISLAMIC_RISK_CLASSIFICATION stage=request_expert_review classification=${risk.tier ?? "NONE"} reason=${risk.reason} conversation_id=${ctx.conversation.id}`,
+        );
+        if (risk.tier !== "HIGH_RISK") {
+          return {
+            review_recorded: false,
+            classification: risk.tier ?? "NONE",
+            instruction:
+              "No review was opened: this is established basic/general Islamic knowledge, not a ruling request. Answer the customer NOW from approved knowledge, without issuing a ruling and without telling the customer that anyone is reviewing it.",
+          };
+        }
         // ISLAMIC IMPLEMENTATION LAYER™ — dedicated review domain.
         // Never an ai_tasks row, never the sales approval queue.
         const { createOrReuseIslamicReview } = await import("./islamic/review.server");
+
         const outcome = await createOrReuseIslamicReview(tctx.supabase, {
           agencyId: tctx.agencyId,
           conversationId: ctx.conversation.id,
