@@ -16,10 +16,8 @@ import {
 } from "./ai/tool-registry.server";
 import { hashContext, recordExperience } from "./ai/evaluation.server";
 import { assertQuota, recordUsageEvent } from "./billing/usage.server";
-import {
-  detectReligiousRulingRequest,
-  RELIGIOUS_BOUNDARY_INSTRUCTION,
-} from "./islamic/policy.core";
+import { classifyIslamicRisk, islamicRiskInstruction } from "./islamic/risk.core";
+
 import { createIslamicPolicyChecker } from "./islamic/policy.server";
 import {
   DOMAIN_ISOLATION_INSTRUCTION,
