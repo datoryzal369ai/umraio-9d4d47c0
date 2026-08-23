@@ -34,11 +34,14 @@ export type ClassifiedInbound = {
   from: string;
   /** Which payload field the sender identity came from (safe to log). */
   senderSource: SenderSource;
-  /** Verified message text. Empty for audio — never a fabricated transcript. */
+  /** Verified message text. Empty for audio/image — never fabricated content. */
   text: string;
-  /** Meta media id for audio. Never the audio bytes. */
+  /** Customer caption sent with an image, if any. Verbatim. */
+  caption: string | null;
+  /** Meta media id for audio/image. Never the media bytes. */
   mediaId: string | null;
   providerMessageId: string | null;
+
   /** True only when the message carries everything needed to be processed. */
   processable: boolean;
 };
