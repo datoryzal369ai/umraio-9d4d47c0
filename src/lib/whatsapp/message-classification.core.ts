@@ -144,6 +144,55 @@ export function classifyInboundMessage(
       caption,
       mediaId,
       providerMessageId,
+      filename: null,
+      mimeType: null,
+      fileSize: null,
+      processable: Boolean(from && mediaId),
+    };
+  }
+
+  // DOCUMENT V1 (STEP 1) — classification only. Nothing is retrieved, parsed
+  // or understood yet. Only application/pdf is recognised as a document.
+  if (rawType === "document") {
+    const doc = message?.document;
+    const mediaId = (doc?.id ?? "").trim() || null;
+    const filename = (doc?.filename ?? "").trim() || null;
+    const mimeType = (doc?.mime_type ?? "").trim().toLowerCase().split(";")[0]?.trim() || null;
+    const caption = (doc?.caption ?? "").trim() || null;
+    const rawSize = doc?.file_size;
+    const fileSize = typeof rawSize === "number" && Number.isFinite(rawSize) && rawSize >= 0 ? rawSize : null;
+
+    if (mimeType !== SUPPORTED_DOCUMENT_MIME) {
+      return {
+        modality: "unsupported",
+        rawType,
+        from,
+        senderSource,
+        text: "",
+        caption,
+        mediaId,
+        providerMessageId,
+        filename,
+        mimeType,
+        fileSize,
+        processable: false,
+      };
+    }
+
+    return {
+      modality: "document",
+      rawType,
+      from,
+      senderSource,
+      // No extracted content exists yet, and we never invent any.
+      text: "",
+      caption,
+      mediaId,
+      providerMessageId,
+      filename,
+      mimeType,
+      fileSize,
+      // Step 1 classifies only; downstream retrieval arrives in Step 2.
       processable: Boolean(from && mediaId),
     };
   }
@@ -157,6 +206,9 @@ export function classifyInboundMessage(
     caption: null,
     mediaId: null,
     providerMessageId,
+    filename: null,
+    mimeType: null,
+    fileSize: null,
     processable: false,
   };
 }
