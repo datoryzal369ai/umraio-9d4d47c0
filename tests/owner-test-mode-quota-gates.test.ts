@@ -30,8 +30,8 @@ vi.mock("../src/lib/billing/entitlements.server", () => ({
   }),
 }));
 
-/** Truthful counters for the live test agency: 205/300, 66/60, 15/15. */
-const COUNTS = { ai_replies: 205, ai_tasks: 66, voice_seconds: 15 * 60 };
+/** Exhausted counters: replies 300/300, tasks 66/60, voice 15/15. */
+const COUNTS = { ai_replies: 300, ai_tasks: 66, voice_seconds: 15 * 60 };
 const writes: unknown[] = [];
 
 function makeDb() {
