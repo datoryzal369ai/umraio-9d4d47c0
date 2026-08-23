@@ -82,15 +82,21 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         }
 
         // VOICE V1 PREP (1) — classify BEFORE any modality-specific work.
-        const inbound = classifyInboundMessage(message);
+        // Sender resolution: `messages[0].from`, else `contacts[0].wa_id` from
+        // the same webhook value (Meta omits `from` for newer LID-style sender
+        // identities). Whatever resolves flows through the EXISTING pipeline.
+        const contact = value?.contacts?.[0];
+        const inbound = classifyInboundMessage(message, { contactWaId: contact?.wa_id ?? null });
         const from = inbound.from;
         const providerMessageId = inbound.providerMessageId;
         if (!from) {
           console.log(
-            `[whatsapp] inbound_dropped reason=missing_sender phone_number_id=${phoneNumberId} provider_message_id=${providerMessageId ?? "none"} message_type=${message.type ?? "none"} from_present=false`,
+            `[whatsapp] inbound_dropped reason=missing_sender phone_number_id=${phoneNumberId} provider_message_id=${providerMessageId ?? "none"} message_type=${message.type ?? "none"} from_present=false contact_present=${Boolean(contact)} contact_keys=${contact ? Object.keys(contact).join("|") : "none"} message_keys=${Object.keys(message).join("|")}`,
           );
           return new Response("ok");
         }
+        console.log(`[whatsapp] sender resolved source=${inbound.senderSource}`);
+
 
         // VOICE V1 PREP (1) — agency/config/access-token resolution is HOISTED
         // above the modality branch: audio retrieval will need the authenticated
