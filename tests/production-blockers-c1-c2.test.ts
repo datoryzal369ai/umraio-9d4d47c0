@@ -175,8 +175,20 @@ beforeEach(() => {
   process.env["META_APP_SECRET"] = SECRET;
   process.env["CRON_SECRET"] = CRON_SECRET;
   process.env["SUPABASE_PUBLISHABLE_KEY"] = PUBLISHABLE;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    if (String(input).includes("graph.facebook.com")) db.outboundSends += 1;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    // Typing indicators hit the same endpoint but carry no text body.
+    const parsedBody = (() => {
+      try {
+        return JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}")) as {
+          text?: { body?: string };
+        };
+      } catch {
+        return {} as { text?: { body?: string } };
+      }
+    })();
+    if (String(input).includes("graph.facebook.com") && parsedBody.text?.body) {
+      db.outboundSends += 1;
+    }
     return new Response("{}", { status: 200 });
   });
   logSpy = vi.spyOn(console, "log").mockImplementation((...a) => logged.push(a.join(" ")));
