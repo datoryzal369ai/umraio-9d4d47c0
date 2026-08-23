@@ -17,6 +17,7 @@ function SettingsLayout() {
     { to: "/settings/agency", label: copy.tabs.agency },
     { to: "/settings/ai", label: copy.tabs.ai },
     { to: "/settings/whatsapp", label: copy.tabs.whatsapp },
+    { to: "/settings/voice", label: "Voice" },
     { to: "/settings/governance", label: copy.tabs.governance },
     { to: "/settings/notifications", label: copy.tabs.notifications },
 
