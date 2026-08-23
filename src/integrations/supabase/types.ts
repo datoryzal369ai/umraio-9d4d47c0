@@ -1382,6 +1382,91 @@ export type Database = {
           },
         ]
       }
+      owner_test_override_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          agency_id: string
+          categories: string[]
+          created_at: string
+          expires_at: string | null
+          id: string
+          reason: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          agency_id: string
+          categories?: string[]
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          reason?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          agency_id?: string
+          categories?: string[]
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_test_override_events_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_test_overrides: {
+        Row: {
+          agency_id: string
+          categories: string[]
+          created_at: string
+          enabled: boolean
+          enabled_at: string | null
+          enabled_by: string | null
+          expires_at: string | null
+          reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          categories?: string[]
+          created_at?: string
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          expires_at?: string | null
+          reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          categories?: string[]
+          created_at?: string
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          expires_at?: string | null
+          reason?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_test_overrides_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: true
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       packages: {
         Row: {
           agency_id: string

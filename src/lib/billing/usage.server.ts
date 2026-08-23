@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { isQuotaOverrideActive } from "../testing/owner-test-mode.server";
 import { resolveEntitlement, type PlanEntitlement } from "./entitlements.server";
+
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -199,6 +201,13 @@ export type QuotaDecision = {
   ratio: number;
   warning: boolean;
   plan: PlanEntitlement;
+  /**
+   * OWNER TEST MODE — true when this call was allowed past an exhausted
+   * allowance by the agency owner's temporary test override. Usage counters,
+   * plan limits and billing state are unchanged; `used`/`limit` stay truthful.
+   */
+  overridden?: boolean;
+
 };
 
 function limitFor(plan: PlanEntitlement, bucket: QuotaBucket): number {
@@ -268,8 +277,19 @@ export async function assertQuota(
     );
     throw new QuotaError("unavailable"); // fail closed
   }
-  if (!decision.allowed) throw new QuotaError("exceeded");
+  if (!decision.allowed) {
+    // OWNER TEST MODE — the ONLY bypass of the allowance gate. It does not
+    // change counters, plan or billing, and applies to this agency only.
+    if (decision.bucket !== "none" && (await isQuotaOverrideActive(supabase, agencyId, decision.bucket))) {
+      console.warn(
+        `[usage] owner_test_mode bypass bucket=${decision.bucket} agency=${agencyId} used=${decision.used} limit=${decision.limit}`,
+      );
+      return { ...decision, allowed: true, overridden: true };
+    }
+    throw new QuotaError("exceeded");
+  }
   return decision;
+
 }
 
 /* ---------------- summaries ---------------- */
@@ -384,6 +404,17 @@ export async function assertVoiceQuota(
 ): Promise<QuotaDecision> {
   const decision = await assertQuota(supabase, agencyId, "voice_transcription");
   const requestedMinutes = Math.ceil(Math.max(0, requestedSeconds) / 60);
-  if (requestedMinutes > decision.remaining) throw new QuotaError("exceeded");
+  if (requestedMinutes > decision.remaining) {
+    // OWNER TEST MODE — allowance-only bypass; ASR/TTS still run for real and
+    // real failures still surface honestly.
+    if (decision.overridden || (await isQuotaOverrideActive(supabase, agencyId, "voice_minutes"))) {
+      console.warn(
+        `[usage] owner_test_mode bypass bucket=voice_minutes agency=${agencyId} requested_seconds=${Math.max(0, requestedSeconds)}`,
+      );
+      return { ...decision, allowed: true, overridden: true };
+    }
+    throw new QuotaError("exceeded");
+  }
+
   return decision;
 }
