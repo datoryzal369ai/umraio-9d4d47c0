@@ -1,0 +1,5 @@
+ALTER TABLE public.islamic_reviews
+  ADD COLUMN IF NOT EXISTS risk_level TEXT NOT NULL DEFAULT 'HIGH_RISK',
+  ADD COLUMN IF NOT EXISTS escalation_reason TEXT,
+  ADD COLUMN IF NOT EXISTS ai_draft_answer TEXT,
+  ADD COLUMN IF NOT EXISTS ai_sources TEXT;
