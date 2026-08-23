@@ -75,26 +75,17 @@ export function lastPendingQuestion(turns: ReadonlyArray<ContinuityTurn>): strin
  * answer being acted upon. Two or more = a clarification loop worth breaking.
  */
 export function consecutiveClarifications(turns: ReadonlyArray<ContinuityTurn>): number {
-  let count = 0;
+  let streak = 0;
   for (let i = turns.length - 1; i >= 0; i -= 1) {
     const turn = turns[i]!;
     if (turn.sender === "customer") continue;
-    if ((turn.body ?? "").includes("?")) count += 1;
-    else break;
-    // walk back past the customer answer that preceded it
-  }
-  // count outbound questions separated by customer answers
-  let streak = 0;
-  let seenOutbound = 0;
-  for (let i = turns.length - 1; i >= 0 && seenOutbound < 4; i -= 1) {
-    const turn = turns[i]!;
-    if (turn.sender === "customer") continue;
-    seenOutbound += 1;
     if ((turn.body ?? "").includes("?")) streak += 1;
     else break;
+    if (streak >= 4) break;
   }
-  return Math.max(count, streak);
+  return streak;
 }
+
 
 export type ContinuityRead = {
   pendingQuestion: string | null;
