@@ -14,6 +14,13 @@ type WebhookValue = {
     audio?: { id?: string; mime_type?: string; voice?: boolean };
     voice?: { id?: string; mime_type?: string };
     image?: { id?: string; mime_type?: string; caption?: string };
+    document?: {
+      id?: string;
+      filename?: string;
+      mime_type?: string;
+      file_size?: number;
+      caption?: string;
+    };
   }>;
 
 };
@@ -151,6 +158,15 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
         // VOICE V1 — modality routing. Audio becomes a transcript here and then
         // enters the EXISTING text pipeline unchanged. There is no second brain.
+        // DOCUMENT V1 (STEP 1) — classification only. Documents are recognised
+        // and logged, but nothing is retrieved or processed yet.
+        if (inbound.modality === "document") {
+          console.log(
+            `[whatsapp] document classified agency_id=${agencyId} has_media=${Boolean(inbound.mediaId)} has_filename=${Boolean(inbound.filename)} mime=${inbound.mimeType ?? "none"} size=${inbound.fileSize ?? "unknown"} processing=deferred`,
+          );
+          return new Response("ok");
+        }
+
         if (inbound.modality === "unsupported") {
           console.log(
             `[whatsapp] unsupported message type ignored agency_id=${agencyId} type=${inbound.rawType}`,

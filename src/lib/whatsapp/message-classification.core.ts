@@ -6,7 +6,10 @@
  * `audio` is classified and reserved, never transcribed.
  */
 
-export type InboundModality = "text" | "audio" | "image" | "unsupported";
+export type InboundModality = "text" | "audio" | "image" | "document" | "unsupported";
+
+/** DOCUMENT V1 — only PDFs are classified as documents in this step. */
+export const SUPPORTED_DOCUMENT_MIME = "application/pdf";
 
 export type InboundWebhookMessage = {
   id?: string;
@@ -16,6 +19,14 @@ export type InboundWebhookMessage = {
   audio?: { id?: string; mime_type?: string; voice?: boolean };
   voice?: { id?: string; mime_type?: string };
   image?: { id?: string; mime_type?: string; caption?: string; sha256?: string };
+  document?: {
+    id?: string;
+    filename?: string;
+    mime_type?: string;
+    file_size?: number;
+    caption?: string;
+    sha256?: string;
+  };
 };
 
 
@@ -41,6 +52,13 @@ export type ClassifiedInbound = {
   /** Meta media id for audio/image. Never the media bytes. */
   mediaId: string | null;
   providerMessageId: string | null;
+
+  /** DOCUMENT V1 — original filename, verbatim. Null unless a document. */
+  filename: string | null;
+  /** DOCUMENT V1 — declared MIME type. Null unless a document. */
+  mimeType: string | null;
+  /** DOCUMENT V1 — declared size in bytes. Null unless known. */
+  fileSize: number | null;
 
   /** True only when the message carries everything needed to be processed. */
   processable: boolean;
@@ -86,6 +104,9 @@ export function classifyInboundMessage(
       caption: null,
       mediaId: null,
       providerMessageId,
+      filename: null,
+      mimeType: null,
+      fileSize: null,
       processable: Boolean(from && text.trim()),
     };
   }
@@ -102,6 +123,9 @@ export function classifyInboundMessage(
       caption: null,
       mediaId,
       providerMessageId,
+      filename: null,
+      mimeType: null,
+      fileSize: null,
       processable: Boolean(from && mediaId),
     };
   }
@@ -120,6 +144,55 @@ export function classifyInboundMessage(
       caption,
       mediaId,
       providerMessageId,
+      filename: null,
+      mimeType: null,
+      fileSize: null,
+      processable: Boolean(from && mediaId),
+    };
+  }
+
+  // DOCUMENT V1 (STEP 1) — classification only. Nothing is retrieved, parsed
+  // or understood yet. Only application/pdf is recognised as a document.
+  if (rawType === "document") {
+    const doc = message?.document;
+    const mediaId = (doc?.id ?? "").trim() || null;
+    const filename = (doc?.filename ?? "").trim() || null;
+    const mimeType = (doc?.mime_type ?? "").trim().toLowerCase().split(";")[0]?.trim() || null;
+    const caption = (doc?.caption ?? "").trim() || null;
+    const rawSize = doc?.file_size;
+    const fileSize = typeof rawSize === "number" && Number.isFinite(rawSize) && rawSize >= 0 ? rawSize : null;
+
+    if (mimeType !== SUPPORTED_DOCUMENT_MIME) {
+      return {
+        modality: "unsupported",
+        rawType,
+        from,
+        senderSource,
+        text: "",
+        caption,
+        mediaId,
+        providerMessageId,
+        filename,
+        mimeType,
+        fileSize,
+        processable: false,
+      };
+    }
+
+    return {
+      modality: "document",
+      rawType,
+      from,
+      senderSource,
+      // No extracted content exists yet, and we never invent any.
+      text: "",
+      caption,
+      mediaId,
+      providerMessageId,
+      filename,
+      mimeType,
+      fileSize,
+      // Step 1 classifies only; downstream retrieval arrives in Step 2.
       processable: Boolean(from && mediaId),
     };
   }
@@ -133,6 +206,9 @@ export function classifyInboundMessage(
     caption: null,
     mediaId: null,
     providerMessageId,
+    filename: null,
+    mimeType: null,
+    fileSize: null,
     processable: false,
   };
 }
