@@ -37,7 +37,16 @@ export const getOwnerTestMode = createServerFn({ method: "GET" })
     const { readOwnerTestOverride } = await import("./owner-test-mode.server");
     const state = await readOwnerTestOverride(supabase, agencyId);
 
-    let audit: Array<Record<string, unknown>> = [];
+    type AuditRow = {
+      id: string;
+      action: string;
+      categories: string[] | null;
+      reason: string | null;
+      expires_at: string | null;
+      created_at: string;
+      actor_id: string | null;
+    };
+    let audit: AuditRow[] = [];
     if (canManage) {
       const { data } = await supabase
         .from("owner_test_override_events")
@@ -45,7 +54,7 @@ export const getOwnerTestMode = createServerFn({ method: "GET" })
         .eq("agency_id", agencyId)
         .order("created_at", { ascending: false })
         .limit(20);
-      audit = (data ?? []) as Array<Record<string, unknown>>;
+      audit = (data ?? []) as AuditRow[];
     }
 
     return { state, canManage, audit };
