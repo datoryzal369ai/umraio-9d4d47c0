@@ -574,31 +574,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                   const { decideVoiceReply, isDeliverableAudio } = await import(
                     "@/lib/voice/tts.core"
                   );
-                  // VOICE NATURALNESS V2 — persona comes from the agency's
-                  // voice console; an approved Islamic answer is spoken
-                  // verbatim and a PENDING review is never spoken at all.
-                  const { data: voiceSettings } = await supabaseAdmin
-                    .from("agency_settings")
-                    .select("voice_persona, voice_controls, voice_name, ai_language")
-                    .eq("agency_id", agencyId)
-                    .maybeSingle();
-                  const { data: openIslamic } = await supabaseAdmin
-                    .from("islamic_reviews")
-                    .select("id, status")
-                    .eq("conversation_id", conversationId)
-                    .in("status", ["PENDING", "AMENDED"])
-                    .limit(1)
-                    .maybeSingle();
                   const decision = decideVoiceReply({
                     inboundModality: inbound.modality,
                     replyText: reply,
-                    persona: {
-                      persona: voiceSettings?.voice_persona ?? null,
-                      controls: (voiceSettings?.voice_controls ?? {}) as Record<string, unknown>,
-                      voice: voiceSettings?.voice_name ?? null,
-                    },
-                    language: (voiceSettings?.ai_language as string | undefined) ?? "ms-MY",
-                    islamicReviewPending: Boolean(openIslamic),
                   });
                   if (!decision.speak) {
                     console.log(`[voice] voice_reply_fallback_text reason=${decision.reason}`);
@@ -606,15 +584,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                     console.log("[voice] tts_started");
                     const ttsStarted = Date.now();
                     const { synthesizeSpeech } = await import("@/lib/voice/tts.server");
-                    console.log(
-                      `[voice] persona=${decision.presentation.personaKey} speed=${decision.presentation.speed} length_class=${decision.presentation.lengthClass}`,
-                    );
-                    const speech = await synthesizeSpeech({
-                      text: decision.text,
-                      voice: decision.presentation.voice,
-                      speed: decision.presentation.speed,
-                      instructions: decision.presentation.instructions,
-                    });
+                    const speech = await synthesizeSpeech({ text: decision.text });
                     if (!speech.ok || !isDeliverableAudio({ byteLength: speech.bytes.byteLength })) {
                       console.log(
                         `[voice] tts_failed reason=${speech.ok ? "audio_too_large" : speech.kind}`,

@@ -182,9 +182,6 @@ export type Database = {
           renews_at: string | null
           seats: number
           updated_at: string
-          voice_controls: Json
-          voice_name: string | null
-          voice_persona: string
         }
         Insert: {
           agency_id: string
@@ -220,9 +217,6 @@ export type Database = {
           renews_at?: string | null
           seats?: number
           updated_at?: string
-          voice_controls?: Json
-          voice_name?: string | null
-          voice_persona?: string
         }
         Update: {
           agency_id?: string
@@ -258,9 +252,6 @@ export type Database = {
           renews_at?: string | null
           seats?: number
           updated_at?: string
-          voice_controls?: Json
-          voice_name?: string | null
-          voice_persona?: string
         }
         Relationships: [
           {

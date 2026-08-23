@@ -24,18 +24,9 @@ export type TtsResult =
   | { ok: true; bytes: Uint8Array; mimeType: string; engine: VoiceEngineName }
   | { ok: false; kind: TtsFailureKind; engine: VoiceEngineName };
 
-export type VoiceSynthesisRequest = {
-  text: string;
-  voice?: string;
-  /** Engine-level speaking rate (OpenAI TTS `speed`, 0.25–4.0). */
-  speed?: number;
-  /** Natural-language steering for engines that accept it. */
-  instructions?: string;
-};
-
 export type VoiceEngine = {
   name: VoiceEngineName;
-  synthesize(input: VoiceSynthesisRequest): Promise<TtsResult>;
+  synthesize(input: { text: string; voice?: string }): Promise<TtsResult>;
 };
 
 /** WhatsApp voice notes must be Opus in an OGG container. */
@@ -44,9 +35,6 @@ export const OUTBOUND_AUDIO_MIME = "audio/ogg";
 const LOVABLE_TTS_ENDPOINT = "https://ai.gateway.lovable.dev/v1/audio/speech";
 export const LOVABLE_TTS_MODEL = "openai/gpt-4o-mini-tts";
 export const DEFAULT_VOICE = "alloy";
-
-export const DEFAULT_VOICE_INSTRUCTIONS =
-  "You are a warm, confident Malaysian Umrah travel executive speaking Bahasa Melayu on a WhatsApp voice note. Speak conversationally, not like a news reader: unhurried pace, gentle warmth, natural rises and falls, a short breath at commas and a real pause at full stops. Pronounce Malay words with Malaysian pronunciation and Arabic terms respectfully. Never spell out punctuation, symbols, links or reference codes.";
 
 function classify(status: number): TtsFailureKind {
   if (status === 400 || status === 404) return "invalid_request";
@@ -58,7 +46,7 @@ function classify(status: number): TtsFailureKind {
 
 export const lovableVoiceEngine: VoiceEngine = {
   name: "lovable",
-  async synthesize({ text, voice, speed, instructions }) {
+  async synthesize({ text, voice }) {
     const apiKey = process.env["LOVABLE_API_KEY"];
     if (!apiKey) {
       console.error("[voice] xiaozhi_tts_failed category=config engine=lovable");
@@ -76,12 +64,11 @@ export const lovableVoiceEngine: VoiceEngine = {
           model: LOVABLE_TTS_MODEL,
           input: text,
           voice: voice ?? DEFAULT_VOICE,
-          ...(typeof speed === "number"
-            ? { speed: Math.min(4, Math.max(0.25, speed)) }
-            : {}),
           // Complete OGG/Opus file — exactly what Meta accepts as a voice note.
           response_format: "opus",
-          instructions: instructions ?? DEFAULT_VOICE_INSTRUCTIONS,
+          instructions:
+            "You are a warm, confident Malaysian Umrah travel executive speaking Bahasa Melayu on a WhatsApp voice note. Speak conversationally, not like a news reader: unhurried pace, gentle warmth, natural rises and falls, a short breath at commas and a real pause at full stops. Pronounce Malay words with Malaysian pronunciation and Arabic terms respectfully. Never spell out punctuation, symbols, links or reference codes.",
+
         }),
       });
     } catch (error) {
@@ -125,17 +112,16 @@ export function selectVoiceEngine(name?: string | null): VoiceEngine {
   return lovableVoiceEngine;
 }
 
-export async function synthesizeSpeech(
-  input: VoiceSynthesisRequest & { engine?: VoiceEngine },
-): Promise<TtsResult> {
+export async function synthesizeSpeech(input: {
+  text: string;
+  voice?: string;
+  engine?: VoiceEngine;
+}): Promise<TtsResult> {
   const engine = input.engine ?? selectVoiceEngine();
   const started = Date.now();
-  const result = await engine.synthesize({
-    text: input.text,
-    ...(input.voice ? { voice: input.voice } : {}),
-    ...(typeof input.speed === "number" ? { speed: input.speed } : {}),
-    ...(input.instructions ? { instructions: input.instructions } : {}),
-  });
+  const result = await engine.synthesize(
+    input.voice ? { text: input.text, voice: input.voice } : { text: input.text },
+  );
   if (result.ok) {
     console.log(
       `[voice] xiaozhi_tts_success engine=${engine.name} bytes=${result.bytes.byteLength} latency_ms=${Date.now() - started}`,

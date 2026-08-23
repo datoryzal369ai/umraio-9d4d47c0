@@ -66,9 +66,6 @@ export type AgencySettings = {
   plan_status: string;
   seats: number;
   renews_at: string | null;
-  voice_persona: string;
-  voice_controls: Record<string, number>;
-  voice_name: string | null;
 };
 
 export type ApiKey = {
@@ -159,7 +156,7 @@ export async function signedLogoUrl(path: string | null): Promise<string | null>
 /* ---------------- agency settings ---------------- */
 
 const SETTINGS_COLUMNS =
-  "id, agency_id, business_hours, ai_name, ai_personality, ai_tone, ai_reply_length, ai_language, ai_custom_instructions, ai_emoji, kb_strict_mode, kb_auto_use, kb_max_articles, kb_escalate_when_unknown, notify_new_lead, notify_hot_lead, notify_booking, notify_followup_due, notify_daily_summary, notify_email, notify_whatsapp, plan, plan_status, seats, renews_at, voice_persona, voice_controls, voice_name";
+  "id, agency_id, business_hours, ai_name, ai_personality, ai_tone, ai_reply_length, ai_language, ai_custom_instructions, ai_emoji, kb_strict_mode, kb_auto_use, kb_max_articles, kb_escalate_when_unknown, notify_new_lead, notify_hot_lead, notify_booking, notify_followup_due, notify_daily_summary, notify_email, notify_whatsapp, plan, plan_status, seats, renews_at";
 
 export async function fetchSettings(agencyId: string): Promise<AgencySettings> {
   const { data, error } = await supabase
