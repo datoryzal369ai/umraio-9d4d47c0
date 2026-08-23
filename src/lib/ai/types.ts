@@ -45,9 +45,14 @@ export type AiRequest = {
   taskClass?: Exclude<TaskClass, "deterministic">;
   /**
    * Prior conversation turns. When provided they are sent as the message list
-   * instead of a single prompt string.
+   * instead of a single prompt string. `content` may be a plain string or the
+   * provider-supported multimodal content parts (text / image).
    */
-  messages?: Array<{ role: "user" | "assistant"; content: string }>;
+  messages?: Array<{
+    role: "user" | "assistant";
+    content: string | Array<Record<string, unknown>>;
+  }>;
+
   /**
    * Model-callable tools. These MUST be built with `createSdkTools()` so every
    * invocation passes through the ToolRegistry decision gate.
