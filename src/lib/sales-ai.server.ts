@@ -1102,12 +1102,17 @@ export async function generateAgentReply(
     intel,
   });
   if (gate.blocked) {
+    // RELIABILITY: no silent terminal outcome. The model is skipped, but the
+    // customer still receives ONE closing acknowledgement (which is also the
+    // compliant answer to an opt-out) instead of total silence.
     console.log("[sales-ai] outbound suppressed", {
       conversation: safeConversationRef(ctx.conversation.id as string),
       reason: gate.reason,
+      terminal_outcome: "safety_gate_ack",
     });
-    return "";
+    return gate.customerMessage ?? "";
   }
+
 
   // COMMERCIAL SAFETY — checked BEFORE any model call, from the server-side
   // plan only. Fails closed when metering is unavailable (never unlimited AI).
