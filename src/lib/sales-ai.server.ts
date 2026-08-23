@@ -1020,12 +1020,15 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
           .eq("id", ctx.conversation.id);
         return {
           review_recorded: true,
+          review_id: outcome.reviewId,
           reference: outcome.reference,
-          review_status: "PENDING_EXPERT_REVIEW",
+          duplicate_suppressed: outcome.deduplicated,
+          review_status: "PENDING",
           ai_still_enabled: true,
           instruction:
-            "Tell the customer truthfully that you are not a religious authority and the question has been flagged for a qualified person to review. Do not give a ruling yourself. Continue helping with the travel side of the enquiry.",
+            "Tell the customer ONCE, briefly, that you are not a religious authority and the question is now with a qualified reviewer. Do NOT ask the customer to reconfirm or restate the question. Do not give a ruling yourself. Continue helping with the travel side of the enquiry.",
         };
+
       },
     },
   ];
