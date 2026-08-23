@@ -390,10 +390,21 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           }
 
           try {
+            // UX — show the customer a typing/processing state immediately so
+            // the wait never feels like silence. Best effort, never fatal.
+            if (providerMessageId) {
+              const { sendWhatsappTypingIndicator } = await import("@/lib/whatsapp-send.server");
+              void sendWhatsappTypingIndicator(
+                phoneNumberId,
+                config.access_token,
+                providerMessageId,
+              );
+            }
             // LATENCY — start the READ-ONLY work (module load, context, quota)
             // concurrently with the coalescing wait. Nothing here decides
             // whether to reply; the authoritative checks stay below the wait.
             const salesAiModule = import("@/lib/sales-ai.server");
+
             const prefetch = salesAiModule
               .then((m) =>
                 typeof m.prefetchReplyInputs === "function"
