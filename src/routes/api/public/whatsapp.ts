@@ -96,11 +96,20 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         // above the modality branch: audio retrieval will need the authenticated
         // Meta token before anything else. Tenant resolution semantics unchanged.
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data: config } = await supabaseAdmin
-          .from("whatsapp_configs")
-          .select("id, agency_id, access_token, auto_reply")
-          .eq("phone_number_id", phoneNumberId)
-          .maybeSingle();
+        let config: { id: string; agency_id: string; access_token: string | null; auto_reply: boolean } | null = null;
+        try {
+          const { data } = await supabaseAdmin
+            .from("whatsapp_configs")
+            .select("id, agency_id, access_token, auto_reply")
+            .eq("phone_number_id", phoneNumberId)
+            .maybeSingle();
+          config = data ?? null;
+        } catch (err) {
+          console.error(
+            `[whatsapp] config_lookup_failed phone_number_id=${phoneNumberId} error=${err instanceof Error ? err.message : String(err)}`,
+          );
+          return new Response("ok");
+        }
         if (!config) {
           // Return 200 so Meta does not disable/retry-storm the subscription.
           console.error(
