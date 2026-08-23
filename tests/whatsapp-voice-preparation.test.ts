@@ -201,7 +201,7 @@ describe("PREP 3 — message classification", () => {
   });
 
   it("classifies everything else as unsupported and never processable", () => {
-    for (const type of ["image", "document", "sticker", "location", "unknown"]) {
+    for (const type of ["document", "sticker", "location", "unknown"]) {
       const c = classifyInboundMessage({ id: "x", from: "60", type });
       expect(c.modality).toBe("unsupported");
       expect(c.processable).toBe(false);
@@ -209,11 +209,13 @@ describe("PREP 3 — message classification", () => {
     }
   });
 
-  it("persisted modality only ever yields text or audio", () => {
+  it("persisted modality maps each supported modality", () => {
     expect(persistedModality("text")).toBe("text");
     expect(persistedModality("audio")).toBe("audio");
+    expect(persistedModality("image")).toBe("image");
     expect(persistedModality("unsupported")).toBe("text");
   });
+
 });
 
 describe("PREP 1/2/3 — webhook behaviour", () => {

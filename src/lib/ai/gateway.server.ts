@@ -215,8 +215,9 @@ export function createIntelligenceGateway(audit?: GatewayAuditBinding): Intellig
       return call(request, async (args) => {
         const { model: languageModel, providerOptions } = model(args);
         const promptOption = request.messages?.length
-          ? { messages: request.messages }
+          ? { messages: request.messages as any }
           : { prompt: contextBlock(request) };
+
         const toolOption = request.tools
           ? { tools: request.tools as any, stopWhen: stepCountIs(request.maxSteps ?? 50) }
           : {};

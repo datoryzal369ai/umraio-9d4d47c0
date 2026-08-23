@@ -6,7 +6,7 @@
  * `audio` is classified and reserved, never transcribed.
  */
 
-export type InboundModality = "text" | "audio" | "unsupported";
+export type InboundModality = "text" | "audio" | "image" | "unsupported";
 
 export type InboundWebhookMessage = {
   id?: string;
@@ -15,7 +15,9 @@ export type InboundWebhookMessage = {
   text?: { body?: string };
   audio?: { id?: string; mime_type?: string; voice?: boolean };
   voice?: { id?: string; mime_type?: string };
+  image?: { id?: string; mime_type?: string; caption?: string; sha256?: string };
 };
+
 
 export type SenderSource = "from" | "wa_id" | "none";
 
@@ -32,11 +34,14 @@ export type ClassifiedInbound = {
   from: string;
   /** Which payload field the sender identity came from (safe to log). */
   senderSource: SenderSource;
-  /** Verified message text. Empty for audio — never a fabricated transcript. */
+  /** Verified message text. Empty for audio/image — never fabricated content. */
   text: string;
-  /** Meta media id for audio. Never the audio bytes. */
+  /** Customer caption sent with an image, if any. Verbatim. */
+  caption: string | null;
+  /** Meta media id for audio/image. Never the media bytes. */
   mediaId: string | null;
   providerMessageId: string | null;
+
   /** True only when the message carries everything needed to be processed. */
   processable: boolean;
 };
@@ -78,6 +83,7 @@ export function classifyInboundMessage(
       from,
       senderSource,
       text,
+      caption: null,
       mediaId: null,
       providerMessageId,
       processable: Boolean(from && text.trim()),
@@ -93,6 +99,25 @@ export function classifyInboundMessage(
       senderSource,
       // Preparation phase: no transcript exists yet, and we never invent one.
       text: "",
+      caption: null,
+      mediaId,
+      providerMessageId,
+      processable: Boolean(from && mediaId),
+    };
+  }
+
+  // IMAGE V1 — the image itself is understood later by the vision gateway.
+  if (rawType === "image") {
+    const mediaId = (message?.image?.id ?? "").trim() || null;
+    const caption = (message?.image?.caption ?? "").trim() || null;
+    return {
+      modality: "image",
+      rawType,
+      from,
+      senderSource,
+      // No description exists yet, and we never invent one.
+      text: "",
+      caption,
       mediaId,
       providerMessageId,
       processable: Boolean(from && mediaId),
@@ -105,6 +130,7 @@ export function classifyInboundMessage(
     from,
     senderSource,
     text: "",
+    caption: null,
     mediaId: null,
     providerMessageId,
     processable: false,
@@ -113,6 +139,9 @@ export function classifyInboundMessage(
 
 
 /** Persisted modality for the `messages` table (unsupported never persists). */
-export function persistedModality(modality: InboundModality): "text" | "audio" {
-  return modality === "audio" ? "audio" : "text";
+export function persistedModality(modality: InboundModality): "text" | "audio" | "image" {
+  if (modality === "audio") return "audio";
+  if (modality === "image") return "image";
+  return "text";
+
 }
