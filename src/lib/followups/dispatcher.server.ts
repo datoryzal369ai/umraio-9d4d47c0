@@ -113,7 +113,7 @@ export async function dispatchDueFollowups(
   agencyId: string,
   limit = MAX_PER_CYCLE,
 ): Promise<DispatchResult> {
-  const result: DispatchResult = { sent: 0, skipped: 0, failed: 0, details: [] };
+  const result: DispatchResult = { sent: 0, skipped: 0, failed: 0, retried: 0, details: [] };
 
   const { data: agency } = await supabase
     .from("agencies")
