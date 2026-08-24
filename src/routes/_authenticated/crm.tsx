@@ -83,6 +83,7 @@ const stageAccent: Record<LeadStage, string> = {
   new: "bg-muted-foreground/40",
   contacted: "bg-primary/40",
   qualified: "bg-primary/60",
+  proposal: "bg-accent/50",
   negotiation: "bg-accent",
   booked: "bg-primary",
   completed: "bg-primary/80",
