@@ -271,7 +271,7 @@ export async function dispatchDueFollowups(
 
 
     const now = new Date().toISOString();
-    await markJob(supabase, job.id, "sent", { dispatched_at: now });
+    await markJob(supabase, job.id, "sent", { dispatched_at: now, claimed_at: null });
     contactedLeads.add(lead.id);
     result.sent += 1;
     result.details.push({ id: job.id, outcome: "sent" });
