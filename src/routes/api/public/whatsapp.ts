@@ -290,6 +290,14 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             .single();
           leadId = created?.id ?? null;
           if (leadId) {
+            const { recordLeadCreated } = await import("@/lib/conversion/producers");
+            await recordLeadCreated({
+              db: supabaseAdmin,
+              agencyId,
+              leadId,
+              actor: "customer",
+              source: "whatsapp",
+            });
             await supabaseAdmin.from("activity_log").insert({
               agency_id: agencyId,
               actor: "ai",

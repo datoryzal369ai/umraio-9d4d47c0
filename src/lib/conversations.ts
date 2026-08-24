@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
+import { recordLeadCreated } from "./conversion/producers";
+
 export type Conversation = {
   id: string;
   agency_id: string;
@@ -158,6 +160,14 @@ export async function createConversation(input: {
     .select("id")
     .single();
   if (leadError) throw leadError;
+
+  await recordLeadCreated({
+    db: supabase,
+    agencyId: input.agencyId,
+    leadId: lead.id,
+    actor: "human",
+    source: "whatsapp",
+  });
 
   const { data: conv, error } = await supabase
     .from("conversations")

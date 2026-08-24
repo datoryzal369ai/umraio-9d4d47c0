@@ -21,42 +21,10 @@ export function quotationLink(token: string) {
   return `${PUBLIC_SITE_URL}/q/${token}`;
 }
 
-export async function logConversionEvent(
-  supabase: Db,
-  input: {
-    agencyId: string;
-    stage: string;
-    actor?: "ai" | "human" | "customer" | "system";
-    leadId?: string | null;
-    quotationId?: string | null;
-    bookingId?: string | null;
-    reason?: string | null;
-    meta?: Record<string, unknown>;
-  },
-) {
-  const { error } = await supabase.from("conversion_events").insert({
-    agency_id: input.agencyId,
-    stage: input.stage,
-    actor: input.actor ?? "ai",
-    lead_id: input.leadId ?? null,
-    quotation_id: input.quotationId ?? null,
-    booking_id: input.bookingId ?? null,
-    reason: input.reason ?? null,
-    meta: input.meta ?? {},
-  });
+import { logConversionEvent } from "../conversion/events";
+import { recordLeadStageTransition } from "../conversion/producers";
 
-  // Telemetry is best-effort: a failure must never break the business
-  // transaction, but it must be observable. No PII is logged — only the
-  // event shape and the database error code/message.
-  if (error) {
-    console.error(
-      `[conversion-telemetry] insert_failed stage=${input.stage} actor=${input.actor ?? "ai"} ` +
-        `agency=${input.agencyId} code=${error.code ?? "unknown"} message=${error.message}`,
-    );
-    return { ok: false as const, error };
-  }
-  return { ok: true as const, error: null };
-}
+export { logConversionEvent };
 
 /** Deposit policy is agency-configured, never model-decided. */
 export async function loadDepositPolicy(
@@ -306,7 +274,24 @@ export async function transitionQuotation(
   }
 
   if (to === "booked" && row.lead_id) {
+    // B-2 — lead_won is emitted from the authoritative won transition only,
+    // and only when the lead was not already booked (no duplicate wins).
+    const { data: leadRow } = await supabase
+      .from("leads")
+      .select("stage")
+      .eq("id", row.lead_id)
+      .eq("agency_id", agencyId)
+      .maybeSingle();
     await supabase.from("leads").update({ stage: "booked" }).eq("id", row.lead_id);
+    await recordLeadStageTransition({
+      db: supabase,
+      agencyId,
+      leadId: row.lead_id,
+      from: (leadRow?.stage as string | undefined) ?? null,
+      to: "booked",
+      actor: opts.actor ?? "human",
+      reason: opts.reason ?? null,
+    });
   }
 
   return updated;
