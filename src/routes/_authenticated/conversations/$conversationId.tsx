@@ -31,6 +31,8 @@ import {
 } from "@/lib/conversations/realtime.core";
 import { supabase } from "@/integrations/supabase/client";
 import { MediaMessage } from "@/components/conversations/MediaMessage";
+import { MediaComposer } from "@/components/conversations/MediaComposer";
+
 import { mediaKindOf } from "@/lib/conversations/media.core";
 
 /** B-4.3 — a row renders as media only when it carries a non-text modality. */
@@ -303,12 +305,22 @@ function ConversationPage() {
         </div>
 
         <footer className="border-t border-border/60 bg-card/60 p-3">
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          {/* B-4.4 — outbound media (voice, image, PDF) via the server-only send path. */}
+          <MediaComposer
+            conversationId={conversationId}
+            disabled={send.isPending}
+            onSent={() => {
+              queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+              queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            }}
+          />
+          <div className="mb-2 mt-3 flex items-center gap-2 text-xs text-muted-foreground">
             <Switch id="as-human" checked={asHuman} onCheckedChange={setAsHuman} />
             <Label htmlFor="as-human" className="text-xs font-normal">
               {asHuman ? t.replyingAsHuman : t.sendingAsCustomer}
             </Label>
           </div>
+
           <div className="flex items-end gap-2">
             <Textarea
               ref={inputRef}
