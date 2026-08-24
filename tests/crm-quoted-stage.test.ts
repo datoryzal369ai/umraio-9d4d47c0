@@ -42,8 +42,8 @@ describe("CRM quoted stage (P0-2)", () => {
       expect(LEAD_STAGES).toContain(stage as LeadStage);
       expect(STAGE_LABELS[stage as LeadStage]).toBeTruthy();
       expect(leadsCopy.en.stageLabels[stage]).toBeTruthy();
-      expect(leadsCopy.ms.stageLabels[stage]).toBeTruthy();
-      expect(WORKSPACE_COPY.ms.stageLabels[stage]).toBeTruthy();
+      expect(leadsCopy.bm.stageLabels[stage]).toBeTruthy();
+      expect(WORKSPACE_COPY.bm.stageLabels[stage]).toBeTruthy();
     }
   });
 
