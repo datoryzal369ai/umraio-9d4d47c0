@@ -496,8 +496,24 @@ const HUMAN_REQUEST_PATTERNS: RegExp[] = [
   /\btransfer\s+(me\s+)?to\s+(a\s+)?(human|agent|staff|person)\b/,
 ];
 
+/**
+ * INCIDENT 2026-08-24 (B-3) — "Kenapa cakap macam robot? Cakap macam orang."
+ * was read as an explicit human-handover request, which set ai_enabled=false
+ * and silenced the conversation permanently. A comparison about HOW to speak
+ * ("talk like a normal person") is a style instruction, never a request to be
+ * transferred to a person.
+ */
+const MANNER_OF_SPEECH_PATTERNS: RegExp[] = [
+  /\b(cakap|bercakap|berbual|jawab|balas|layan|bunyi|tulis|bercerita|speak|talk|sound|reply|write)\b[^.?!]{0,12}\b(macam|seperti|kayak|bagai|like)\b/,
+];
+
 export function detectHumanRequest(text: string | null | undefined): boolean {
   const t = normalizeMessage(text);
   if (!t) return false;
-  return HUMAN_REQUEST_PATTERNS.some((re) => re.test(t));
+  // Manner-of-speech phrasing is stripped before matching, so a genuine
+  // request in the same message ("cakap macam orang biasa, sambungkan saya
+  // kepada staff") is still detected.
+  const cleaned = MANNER_OF_SPEECH_PATTERNS.reduce((acc, re) => acc.replace(new RegExp(re, "g"), " "), t);
+  return HUMAN_REQUEST_PATTERNS.some((re) => re.test(cleaned));
 }
+
