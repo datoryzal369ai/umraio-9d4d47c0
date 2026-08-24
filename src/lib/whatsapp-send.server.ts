@@ -70,27 +70,24 @@ export async function sendWhatsappTypingIndicator(
 }
 
 /**
- * VOICE REPLY V1 — outbound audio.
+ * B-4.4 — single Meta media upload path.
  *
- * Meta requires a two-step send: upload the bytes to /media, then reference the
- * returned media id in an `audio` message. Bytes are never persisted and the
- * access token is never logged. Failure is never fatal: the caller has already
- * delivered the same answer as text.
+ * Used by the AI voice reply AND by the console outbound media composer so the
+ * multipart upload logic exists exactly once. Returns the Meta media id.
  */
-export async function sendWhatsappAudio(
+export async function uploadWhatsappMedia(
   phoneNumberId: string,
   accessToken: string,
-  to: string,
-  audio: { bytes: Uint8Array; mimeType: string },
-): Promise<boolean> {
+  media: { bytes: Uint8Array; mimeType: string; filename?: string },
+): Promise<string | null> {
   try {
     const form = new FormData();
     form.append("messaging_product", "whatsapp");
-    form.append("type", audio.mimeType);
+    form.append("type", media.mimeType);
     form.append(
       "file",
-      new Blob([audio.bytes.slice() as unknown as BlobPart], { type: audio.mimeType }),
-      "reply.ogg",
+      new Blob([media.bytes.slice() as unknown as BlobPart], { type: media.mimeType }),
+      media.filename ?? "upload.bin",
     );
 
     const upload = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/media`, {
@@ -100,14 +97,45 @@ export async function sendWhatsappAudio(
       body: form,
     });
     if (!upload.ok) {
-      console.error(`[whatsapp] voice_upload_failed status=${upload.status}`);
-      return false;
+      console.error(`[whatsapp] media_upload_failed status=${upload.status}`);
+      return null;
     }
     const uploaded = (await upload.json().catch(() => null)) as { id?: string } | null;
     if (!uploaded?.id) {
-      console.error("[whatsapp] voice_upload_failed reason=missing_media_id");
-      return false;
+      console.error("[whatsapp] media_upload_failed reason=missing_media_id");
+      return null;
     }
+    return uploaded.id;
+  } catch (error) {
+    console.error(
+      `[whatsapp] media_upload_failed reason=${error instanceof Error ? error.name : "unknown"}`,
+    );
+    return null;
+  }
+}
+
+/** Send an already-uploaded media id as an audio/image/document message. */
+export async function sendWhatsappMediaMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  media: {
+    kind: "audio" | "image" | "document";
+    mediaId: string;
+    caption?: string;
+    filename?: string;
+  },
+): Promise<{ ok: boolean; providerMessageId: string | null }> {
+  try {
+    const payload: Record<string, unknown> = {
+      messaging_product: "whatsapp",
+      to,
+      type: media.kind,
+    };
+    const object: Record<string, unknown> = { id: media.mediaId };
+    if (media.kind !== "audio" && media.caption) object["caption"] = media.caption;
+    if (media.kind === "document" && media.filename) object["filename"] = media.filename;
+    payload[media.kind] = object;
 
     const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
       method: "POST",
@@ -115,23 +143,55 @@ export async function sendWhatsappAudio(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "audio",
-        audio: { id: uploaded.id },
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      console.error(`[whatsapp] voice_send_failed status=${res.status}`);
-      return false;
+      console.error(`[whatsapp] media_send_failed kind=${media.kind} status=${res.status}`);
+      return { ok: false, providerMessageId: null };
     }
-    console.log("[whatsapp] whatsapp_voice_sent ok=true");
-    return true;
+    const body = (await res.json().catch(() => null)) as
+      | { messages?: Array<{ id?: string }> }
+      | null;
+    return { ok: true, providerMessageId: body?.messages?.[0]?.id ?? null };
   } catch (error) {
     console.error(
-      `[whatsapp] voice_send_failed reason=${error instanceof Error ? error.name : "unknown"}`,
+      `[whatsapp] media_send_failed reason=${error instanceof Error ? error.name : "unknown"}`,
     );
-    return false;
+    return { ok: false, providerMessageId: null };
   }
 }
+
+/**
+ * VOICE REPLY V1 — outbound audio.
+ *
+ * Two-step Meta send (upload then reference). Behaviour unchanged; the upload
+ * and send steps now reuse the shared helpers above. Failure is never fatal:
+ * the caller has already delivered the same answer as text.
+ */
+export async function sendWhatsappAudio(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  audio: { bytes: Uint8Array; mimeType: string },
+): Promise<boolean> {
+  const mediaId = await uploadWhatsappMedia(phoneNumberId, accessToken, {
+    bytes: audio.bytes,
+    mimeType: audio.mimeType,
+    filename: "reply.ogg",
+  });
+  if (!mediaId) {
+    console.error("[whatsapp] voice_upload_failed");
+    return false;
+  }
+  const result = await sendWhatsappMediaMessage(phoneNumberId, accessToken, to, {
+    kind: "audio",
+    mediaId,
+  });
+  if (!result.ok) {
+    console.error("[whatsapp] voice_send_failed");
+    return false;
+  }
+  console.log("[whatsapp] whatsapp_voice_sent ok=true");
+  return true;
+}
+
