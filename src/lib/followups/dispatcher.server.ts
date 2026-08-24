@@ -234,14 +234,41 @@ export async function dispatchDueFollowups(
       throw err;
     }
 
+    // 5. Atomic claim — the last gate before the external send. Every business
+    //    safety rule above has already passed, and no other cron run can now
+    //    take this job.
+    const claimed = await claimJob(supabase, agencyId, job.id);
+    if (!claimed) {
+      result.details.push({ id: job.id, outcome: "not_claimed" });
+      continue;
+    }
+    const attempt = (job.attempts ?? 0) + 1;
+
     const to = conversation?.external_id || lead.phone;
     const ok = await sendWhatsappText(config.phone_number_id, config.access_token, to, body);
     if (!ok) {
-      await markJob(supabase, job.id, "failed", { skip_reason: "WhatsApp send failed" });
-      result.failed += 1;
-      result.details.push({ id: job.id, outcome: "failed" });
+      // Transport failure only — business refusals never reach this branch.
+      const retryAt = nextRetryAt(attempt);
+      if (retryAt) {
+        await markJob(supabase, job.id, "pending", {
+          run_at: retryAt.toISOString(),
+          claimed_at: null,
+          last_error: "WhatsApp send failed",
+        });
+        result.retried += 1;
+        result.details.push({ id: job.id, outcome: "retry_scheduled", reason: "WhatsApp send failed" });
+      } else {
+        await markJob(supabase, job.id, "failed", {
+          skip_reason: "WhatsApp send failed",
+          last_error: "WhatsApp send failed",
+          claimed_at: null,
+        });
+        result.failed += 1;
+        result.details.push({ id: job.id, outcome: "failed", reason: "Max attempts reached" });
+      }
       continue;
     }
+
 
     const now = new Date().toISOString();
     await markJob(supabase, job.id, "sent", { dispatched_at: now });
