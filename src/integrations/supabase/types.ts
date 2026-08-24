@@ -1305,6 +1305,7 @@ export type Database = {
           body: string
           conversation_id: string
           created_at: string
+          delivery_status: string
           id: string
           media_id: string | null
           modality: string
@@ -1316,6 +1317,7 @@ export type Database = {
           body?: string
           conversation_id: string
           created_at?: string
+          delivery_status?: string
           id?: string
           media_id?: string | null
           modality?: string
@@ -1327,6 +1329,7 @@ export type Database = {
           body?: string
           conversation_id?: string
           created_at?: string
+          delivery_status?: string
           id?: string
           media_id?: string | null
           modality?: string
