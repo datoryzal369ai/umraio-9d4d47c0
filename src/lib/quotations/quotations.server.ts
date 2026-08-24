@@ -34,7 +34,7 @@ export async function logConversionEvent(
     meta?: Record<string, unknown>;
   },
 ) {
-  await supabase.from("conversion_events").insert({
+  const { error } = await supabase.from("conversion_events").insert({
     agency_id: input.agencyId,
     stage: input.stage,
     actor: input.actor ?? "ai",
@@ -44,6 +44,18 @@ export async function logConversionEvent(
     reason: input.reason ?? null,
     meta: input.meta ?? {},
   });
+
+  // Telemetry is best-effort: a failure must never break the business
+  // transaction, but it must be observable. No PII is logged — only the
+  // event shape and the database error code/message.
+  if (error) {
+    console.error(
+      `[conversion-telemetry] insert_failed stage=${input.stage} actor=${input.actor ?? "ai"} ` +
+        `agency=${input.agencyId} code=${error.code ?? "unknown"} message=${error.message}`,
+    );
+    return { ok: false as const, error };
+  }
+  return { ok: true as const, error: null };
 }
 
 /** Deposit policy is agency-configured, never model-decided. */
