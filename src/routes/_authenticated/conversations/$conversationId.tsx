@@ -152,8 +152,15 @@ function ConversationPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Label htmlFor="ai-toggle" className="hidden text-xs text-muted-foreground sm:block">
-              {t.aiExecutive}
+            <Label
+              htmlFor="ai-toggle"
+              className={
+                conversation?.ai_enabled
+                  ? "hidden text-xs text-muted-foreground sm:block"
+                  : "text-xs font-medium text-primary"
+              }
+            >
+              {conversation?.ai_enabled ? t.aiExecutive : "Resume AI Executive"}
             </Label>
             <Switch
               id="ai-toggle"
@@ -161,6 +168,7 @@ function ConversationPage() {
               onCheckedChange={(v) => aiToggle.mutate(v)}
             />
           </div>
+
         </header>
 
         <div ref={scrollRef} className="chat-canvas flex-1 space-y-4 overflow-y-auto px-4 py-5">
