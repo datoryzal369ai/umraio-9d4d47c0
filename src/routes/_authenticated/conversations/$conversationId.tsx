@@ -31,6 +31,8 @@ import {
 } from "@/lib/conversations/realtime.core";
 import { supabase } from "@/integrations/supabase/client";
 import { MediaMessage } from "@/components/conversations/MediaMessage";
+import { MediaComposer } from "@/components/conversations/MediaComposer";
+
 import { mediaKindOf } from "@/lib/conversations/media.core";
 
 /** B-4.3 — a row renders as media only when it carries a non-text modality. */
