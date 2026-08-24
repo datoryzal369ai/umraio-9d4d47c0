@@ -457,7 +457,11 @@ function Bubble({ message }: { message: ChatMessage }) {
             )}
           </p>
         )}
-        <p className="whitespace-pre-wrap break-words">{message.body}</p>
+        {isMediaMessage(message) ? (
+          <MediaMessage message={message} />
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{message.body}</p>
+        )}
         <p className={cn("mt-1 text-right text-[10px]", outbound ? "opacity-70" : "opacity-60")}>
           {chatTime(message.created_at)}
         </p>
