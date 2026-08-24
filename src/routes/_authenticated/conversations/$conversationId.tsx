@@ -69,6 +69,9 @@ function ConversationPage() {
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["messages", conversationId],
     queryFn: () => fetchMessages(conversationId),
+    // B-4 fallback only — Realtime remains the primary sync mechanism.
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   });
 
   const insights = useMutation({
