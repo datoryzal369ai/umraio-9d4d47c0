@@ -36,6 +36,7 @@ type Job = {
   channel: string;
   status: string;
   created_at: string;
+  attempts?: number;
   skip_reason?: string | null;
   dispatched_at?: string | null;
 };
@@ -243,7 +244,17 @@ function makeQuery(table: string) {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const fakeDb = { from: (table: string) => makeQuery(table) } as any;
+const fakeDb = {
+  from: (table: string) => makeQuery(table),
+  rpc: async (fn: string, args: Record<string, unknown>) => {
+    if (fn !== "claim_followup_job") return { data: null, error: null };
+    const job = jobs.find((j) => j.id === args["p_job_id"] && j.agency_id === args["p_agency_id"]);
+    if (!job || job.status !== "pending") return { data: false, error: null };
+    job.status = "processing";
+    (job as Record<string, unknown>)["attempts"] = Number((job as any).attempts ?? 0) + 1;
+    return { data: true, error: null };
+  },
+} as any;
 
 describe("follow-up dispatcher head-of-line blocking (P0-1)", () => {
   beforeEach(() => {

@@ -494,7 +494,13 @@ const HUMAN_REQUEST_PATTERNS: RegExp[] = [
   // refers to the AI itself and must NEVER trigger a handover.
   /\bnak\s+(cakap|bercakap)\s+dengan\s+(manusia|human|staff|staf|agent|ejen|orang|admin|pegawai|pengurus|manager|cs|customer\s+service|person|real\s+person)\b/,
   /\btransfer\s+(me\s+)?to\s+(a\s+)?(human|agent|staff|person)\b/,
+  // B-3.1 — explicit transfer/request phrasing in Malay. "orang" is deliberately
+  // excluded here: "saya nak orang yang boleh bantu" stays ambiguous and follows
+  // the existing intent policy instead of forcing a handover.
+  /\b(transfer|pindah|alih|escalate|eskalasi)\b[^.?!]{0,25}\b(staff|staf|manusia|human|agent|ejen|pegawai|admin|manager|pengurus|customer\s+service|cs)\b/,
+  /\b(nak|mahu|nak\s+dapat|minta|tolong|bagi|beri|dapatkan|sambung(kan)?|want|need|give\s+me)\b[^.?!]{0,25}\b(staff|staf|manusia|human(\s+agent)?|live\s+agent|real\s+person|ejen|pegawai|admin|manager|pengurus|customer\s+service)\b/,
 ];
+
 
 /**
  * INCIDENT 2026-08-24 (B-3) — "Kenapa cakap macam robot? Cakap macam orang."

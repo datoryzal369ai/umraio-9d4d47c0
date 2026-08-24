@@ -26,6 +26,26 @@ const MAX_PER_CYCLE = 5;
 const QUIET_START_HOUR = 9;
 const QUIET_END_HOUR = 21;
 
+/**
+ * B-3.1 — transport retry policy.
+ *
+ * Only transport-level failures are retried. Business refusals (DNC, human
+ * takeover, customer replied, quota denial, missing configuration) are never
+ * retried: they are recorded as `skipped` with a reason, exactly as before.
+ *
+ * `attempts` is incremented by the atomic claim, so attempt N means the job has
+ * already been claimed N times.
+ */
+export const MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_MINUTES = [5, 30];
+
+export function nextRetryAt(attempts: number, from = new Date()): Date | null {
+  if (attempts >= MAX_ATTEMPTS) return null;
+  const minutes = RETRY_BACKOFF_MINUTES[attempts - 1] ?? RETRY_BACKOFF_MINUTES.at(-1)!;
+  return new Date(from.getTime() + minutes * 60_000);
+}
+
+
 export function localHour(timezone: string | null | undefined, at = new Date()): number {
   try {
     const formatted = new Intl.DateTimeFormat("en-GB", {
@@ -47,13 +67,14 @@ export type DispatchResult = {
   sent: number;
   skipped: number;
   failed: number;
+  retried: number;
   details: Array<{ id: string; outcome: string; reason?: string }>;
 };
 
 async function markJob(
   supabase: Db,
   id: string,
-  status: "sent" | "skipped" | "failed",
+  status: "pending" | "sent" | "skipped" | "failed",
   patch: Record<string, unknown> = {},
 ) {
   await supabase
@@ -62,12 +83,37 @@ async function markJob(
     .eq("id", id);
 }
 
+/**
+ * Atomic claim. The database moves pending -> processing and increments
+ * `attempts` in one statement, so two concurrent cron runs can never both send
+ * the same follow-up. A job stuck in `processing` (crash mid-send) becomes
+ * claimable again after the stale window inside `claim_followup_job`.
+ *
+ * Unavoidable ambiguity, documented deliberately: the external WhatsApp send
+ * cannot join the database transaction. If the send succeeds but the follow-up
+ * database update then fails, the job stays `processing` and may be re-sent
+ * once after the stale window. We guarantee at-most-one *active* sender, not
+ * exactly-once delivery.
+ */
+async function claimJob(supabase: Db, agencyId: string, jobId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("claim_followup_job", {
+    p_job_id: jobId,
+    p_agency_id: agencyId,
+  });
+  if (error) {
+    console.error(`[followups] claim_failed job=${jobId} code=${error.code ?? "unknown"}`);
+    return false;
+  }
+  return data === true;
+}
+
+
 export async function dispatchDueFollowups(
   supabase: Db,
   agencyId: string,
   limit = MAX_PER_CYCLE,
 ): Promise<DispatchResult> {
-  const result: DispatchResult = { sent: 0, skipped: 0, failed: 0, details: [] };
+  const result: DispatchResult = { sent: 0, skipped: 0, failed: 0, retried: 0, details: [] };
 
   const { data: agency } = await supabase
     .from("agencies")
@@ -84,9 +130,13 @@ export async function dispatchDueFollowups(
   // the sendable batch (head-of-line blocking).
   const { data: jobs } = await supabase
     .from("followup_jobs")
-    .select("id, lead_id, conversation_id, quotation_id, title, body, run_at, channel, created_at")
+    .select(
+      "id, lead_id, conversation_id, quotation_id, title, body, run_at, channel, created_at, attempts",
+    )
     .eq("agency_id", agencyId)
-    .eq("status", "pending")
+    // `processing` rows are included so a crashed mid-send job can be recovered;
+    // the atomic claim still refuses any row that is not stale.
+    .in("status", ["pending", "processing"])
     .eq("channel", "whatsapp")
     .not("body", "is", null)
     .neq("body", "")
@@ -184,17 +234,44 @@ export async function dispatchDueFollowups(
       throw err;
     }
 
+    // 5. Atomic claim — the last gate before the external send. Every business
+    //    safety rule above has already passed, and no other cron run can now
+    //    take this job.
+    const claimed = await claimJob(supabase, agencyId, job.id);
+    if (!claimed) {
+      result.details.push({ id: job.id, outcome: "not_claimed" });
+      continue;
+    }
+    const attempt = (job.attempts ?? 0) + 1;
+
     const to = conversation?.external_id || lead.phone;
     const ok = await sendWhatsappText(config.phone_number_id, config.access_token, to, body);
     if (!ok) {
-      await markJob(supabase, job.id, "failed", { skip_reason: "WhatsApp send failed" });
-      result.failed += 1;
-      result.details.push({ id: job.id, outcome: "failed" });
+      // Transport failure only — business refusals never reach this branch.
+      const retryAt = nextRetryAt(attempt);
+      if (retryAt) {
+        await markJob(supabase, job.id, "pending", {
+          run_at: retryAt.toISOString(),
+          claimed_at: null,
+          last_error: "WhatsApp send failed",
+        });
+        result.retried += 1;
+        result.details.push({ id: job.id, outcome: "retry_scheduled", reason: "WhatsApp send failed" });
+      } else {
+        await markJob(supabase, job.id, "failed", {
+          skip_reason: "WhatsApp send failed",
+          last_error: "WhatsApp send failed",
+          claimed_at: null,
+        });
+        result.failed += 1;
+        result.details.push({ id: job.id, outcome: "failed", reason: "Max attempts reached" });
+      }
       continue;
     }
 
+
     const now = new Date().toISOString();
-    await markJob(supabase, job.id, "sent", { dispatched_at: now });
+    await markJob(supabase, job.id, "sent", { dispatched_at: now, claimed_at: null });
     contactedLeads.add(lead.id);
     result.sent += 1;
     result.details.push({ id: job.id, outcome: "sent" });
