@@ -21,42 +21,7 @@ export function quotationLink(token: string) {
   return `${PUBLIC_SITE_URL}/q/${token}`;
 }
 
-export async function logConversionEvent(
-  supabase: Db,
-  input: {
-    agencyId: string;
-    stage: string;
-    actor?: "ai" | "human" | "customer" | "system";
-    leadId?: string | null;
-    quotationId?: string | null;
-    bookingId?: string | null;
-    reason?: string | null;
-    meta?: Record<string, unknown>;
-  },
-) {
-  const { error } = await supabase.from("conversion_events").insert({
-    agency_id: input.agencyId,
-    stage: input.stage,
-    actor: input.actor ?? "ai",
-    lead_id: input.leadId ?? null,
-    quotation_id: input.quotationId ?? null,
-    booking_id: input.bookingId ?? null,
-    reason: input.reason ?? null,
-    meta: input.meta ?? {},
-  });
-
-  // Telemetry is best-effort: a failure must never break the business
-  // transaction, but it must be observable. No PII is logged — only the
-  // event shape and the database error code/message.
-  if (error) {
-    console.error(
-      `[conversion-telemetry] insert_failed stage=${input.stage} actor=${input.actor ?? "ai"} ` +
-        `agency=${input.agencyId} code=${error.code ?? "unknown"} message=${error.message}`,
-    );
-    return { ok: false as const, error };
-  }
-  return { ok: true as const, error: null };
-}
+export { logConversionEvent } from "../conversion/events";
 
 /** Deposit policy is agency-configured, never model-decided. */
 export async function loadDepositPolicy(
