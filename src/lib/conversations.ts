@@ -58,7 +58,15 @@ export type ChatMessage = {
   sender: "customer" | "ai" | "human";
   body: string;
   created_at: string;
+  /** B-4.3 — persisted media metadata (read-only rendering). */
+  modality?: string | null;
+  media_id?: string | null;
+  delivery_status?: string | null;
 };
+
+/** B-4.3 — every message read selects the persisted media metadata too. */
+const MESSAGE_COLUMNS =
+  "id, conversation_id, agency_id, sender, body, created_at, modality, media_id, delivery_status";
 
 const CONV_COLUMNS =
   "id, agency_id, lead_id, channel, status, ai_enabled, last_message_at, created_at, conversation_state, intelligence";
