@@ -18,12 +18,17 @@ import {
   fetchConversation,
   fetchMessages,
   insertMessage,
+  MESSAGE_PAGE_SIZE,
   setAiEnabled,
   type ChatMessage,
   type ConversationIntelligenceSnapshot,
 } from "@/lib/conversations";
 import { aiReplyToConversation, conversationInsights } from "@/lib/sales-ai.functions";
-import { mergeRealtimeMessage, subscribeToConversation } from "@/lib/conversations/realtime.core";
+import {
+  mergeRealtimeMessage,
+  reconcileMessages,
+  subscribeToConversation,
+} from "@/lib/conversations/realtime.core";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/conversations/$conversationId")({
@@ -66,13 +71,42 @@ function ConversationPage() {
     queryFn: () => fetchConversation(conversationId),
   });
 
+  /**
+   * B-4.2a — the server returns only the newest window; the query function
+   * reconciles it into whatever the cache already holds (older pages + newer
+   * realtime rows) instead of replacing it.
+   */
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["messages", conversationId],
-    queryFn: () => fetchMessages(conversationId),
+    queryFn: async () => {
+      const window = await fetchMessages(conversationId, { limit: MESSAGE_PAGE_SIZE });
+      const current =
+        queryClient.getQueryData<ChatMessage[]>(["messages", conversationId]) ?? [];
+      return reconcileMessages(current, window, conversationId);
+    },
     // B-4 fallback only — Realtime remains the primary sync mechanism.
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
   });
+
+  const loadOlder = useMutation({
+    mutationFn: async () => {
+      const oldest = messages[0]?.created_at;
+      if (!oldest) return 0;
+      const older = await fetchMessages(conversationId, {
+        before: oldest,
+        limit: MESSAGE_PAGE_SIZE,
+      });
+      if (older.length) {
+        queryClient.setQueryData<ChatMessage[]>(["messages", conversationId], (current) =>
+          reconcileMessages(current ?? [], older, conversationId),
+        );
+      }
+      return older.length;
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const [reachedStart, setReachedStart] = useState(false);
 
   const insights = useMutation({
     mutationFn: () => conversationInsights({ data: { conversationId } }),
@@ -211,6 +245,29 @@ function ConversationPage() {
         </header>
 
         <div ref={scrollRef} className="chat-canvas flex-1 space-y-4 overflow-y-auto px-4 py-5">
+          {!isLoading && messages.length > 0 && !reachedStart && (
+            <div className="flex justify-center">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs"
+                disabled={loadOlder.isPending}
+                onClick={() =>
+                  loadOlder.mutate(undefined, {
+                    onSuccess: (count) => {
+                      if (!count) setReachedStart(true);
+                    },
+                  })
+                }
+              >
+                {loadOlder.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  "Load older messages"
+                )}
+              </Button>
+            </div>
+          )}
           {isLoading ? (
             <p className="text-sm text-muted-foreground">{t.loadingMessages}</p>
           ) : messages.length === 0 ? (
