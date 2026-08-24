@@ -23,6 +23,8 @@ import {
   type ConversationIntelligenceSnapshot,
 } from "@/lib/conversations";
 import { aiReplyToConversation, conversationInsights } from "@/lib/sales-ai.functions";
+import { mergeRealtimeMessage, subscribeToConversation } from "@/lib/conversations/realtime.core";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/conversations/$conversationId")({
   head: () => ({
@@ -67,6 +69,9 @@ function ConversationPage() {
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["messages", conversationId],
     queryFn: () => fetchMessages(conversationId),
+    // B-4 fallback only — Realtime remains the primary sync mechanism.
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   });
 
   const insights = useMutation({
@@ -119,9 +124,43 @@ function ConversationPage() {
     inputRef.current?.focus();
   }, [conversationId]);
 
+  /**
+   * B-4 — REAL-TIME CONVERSATION SYNC.
+   *
+   * Scoped strictly to the open conversation. RLS remains the security
+   * boundary; the filter simply avoids receiving irrelevant rows.
+   */
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const unsubscribe = subscribeToConversation(supabase as never, {
+      conversationId,
+      onMessage: (message) => {
+        queryClient.setQueryData<ChatMessage[]>(["messages", conversationId], (current) =>
+          mergeRealtimeMessage(current ?? [], message, conversationId),
+        );
+        queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      },
+      onConversation: () => {
+        queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      },
+      onStatus: (status) => {
+        // On reconnect / error recovery, resync from the database.
+        if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+          queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+        }
+      },
+    });
+    return unsubscribe;
+  }, [conversationId, queryClient]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    if (!nearBottom) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, send.isPending]);
+
 
   function submit() {
     const body = draft.trim();
