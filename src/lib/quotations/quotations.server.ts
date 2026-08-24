@@ -21,7 +21,10 @@ export function quotationLink(token: string) {
   return `${PUBLIC_SITE_URL}/q/${token}`;
 }
 
-export { logConversionEvent } from "../conversion/events";
+import { logConversionEvent } from "../conversion/events";
+import { recordLeadStageTransition } from "../conversion/producers";
+
+export { logConversionEvent };
 
 /** Deposit policy is agency-configured, never model-decided. */
 export async function loadDepositPolicy(
@@ -271,7 +274,24 @@ export async function transitionQuotation(
   }
 
   if (to === "booked" && row.lead_id) {
+    // B-2 — lead_won is emitted from the authoritative won transition only,
+    // and only when the lead was not already booked (no duplicate wins).
+    const { data: leadRow } = await supabase
+      .from("leads")
+      .select("stage")
+      .eq("id", row.lead_id)
+      .eq("agency_id", agencyId)
+      .maybeSingle();
     await supabase.from("leads").update({ stage: "booked" }).eq("id", row.lead_id);
+    await recordLeadStageTransition({
+      db: supabase,
+      agencyId,
+      leadId: row.lead_id,
+      from: (leadRow?.stage as string | undefined) ?? null,
+      to: "booked",
+      actor: opts.actor ?? "human",
+      reason: opts.reason ?? null,
+    });
   }
 
   return updated;
