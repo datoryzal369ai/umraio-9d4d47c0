@@ -828,11 +828,13 @@ export type Database = {
           attempts: number
           body: string | null
           channel: Database["public"]["Enums"]["channel"]
+          claimed_at: string | null
           context: Json
           conversation_id: string | null
           created_at: string
           dispatched_at: string | null
           id: string
+          last_error: string | null
           lead_id: string | null
           quotation_id: string | null
           run_at: string
@@ -845,11 +847,13 @@ export type Database = {
           attempts?: number
           body?: string | null
           channel?: Database["public"]["Enums"]["channel"]
+          claimed_at?: string | null
           context?: Json
           conversation_id?: string | null
           created_at?: string
           dispatched_at?: string | null
           id?: string
+          last_error?: string | null
           lead_id?: string | null
           quotation_id?: string | null
           run_at?: string
@@ -862,11 +866,13 @@ export type Database = {
           attempts?: number
           body?: string | null
           channel?: Database["public"]["Enums"]["channel"]
+          claimed_at?: string | null
           context?: Json
           conversation_id?: string | null
           created_at?: string
           dispatched_at?: string | null
           id?: string
+          last_error?: string | null
           lead_id?: string | null
           quotation_id?: string | null
           run_at?: string
@@ -1925,6 +1931,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_followup_job: {
+        Args: { p_agency_id: string; p_job_id: string; p_stale_after?: string }
+        Returns: boolean
+      }
       verify_cron_secret: { Args: { token: string }; Returns: boolean }
     }
     Enums: {
@@ -1943,7 +1953,7 @@ export type Database = {
         | "waiting_approval"
       app_role: "owner" | "admin" | "agent" | "islamic_approver"
       channel: "whatsapp" | "web" | "manual"
-      followup_status: "pending" | "sent" | "skipped" | "failed"
+      followup_status: "pending" | "sent" | "skipped" | "failed" | "processing"
       kb_category:
         | "faq"
         | "travel_guide"
@@ -2107,7 +2117,7 @@ export const Constants = {
       ],
       app_role: ["owner", "admin", "agent", "islamic_approver"],
       channel: ["whatsapp", "web", "manual"],
-      followup_status: ["pending", "sent", "skipped", "failed"],
+      followup_status: ["pending", "sent", "skipped", "failed", "processing"],
       kb_category: [
         "faq",
         "travel_guide",
