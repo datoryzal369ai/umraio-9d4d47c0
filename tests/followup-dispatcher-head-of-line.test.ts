@@ -17,7 +17,9 @@ mock.module("../src/lib/quotations/quotations.server", () => ({
   logConversionEvent: async () => {},
 }));
 
-const { dispatchDueFollowups } = await import("../src/lib/followups/dispatcher.server");
+const { dispatchDueFollowups, localHour, withinSendWindow } = await import(
+  "../src/lib/followups/dispatcher.server"
+);
 
 const AGENCY = "agency-a";
 const OTHER = "agency-b";
@@ -37,6 +39,18 @@ type Job = {
   skip_reason?: string | null;
   dispatched_at?: string | null;
 };
+
+/** Pick a real timezone where "now" falls inside the dispatcher send window,
+ *  so the suite is deterministic regardless of when it runs. */
+const SEND_WINDOW_TZ = [
+  "Asia/Kuala_Lumpur",
+  "Europe/London",
+  "America/New_York",
+  "Pacific/Auckland",
+  "America/Los_Angeles",
+  "Asia/Dubai",
+  "UTC",
+].find((tz) => withinSendWindow(localHour(tz)))!;
 
 const past = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString();
 
@@ -92,7 +106,7 @@ const inserted: Record<string, unknown[]> = {};
 
 function tableRows(table: string): Record<string, unknown>[] {
   if (table === "followup_jobs") return jobs as unknown as Record<string, unknown>[];
-  if (table === "agencies") return [{ id: AGENCY, timezone: "Asia/Kuala_Lumpur" }];
+  if (table === "agencies") return [{ id: AGENCY, timezone: SEND_WINDOW_TZ }];
   if (table === "whatsapp_configs")
     return [
       {

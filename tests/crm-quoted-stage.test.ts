@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { LEAD_STAGES, STAGE_LABELS, type LeadStage } from "../src/lib/leads";
 import { leadsCopy } from "../src/lib/i18n/app/leads.i18n";
-import { workspaceCopy } from "../src/lib/i18n/app/workspace.i18n";
+import { WORKSPACE_COPY } from "../src/lib/i18n/app/workspace.i18n";
 
 // Mirrors the DB enum public.lead_stage.
 const DB_LEAD_STAGES = [
@@ -34,7 +34,7 @@ describe("CRM quoted stage (P0-2)", () => {
 
   test('proposal is displayed as "Quoted"', () => {
     expect(STAGE_LABELS.proposal).toBe("Quoted");
-    expect(workspaceCopy.en.stageLabels.proposal).toBe("Quoted");
+    expect(WORKSPACE_COPY.en.stageLabels.proposal).toBe("Quoted");
   });
 
   test("every database stage value is renderable — no lead can disappear", () => {
@@ -43,7 +43,7 @@ describe("CRM quoted stage (P0-2)", () => {
       expect(STAGE_LABELS[stage as LeadStage]).toBeTruthy();
       expect(leadsCopy.en.stageLabels[stage]).toBeTruthy();
       expect(leadsCopy.ms.stageLabels[stage]).toBeTruthy();
-      expect(workspaceCopy.ms.stageLabels[stage]).toBeTruthy();
+      expect(WORKSPACE_COPY.ms.stageLabels[stage]).toBeTruthy();
     }
   });
 
