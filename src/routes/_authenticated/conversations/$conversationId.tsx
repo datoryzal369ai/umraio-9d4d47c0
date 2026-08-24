@@ -30,6 +30,13 @@ import {
   subscribeToConversation,
 } from "@/lib/conversations/realtime.core";
 import { supabase } from "@/integrations/supabase/client";
+import { MediaMessage } from "@/components/conversations/MediaMessage";
+import { mediaKindOf } from "@/lib/conversations/media.core";
+
+/** B-4.3 — a row renders as media only when it carries a non-text modality. */
+function isMediaMessage(message: ChatMessage): boolean {
+  return mediaKindOf(message.modality) !== "text";
+}
 
 export const Route = createFileRoute("/_authenticated/conversations/$conversationId")({
   head: () => ({
