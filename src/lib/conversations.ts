@@ -129,7 +129,7 @@ export async function fetchMessages(
   const limit = options.limit ?? MESSAGE_PAGE_SIZE;
   let query = supabase
     .from("messages")
-    .select("id, conversation_id, agency_id, sender, body, created_at")
+    .select(MESSAGE_COLUMNS)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -150,7 +150,7 @@ export async function insertMessage(
   const { data, error } = await supabase
     .from("messages")
     .insert({ conversation_id: conversationId, agency_id: agencyId, sender, body })
-    .select("id, conversation_id, agency_id, sender, body, created_at")
+    .select(MESSAGE_COLUMNS)
     .single();
   if (error) throw error;
   await supabase
