@@ -26,6 +26,26 @@ const MAX_PER_CYCLE = 5;
 const QUIET_START_HOUR = 9;
 const QUIET_END_HOUR = 21;
 
+/**
+ * B-3.1 — transport retry policy.
+ *
+ * Only transport-level failures are retried. Business refusals (DNC, human
+ * takeover, customer replied, quota denial, missing configuration) are never
+ * retried: they are recorded as `skipped` with a reason, exactly as before.
+ *
+ * `attempts` is incremented by the atomic claim, so attempt N means the job has
+ * already been claimed N times.
+ */
+export const MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_MINUTES = [5, 30];
+
+export function nextRetryAt(attempts: number, from = new Date()): Date | null {
+  if (attempts >= MAX_ATTEMPTS) return null;
+  const minutes = RETRY_BACKOFF_MINUTES[attempts - 1] ?? RETRY_BACKOFF_MINUTES.at(-1)!;
+  return new Date(from.getTime() + minutes * 60_000);
+}
+
+
 export function localHour(timezone: string | null | undefined, at = new Date()): number {
   try {
     const formatted = new Intl.DateTimeFormat("en-GB", {
