@@ -73,19 +73,17 @@ export const sendConversationMedia = createServerFn({ method: "POST" })
       .eq("id", data.conversationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!conversation) throw new Error("Conversation not found for this account.");
 
-    const to = ((conversation.lead as { phone?: string | null } | null)?.phone ?? "").trim();
-    if (!to) throw new Error("This contact has no WhatsApp number.");
-
-    // (3) server-side revalidation — the browser check is only a fast path.
+    // (3) ownership + MIME + size revalidated server-side in one pure gate.
     const bytes = decodeBase64(data.base64);
-    const validation = validateOutboundMedia({
+    const auth = authorizeOutboundSend({
+      conversation: conversation ?? null,
       mimeType: data.mimeType,
       byteLength: bytes.byteLength,
     });
-    if (!validation.ok) throw new Error(validation.message);
-    const { kind, mimeType } = validation;
+    if (!auth.ok) throw new Error(auth.message);
+    const { kind, mimeType, to } = auth;
+
 
     // (4) credentials read only AFTER ownership is proven, and only for that agency.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
