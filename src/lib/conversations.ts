@@ -134,13 +134,57 @@ export async function insertMessage(
   return data as ChatMessage;
 }
 
+/**
+ * B-3.2 — OWNER AI RESUME CONTROL.
+ *
+ * Handover state machine: AI_ACTIVE → HUMAN_HANDOFF → OWNER_RESUMED → AI_ACTIVE.
+ *
+ * Resuming is an explicit owner action. It never replays messages received
+ * while the AI was muted: `ai_muted_at` is stamped to *now*, so the J4 filter
+ * in `selectCoalescedInbound` treats every muted-era message as history and
+ * only NEW inbound messages are ever answered. No catch-up reply is sent here.
+ *
+ * Tenant scoping is enforced twice: RLS on `conversations`, plus an explicit
+ * `agency_id` predicate derived from the caller's own profile.
+ */
 export async function setAiEnabled(conversationId: string, enabled: boolean) {
-  const { error } = await supabase
+  const agencyId = await fetchMyAgencyId();
+  if (!agencyId) throw new Error("No agency context for this account");
+
+  const now = new Date().toISOString();
+  const patch = enabled
+    ? {
+        ai_enabled: true,
+        // cut-off: muted-era messages are never replayed on resume
+        ai_muted_at: now,
+        // a crashed/stale claim must never survive a resume
+        ai_reply_claimed_at: null,
+        ai_reply_due_at: null,
+        escalated_at: null,
+        status: "open",
+      }
+    : { ai_enabled: false, ai_muted_at: now };
+
+  const { data, error } = await supabase
     .from("conversations")
-    .update({ ai_enabled: enabled })
-    .eq("id", conversationId);
+    .update(patch)
+    .eq("id", conversationId)
+    .eq("agency_id", agencyId)
+    .select("id")
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("Conversation not found for this agency");
+
+  await supabase.from("activity_log").insert({
+    agency_id: agencyId,
+    actor: "human",
+    action: enabled ? "AI Executive resumed by owner" : "AI Executive paused by owner",
+    entity: "conversation",
+    entity_id: conversationId,
+    meta: { ai_enabled: enabled, muted_cutoff_at: now, replayed_muted_messages: false },
+  });
 }
+
 
 export async function createConversation(input: {
   agencyId: string;

@@ -102,8 +102,18 @@ function ConversationPage() {
 
   const aiToggle = useMutation({
     mutationFn: (enabled: boolean) => setAiEnabled(conversationId, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] }),
+    onSuccess: (_data, enabled) => {
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success(
+        enabled
+          ? "AI Executive resumed — it will answer new incoming messages only."
+          : "AI Executive paused — replies are handled by your team.",
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
+
 
   useEffect(() => {
     inputRef.current?.focus();

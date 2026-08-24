@@ -454,8 +454,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             });
             if (!convState?.ai_enabled || pending.length === 0) {
               console.log(
-                `[whatsapp] no genuine pending inbound to answer conversation=${conversationId} pending=${pending.length}`,
+                `[whatsapp] conversation_terminal_outcome=${!convState?.ai_enabled ? "no_reply_ai_disabled" : "no_reply_empty_pending"} conversation=${conversationId} pending=${pending.length}`,
               );
+
               await releaseConversationClaim(supabaseAdmin as never, { agencyId, conversationId });
               return new Response("ok");
             }
@@ -506,32 +507,39 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
               console.log(`[whatsapp] ${sent ? "text_send_succeeded" : "text_send_failed"}`);
 
+              // B-3.2 — AI_GENERATED is NOT the same as WHATSAPP_SENT. A failed
+              // Meta send is persisted as `send_failed` so no part of the system
+              // (CRM, analytics, follow-ups) can read it as a delivered reply.
               await supabaseAdmin.from("messages").insert({
                 agency_id: agencyId,
                 conversation_id: conversationId,
                 sender: "ai",
                 body: reply,
                 modality: "text",
+                delivery_status: sent ? "sent" : "send_failed",
               });
               const responseMs = Date.now() - inboundAt.getTime();
               await supabaseAdmin
                 .from("conversations")
                 .update({
                   last_message_at: new Date().toISOString(),
-                  first_response_ms: responseMs,
+                  ...(sent ? { first_response_ms: responseMs } : {}),
                 })
                 .eq("id", conversationId);
               await supabaseAdmin.from("activity_log").insert({
                 agency_id: agencyId,
                 actor: "ai",
-                action: "AI WhatsApp Executive replied to customer",
+                action: sent
+                  ? "AI WhatsApp Executive replied to customer"
+                  : "AI WhatsApp Executive reply could not be delivered",
                 entity: "conversation",
                 entity_id: conversationId,
                 meta: { response_ms: responseMs, delivered: sent, preview: reply.slice(0, 160) },
               });
               console.log(
-                `[whatsapp] conversation_terminal_outcome=text_reply_sent delivered=${sent} latency_bucket=${latencyBucketLabel(responseMs)}`,
+                `[whatsapp] conversation_terminal_outcome=${sent ? "replied_text_only" : "no_reply_send_failed"} delivered=${sent} latency_bucket=${latencyBucketLabel(responseMs)}`,
               );
+
 
               // VOICE REPLY V1 — strictly best-effort, strictly AFTER the text
               // answer is delivered and persisted. Any failure here leaves a
@@ -687,8 +695,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           const { markConversationMuted } = await import("@/lib/whatsapp/coalescing.server");
           await markConversationMuted(supabaseAdmin as never, { agencyId, conversationId });
           console.log(
-            `[whatsapp] auto-reply skipped ai_enabled=${aiEnabled} auto_reply=${config.auto_reply} has_token=${Boolean(config.access_token)}`,
+            `[whatsapp] conversation_terminal_outcome=${aiEnabled ? "no_reply_ai_disabled" : "muted_human_handoff"} ai_enabled=${aiEnabled} auto_reply=${config.auto_reply} has_token=${Boolean(config.access_token)}`,
           );
+
         }
 
         return new Response("ok");
