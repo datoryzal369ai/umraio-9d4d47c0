@@ -5,9 +5,10 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   MAX_OUTBOUND_BYTES,
+  authorizeOutboundSend,
   outboundMediaBody,
-  validateOutboundMedia,
 } from "@/lib/conversations/outbound-media.core";
+
 
 /**
  * B-4.4 — OUTBOUND MEDIA COMPOSER (server).
