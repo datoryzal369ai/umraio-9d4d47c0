@@ -130,9 +130,13 @@ export async function dispatchDueFollowups(
   // the sendable batch (head-of-line blocking).
   const { data: jobs } = await supabase
     .from("followup_jobs")
-    .select("id, lead_id, conversation_id, quotation_id, title, body, run_at, channel, created_at")
+    .select(
+      "id, lead_id, conversation_id, quotation_id, title, body, run_at, channel, created_at, attempts",
+    )
     .eq("agency_id", agencyId)
-    .eq("status", "pending")
+    // `processing` rows are included so a crashed mid-send job can be recovered;
+    // the atomic claim still refuses any row that is not stale.
+    .in("status", ["pending", "processing"])
     .eq("channel", "whatsapp")
     .not("body", "is", null)
     .neq("body", "")
