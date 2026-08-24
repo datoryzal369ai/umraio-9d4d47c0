@@ -79,15 +79,21 @@ export async function dispatchDueFollowups(
     return result;
   }
 
+  // Only actionable jobs enter the dispatch window. Body-less rows are internal
+  // human-handover tasks: they stay pending for people, but must never occupy
+  // the sendable batch (head-of-line blocking).
   const { data: jobs } = await supabase
     .from("followup_jobs")
     .select("id, lead_id, conversation_id, quotation_id, title, body, run_at, channel, created_at")
     .eq("agency_id", agencyId)
     .eq("status", "pending")
     .eq("channel", "whatsapp")
+    .not("body", "is", null)
+    .neq("body", "")
     .lte("run_at", new Date().toISOString())
     .order("run_at", { ascending: true })
     .limit(limit * 4);
+
 
   if (!jobs?.length) return result;
 
