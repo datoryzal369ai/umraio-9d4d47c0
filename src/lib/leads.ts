@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
+import { recordLeadStageTransition, recordLeadCreated } from "./conversion/producers";
+
 export const LEAD_STAGES = [
   "new",
   "contacted",
@@ -115,6 +117,13 @@ export async function createLead(agencyId: string, input: LeadInput): Promise<Le
     .single();
   if (error) throw error;
   await logActivity(agencyId, "Lead created", data.id, input.full_name);
+  await recordLeadCreated({
+    db: supabase,
+    agencyId,
+    leadId: data.id,
+    actor: "human",
+    source: (input as { source?: string | null }).source ?? "manual",
+  });
   return data as Lead;
 }
 
@@ -142,6 +151,16 @@ export async function updateLeadStage(lead: Lead, stage: LeadStage): Promise<voi
     lead.id,
     `${STAGE_LABELS[lead.stage] ?? lead.stage} → ${STAGE_LABELS[stage]}`,
   );
+  // B-2 — funnel event from the real transition; the agency id comes from the
+  // persisted lead row, never from browser-supplied input.
+  await recordLeadStageTransition({
+    db: supabase,
+    agencyId: lead.agency_id,
+    leadId: lead.id,
+    from: lead.stage,
+    to: stage,
+    actor: "human",
+  });
 }
 
 export async function deleteLead(id: string): Promise<void> {
