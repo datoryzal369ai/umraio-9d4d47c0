@@ -114,3 +114,29 @@ export function subscribeToConversation(
     client.removeChannel(channel);
   };
 }
+
+/**
+ * B-4.2a — RECONCILIATION (refetch) vs PATCH (realtime).
+ *
+ * The database is the source of truth for every row it returns, but the server
+ * window is only the newest N messages. A refetch must therefore MERGE, never
+ * replace: locally held rows outside the window (older pages, or realtime rows
+ * that arrived after the window was computed) must survive.
+ *
+ * Rules:
+ *  - union by message id,
+ *  - server row wins when the same id exists on both sides,
+ *  - foreign-conversation rows are rejected (defence in depth on top of RLS),
+ *  - chronological ordering is preserved.
+ */
+export function reconcileMessages(
+  current: ChatMessage[],
+  serverWindow: ChatMessage[],
+  conversationId: string,
+): ChatMessage[] {
+  let next = current.filter((m) => m.conversation_id === conversationId);
+  for (const row of serverWindow) {
+    next = mergeRealtimeMessage(next, row, conversationId);
+  }
+  return next;
+}
