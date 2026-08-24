@@ -454,8 +454,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             });
             if (!convState?.ai_enabled || pending.length === 0) {
               console.log(
-                `[whatsapp] no genuine pending inbound to answer conversation=${conversationId} pending=${pending.length}`,
+                `[whatsapp] conversation_terminal_outcome=${!convState?.ai_enabled ? "no_reply_ai_disabled" : "no_reply_empty_pending"} conversation=${conversationId} pending=${pending.length}`,
               );
+
               await releaseConversationClaim(supabaseAdmin as never, { agencyId, conversationId });
               return new Response("ok");
             }
@@ -694,8 +695,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           const { markConversationMuted } = await import("@/lib/whatsapp/coalescing.server");
           await markConversationMuted(supabaseAdmin as never, { agencyId, conversationId });
           console.log(
-            `[whatsapp] auto-reply skipped ai_enabled=${aiEnabled} auto_reply=${config.auto_reply} has_token=${Boolean(config.access_token)}`,
+            `[whatsapp] conversation_terminal_outcome=${aiEnabled ? "no_reply_ai_disabled" : "muted_human_handoff"} ai_enabled=${aiEnabled} auto_reply=${config.auto_reply} has_token=${Boolean(config.access_token)}`,
           );
+
         }
 
         return new Response("ok");
