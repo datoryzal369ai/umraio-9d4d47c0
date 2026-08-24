@@ -499,6 +499,7 @@ const HUMAN_REQUEST_PATTERNS: RegExp[] = [
   // the existing intent policy instead of forcing a handover.
   /\b(transfer|pindah|alih|escalate|eskalasi)\b[^.?!]{0,25}\b(staff|staf|manusia|human|agent|ejen|pegawai|admin|manager|pengurus|customer\s+service|cs)\b/,
   /\b(nak|mahu|nak\s+dapat|minta|tolong|bagi|beri|dapatkan|sambung(kan)?|want|need|give\s+me)\b[^.?!]{0,25}\b(staff|staf|manusia|human(\s+agent)?|live\s+agent|real\s+person|ejen|pegawai|admin|manager|pengurus|customer\s+service)\b/,
+];
 
 
 /**
