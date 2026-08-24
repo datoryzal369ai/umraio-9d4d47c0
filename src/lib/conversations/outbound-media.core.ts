@@ -96,3 +96,36 @@ export function formatDuration(seconds: number): string {
   const s = total % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+/**
+ * Pure send-authorisation gate used by the server function.
+ *
+ * `conversation` is whatever the caller's OWN RLS-scoped read returned: a
+ * cross-tenant or cross-conversation id resolves to `null` and is rejected
+ * here, before any credential is read.
+ */
+export type OutboundAuthorization =
+  | { ok: true; kind: OutboundMediaKind; mimeType: string; to: string; agencyId: string }
+  | { ok: false; message: string };
+
+export function authorizeOutboundSend(input: {
+  conversation: { id: string; agency_id: string; lead?: { phone?: string | null } | null } | null;
+  mimeType: string | null | undefined;
+  byteLength: number;
+}): OutboundAuthorization {
+  if (!input.conversation) return { ok: false, message: "Conversation not found for this account." };
+  const to = (input.conversation.lead?.phone ?? "").trim();
+  if (!to) return { ok: false, message: "This contact has no WhatsApp number." };
+  const validation = validateOutboundMedia({
+    mimeType: input.mimeType,
+    byteLength: input.byteLength,
+  });
+  if (!validation.ok) return { ok: false, message: validation.message };
+  return {
+    ok: true,
+    kind: validation.kind,
+    mimeType: validation.mimeType,
+    to,
+    agencyId: input.conversation.agency_id,
+  };
+}
