@@ -23,6 +23,8 @@ import {
   type ConversationIntelligenceSnapshot,
 } from "@/lib/conversations";
 import { aiReplyToConversation, conversationInsights } from "@/lib/sales-ai.functions";
+import { mergeRealtimeMessage, subscribeToConversation } from "@/lib/conversations/realtime.core";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/conversations/$conversationId")({
   head: () => ({
