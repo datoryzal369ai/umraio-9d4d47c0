@@ -67,13 +67,14 @@ export type DispatchResult = {
   sent: number;
   skipped: number;
   failed: number;
+  retried: number;
   details: Array<{ id: string; outcome: string; reason?: string }>;
 };
 
 async function markJob(
   supabase: Db,
   id: string,
-  status: "sent" | "skipped" | "failed",
+  status: "pending" | "sent" | "skipped" | "failed",
   patch: Record<string, unknown> = {},
 ) {
   await supabase
@@ -81,6 +82,31 @@ async function markJob(
     .update({ status, ...patch })
     .eq("id", id);
 }
+
+/**
+ * Atomic claim. The database moves pending -> processing and increments
+ * `attempts` in one statement, so two concurrent cron runs can never both send
+ * the same follow-up. A job stuck in `processing` (crash mid-send) becomes
+ * claimable again after the stale window inside `claim_followup_job`.
+ *
+ * Unavoidable ambiguity, documented deliberately: the external WhatsApp send
+ * cannot join the database transaction. If the send succeeds but the follow-up
+ * database update then fails, the job stays `processing` and may be re-sent
+ * once after the stale window. We guarantee at-most-one *active* sender, not
+ * exactly-once delivery.
+ */
+async function claimJob(supabase: Db, agencyId: string, jobId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("claim_followup_job", {
+    p_job_id: jobId,
+    p_agency_id: agencyId,
+  });
+  if (error) {
+    console.error(`[followups] claim_failed job=${jobId} code=${error.code ?? "unknown"}`);
+    return false;
+  }
+  return data === true;
+}
+
 
 export async function dispatchDueFollowups(
   supabase: Db,
