@@ -72,6 +72,12 @@ export async function applySafetyGate(args: {
       .eq("id", conversationId);
 
     if (leadId) {
+      const { data: leadRow } = await supabase
+        .from("leads")
+        .select("stage")
+        .eq("id", leadId)
+        .eq("agency_id", agencyId)
+        .maybeSingle();
       await supabase
         .from("leads")
         .update({
@@ -82,6 +88,16 @@ export async function applySafetyGate(args: {
         })
         .eq("id", leadId);
       await cancelPendingFollowups(supabase, agencyId, leadId, "Customer opted out of contact");
+      const { recordLeadStageTransition } = await import("../conversion/producers");
+      await recordLeadStageTransition({
+        db: supabase,
+        agencyId,
+        leadId,
+        from: (leadRow?.stage as string | undefined) ?? null,
+        to: "lost",
+        actor: "customer",
+        reason: "opt_out",
+      });
     }
 
     await supabase.from("activity_log").insert({

@@ -719,8 +719,35 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
           patch["stage"] = "qualified";
         }
 
+        const previousStage = ((ctx.lead as Record<string, unknown> | null)?.["stage"] ??
+          null) as string | null;
+        const previousPackage = ((ctx.lead as Record<string, unknown> | null)?.[
+          "package_interest"
+        ] ?? null) as string | null;
+
         const { error } = await tctx.supabase.from("leads").update(patch).eq("id", leadId);
         if (error) return { saved: false, reason: error.message };
+
+        // B-2 — authoritative funnel telemetry from the real state change only.
+        const { recordLeadStageTransition, recordPackageInterest } = await import(
+          "@/lib/conversion/producers"
+        );
+        await recordLeadStageTransition({
+          db: tctx.supabase,
+          agencyId: tctx.agencyId,
+          leadId,
+          from: previousStage,
+          to: (patch["stage"] as string | undefined) ?? previousStage,
+          actor: "ai",
+        });
+        await recordPackageInterest({
+          db: tctx.supabase,
+          agencyId: tctx.agencyId,
+          leadId,
+          packageName: (patch["package_interest"] as string | undefined) ?? null,
+          previousPackageName: previousPackage,
+          actor: "ai",
+        });
         await tctx.supabase.from("activity_log").insert({
           agency_id: tctx.agencyId,
           actor: "ai",
