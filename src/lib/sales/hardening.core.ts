@@ -504,7 +504,7 @@ const HUMAN_REQUEST_PATTERNS: RegExp[] = [
  * transferred to a person.
  */
 const MANNER_OF_SPEECH_PATTERNS: RegExp[] = [
-  /\b(cakap|bercakap|berbual|jawab|balas|layan|bunyi|tulis|bercerita|speak|talk|sound|reply|write)\b[^.?!]{0,12}\b(macam|seperti|kayak|bagai|like)\b/,
+  /\b(cakap|bercakap|berbual|jawab|balas|layan|bunyi|tulis|bercerita|speak|talk|sound|reply|write)\b[^.?!]{0,12}\b(macam|seperti|kayak|bagai|like)\b(\s+(a|an|seorang))?(\s+(real|live|betul|sebenar|biasa|normal))?(\s+(orang|manusia|person|human|people|robot|mesin|machine|bot))?/,
 ];
 
 export function detectHumanRequest(text: string | null | undefined): boolean {
