@@ -104,16 +104,34 @@ export async function fetchConversation(id: string): Promise<ConversationWithLea
   return (data as unknown as ConversationWithLead) ?? null;
 }
 
-export async function fetchMessages(conversationId: string): Promise<ChatMessage[]> {
-  const { data, error } = await supabase
+export const MESSAGE_PAGE_SIZE = 100;
+
+/**
+ * B-4.2a — newest-first windowed read.
+ *
+ * The previous implementation ordered ASC with LIMIT 500, which on long
+ * conversations returned the OLDEST 500 rows and structurally hid every recent
+ * message. We now fetch the newest `limit` rows (optionally older than a
+ * `before` cursor) and return them chronologically.
+ */
+export async function fetchMessages(
+  conversationId: string,
+  options: { before?: string; limit?: number } = {},
+): Promise<ChatMessage[]> {
+  const limit = options.limit ?? MESSAGE_PAGE_SIZE;
+  let query = supabase
     .from("messages")
     .select("id, conversation_id, agency_id, sender, body, created_at")
     .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true })
-    .limit(500);
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (options.before) query = query.lt("created_at", options.before);
+
+  const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as ChatMessage[];
+  return ((data ?? []) as ChatMessage[]).slice().reverse();
 }
+
 
 export async function insertMessage(
   conversationId: string,
