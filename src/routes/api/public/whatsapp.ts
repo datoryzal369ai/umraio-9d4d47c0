@@ -341,18 +341,39 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         let aiEnabled = true;
         const { data: conversation } = await supabaseAdmin
           .from("conversations")
-          .select("id, ai_enabled")
+          .select("id, ai_enabled, conversation_state")
           .eq("agency_id", agencyId)
           .eq("external_id", from)
           .maybeSingle();
         if (conversation) {
           conversationId = conversation.id;
           aiEnabled = conversation.ai_enabled;
+          const convUpdate: Record<string, unknown> = {
+            last_message_at: new Date().toISOString(),
+            status: "open",
+          };
+          // CURRENT-TURN DNC RULE: a conversation muted by a PAST opt-out is
+          // re-opened when the customer themselves starts a new turn that is
+          // not itself a STOP request. A current-turn STOP is handled by the
+          // deterministic safety gate, which re-applies do-not-contact.
+          if (conversation.conversation_state === "DO_NOT_CONTACT") {
+            const { detectOptOut } = await import("@/lib/sales/hardening.core");
+            if (!detectOptOut(text).optedOut) {
+              convUpdate["ai_enabled"] = true;
+              convUpdate["conversation_state"] = "ACTIVE";
+              convUpdate["state_updated_at"] = new Date().toISOString();
+              aiEnabled = true;
+              console.log(
+                `[whatsapp] dnc_reengaged conversation=${conversationId} reason=customer_initiated_inbound`,
+              );
+            }
+          }
           await supabaseAdmin
             .from("conversations")
-            .update({ last_message_at: new Date().toISOString(), status: "open" })
+            .update(convUpdate)
             .eq("id", conversationId);
         } else {
+
           const { data: created } = await supabaseAdmin
             .from("conversations")
             .insert({
