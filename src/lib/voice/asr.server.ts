@@ -7,9 +7,10 @@
  */
 import { asrLanguageFor } from "./language.core";
 import { normalizeTranscript } from "./limits.core";
+import { resolveAudioProviders, type AudioProvider } from "@/lib/ai/audio.server";
 
+/** Legacy id kept for reference; the active model comes from the provider. */
 export const ASR_MODEL = "openai/gpt-4o-transcribe";
-const ASR_ENDPOINT = "https://ai.gateway.lovable.dev/v1/audio/transcriptions";
 
 export type AsrErrorKind = "config" | "rate_limited" | "entitlement" | "invalid_audio" | "provider";
 
