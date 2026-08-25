@@ -1,0 +1,2 @@
+ALTER TABLE public.messages DROP CONSTRAINT IF EXISTS messages_delivery_status_check;
+ALTER TABLE public.messages ADD CONSTRAINT messages_delivery_status_check CHECK (delivery_status IN ('sent','delivered','read','failed','send_failed','not_applicable'));
