@@ -116,3 +116,38 @@ describe("hard guarantees", () => {
     expect(out.match(/panggilan telefon/gi)?.length).toBe(1);
   });
 });
+
+describe("production regression — exact phrases seen in WhatsApp", () => {
+  const PRODUCTION_DENIALS = [
+    "Untuk sistem ini memang tak ada fungsi voice note atau suara langsung. Saya hanya boleh bantu melalui mesej bertulis sahaja.",
+    "Maaf, voice note tidak tersedia buat masa ini.",
+    "Saya hanya boleh bantu melalui mesej bertulis sahaja.",
+    "I can only help with text messages.",
+  ];
+
+  for (const raw of PRODUCTION_DENIALS) {
+    it(`never ships: ${raw.slice(0, 40)}…`, () => {
+      const out = sanitizeCapabilityClaims(raw, { voiceAvailable: true });
+      expect(out).not.toMatch(/(?:tak|tidak|belum)\s+ada\s+fungsi|hanya boleh bantu melalui mesej bertulis|mesej bertulis sahaja|(?:voice note|nota suara)[^.!?]{0,30}(?:tidak|belum|tak) tersedia|only help with text/i);
+      expect(out.length).toBeGreaterThan(0);
+    });
+  }
+
+  it("keeps the factual part while removing only the false denial", () => {
+    const out = sanitizeCapabilityClaims(
+      "Untuk sistem ini memang tak ada fungsi voice note. Pakej September RM9,800 seorang.",
+      { voiceAvailable: true },
+    );
+    expect(out).toContain("RM9,800");
+    expect(out).not.toMatch(/voice note/i);
+  });
+
+  it("phone calls stay unavailable and are not confused with voice notes", () => {
+    const out = sanitizeCapabilityClaims("Hotel dekat Haram.", {
+      voiceAvailable: true,
+      liveCallRequested: true,
+    });
+    expect(out).toMatch(/panggilan telefon/i);
+    expect(out).not.toMatch(/nota suara (?:tidak|belum|tak)/i);
+  });
+});

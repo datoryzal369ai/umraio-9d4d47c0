@@ -92,3 +92,43 @@ describe("AI audio provider decoupling", () => {
     expect(urls).toHaveLength(1);
   });
 });
+
+describe("exact payload reaching /v1/audio/speech for a WhatsApp voice note", () => {
+  it("sends the prepared conversational script with the documented config", async () => {
+    process.env["AI_PROVIDER"] = "openai";
+    process.env["OPENAI_API_KEY"] = "sk-secret";
+    let url = "";
+    let payload: Record<string, unknown> = {};
+    globalThis.fetch = vi.fn(async (u: unknown, init: unknown) => {
+      url = String(u);
+      payload = JSON.parse(String((init as RequestInit).body));
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const { prepareSpokenResponse } = await import("@/lib/voice/presentation.core");
+    const spoken = prepareSpokenResponse({
+      replyText:
+        "Ya, untuk pakej September ni harganya RM9,800 seorang. Hotel pun dekat dengan Haram. Kalau Datuk nak, saya boleh semak tarikh yang masih ada.",
+      language: "ms-MY",
+    });
+
+    const result = await synthesizeSpeech({
+      text: spoken.spokenText,
+      voice: spoken.voice,
+      speed: spoken.speed,
+      instructions: spoken.instructions,
+    });
+
+    expect(result.ok && result.engine).toBe("openai");
+    expect(url).toBe("https://api.openai.com/v1/audio/speech");
+    expect(payload["model"]).toBe("gpt-4o-mini-tts");
+    expect(payload["voice"]).toBe("marin");
+    expect(payload["speed"]).toBe(0.97);
+    expect(payload["response_format"]).toBe("opus");
+    expect(String(payload["instructions"]).toLowerCase()).toContain("malaysian");
+    // The EXACT text sent to TTS: conversational, no markdown, no RM symbol.
+    expect(String(payload["input"])).toContain("sembilan ribu lapan ratus ringgit");
+    expect(String(payload["input"])).not.toMatch(/RM|[*#_`]/);
+    expect((String(payload["input"]).match(/Datuk/g) ?? []).length).toBeLessThanOrEqual(1);
+  });
+});

@@ -54,20 +54,12 @@ const INTERNAL_TERMS =
 
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
-/** Written-Malay → spoken-Malay swaps. Same meaning, conversational register. */
-const CONVERSATIONAL_SWAPS: Array<[RegExp, string]> = [
-  [/\bterdapat\b/gi, "ada"],
-  [/\bialah\b/gi, "ia"],
-  [/\badalah\s+/gi, ""],
-  [/\bdaripada\b/gi, "dari"],
-  [/\bmemerlukan\b/gi, "perlukan"],
-  [/\bAdakah\s+(Datuk|Tuan|Puan|anda)\s+mahu\b/gi, "Kalau $1 nak"],
-  [/\bAdakah\s+(Datuk|Tuan|Puan|anda)\s+ingin\b/gi, "Kalau $1 nak"],
-  [/\bmembantu\s+(Datuk|Tuan|Puan|anda)\b/gi, "tolong $1"],
-  [/\bsila\s+hubungi\b/gi, "boleh hubungi"],
-  [/\bbagaimanapun\b/gi, "tapi"],
-  [/\boleh\s+itu\b/gi, "jadi"],
-];
+/**
+ * Written-Malay → spoken-Malay swaps were REMOVED after the V4 experiment:
+ * deterministic register rewriting produced artificial slang. Conversational
+ * tone now comes from the source text and the TTS engine instructions.
+ */
+
 
 const HONORIFIC_OPENING =
   /^(baik|baiklah|ok|okay|terima kasih)[,!.]?\s*(datuk|tuan|puan|encik|cik)?[,.!]?\s*/i;
@@ -157,13 +149,18 @@ function condenseToTarget(text: string, limit = TARGET_SPEECH_CHARS): string {
   const kept: string[] = [];
   let used = 0;
   for (const sentence of body) {
-    if (kept.length && used + sentence.length + 1 > budget) break;
+    // Keep going while there is budget. A short lead-in sentence (a package
+    // title, "Baik.") must never be the ONLY thing spoken — the next sentence
+    // usually carries the price/date fact, so allow it through.
+    const leadInOnly = kept.length === 1 && used < limit / 2;
+    if (kept.length && !leadInOnly && used + sentence.length + 1 > budget) break;
     kept.push(sentence);
     used += sentence.length + 1;
   }
   const out = [...kept, ...(closing ? [closing] : [])].join(" ").trim();
   return out || sentences[0]!;
 }
+
 
 /** Do not append a question to every reply; keep at most one closing ask. */
 function trimForcedEngagement(text: string): string {
@@ -242,14 +239,10 @@ export function prepareSpokenResponse(input: VoicePresentationInput): VoicePrese
         text = text.charAt(0).toUpperCase() + text.slice(1);
       }
     }
-    // V4 — SPEECH SCRIPT LAYER: written sales register becomes spoken
-    // Malaysian Malay before any rhythm work. Facts are untouched.
+    // SPEECH SCRIPT LAYER: removes eye-only formatting and shorthand and keeps
+    // one honorific per note. It does NOT reword the reply.
     text = toSpeechScript(text);
-    if (controls.naturalness >= 50) {
-      for (const [pattern, replacement] of CONVERSATIONAL_SWAPS) {
-        text = text.replace(pattern, replacement);
-      }
-    }
+
     text = trimForcedEngagement(text);
     text = condenseToTarget(text);
     text = shapeRhythm(text, controls.pause);

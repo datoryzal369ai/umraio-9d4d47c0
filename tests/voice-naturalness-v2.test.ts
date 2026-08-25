@@ -198,7 +198,7 @@ describe("VOICE NATURALNESS V2 — presentation layer", () => {
     });
     expect(decision.speak).toBe(true);
     if (!decision.speak) return;
-    expect(decision.text).toContain("ada beberapa pilihan");
+    expect(decision.text).toContain("beberapa pilihan");
     expect(decision.text).toContain("lima ribu sembilan ratus sembilan puluh ringgit");
     expect(decision.text).not.toContain("RM5,990");
     expect(decision.presentation.personaKey).toBe("premium_sales_executive");
