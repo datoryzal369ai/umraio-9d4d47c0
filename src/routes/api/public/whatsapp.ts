@@ -31,65 +31,69 @@ type WebhookBody = {
 
 import { sendWhatsappText } from "@/lib/whatsapp-send.server";
 
-export const Route = createFileRoute("/api/public/whatsapp")({
-  server: {
-    handlers: {
-      // Meta webhook verification handshake
-      GET: async ({ request }) => {
-        const url = new URL(request.url);
-        const mode = url.searchParams.get("hub.mode");
-        const token = url.searchParams.get("hub.verify_token");
-        const challenge = url.searchParams.get("hub.challenge") ?? "";
-        if (mode !== "subscribe" || !token) {
-          return new Response("Bad request", { status: 400 });
-        }
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data } = await supabaseAdmin
-          .from("whatsapp_configs")
-          .select("id")
-          .eq("verify_token", token)
-          .maybeSingle();
-        if (!data) return new Response("Forbidden", { status: 403 });
-        return new Response(challenge, { headers: { "Content-Type": "text/plain" } });
-      },
+/** P0-1 — defensive cap on how many inbound messages one delivery may process. */
+const MAX_MESSAGES_PER_REQUEST = 10;
 
-      POST: async ({ request }) => {
-        // SECURITY: raw body → signature validation → parse → process.
-        // Nothing below this gate may touch the database, AI, quota or Meta.
-        const rawBody = await request.text();
-        const signature = verifyMetaSignature(
-          rawBody,
-          request.headers.get("x-hub-signature-256"),
-          process.env["META_APP_SECRET"],
-        );
-        if (!signature.valid) {
-          console.error(
-            `[whatsapp] webhook_signature_valid=false reason=${signature.reason} request_processing=rejected`,
-          );
-          return new Response("Unauthorized", { status: 401 });
-        }
-        console.log("[whatsapp] webhook_signature_valid=true");
+type InboundMessage = NonNullable<WebhookValue["messages"]>[number];
 
-        let payload: WebhookBody;
-        try {
-          payload = JSON.parse(rawBody) as WebhookBody;
-        } catch {
-          return new Response("Bad request", { status: 400 });
-        }
+/**
+ * P1-5 — minimal find-or-create used ONLY to give an unsupported/document
+ * inbound turn a thread to live in. It never changes AI state, DNC state or
+ * conversation state; those decisions belong to the normal pipeline.
+ */
+async function ensureConversationForPersist(
+  db: { from: (table: string) => any },
+  args: { agencyId: string; from: string; profileName: string },
+): Promise<string | null> {
+  const { agencyId, from } = args;
+  const { data: existing } = await db
+    .from("conversations")
+    .select("id")
+    .eq("agency_id", agencyId)
+    .eq("external_id", from)
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
 
-        const value = payload.entry?.[0]?.changes?.[0]?.value;
-        const message = value?.messages?.[0];
-        const phoneNumberId = value?.metadata?.phone_number_id?.trim();
-        console.log(
-          `[whatsapp] webhook received phone_number_id=${phoneNumberId ?? "none"} type=${message?.type ?? "none"} messages=${value?.messages?.length ?? 0}`,
-        );
-        if (!message || !phoneNumberId) {
-          console.log(
-            `[whatsapp] inbound_dropped reason=missing_message_or_phone_id phone_number_id=${phoneNumberId ?? "none"} messages_count=${value?.messages?.length ?? 0} has_from=${Boolean(message?.from)} message_type=${message?.type ?? "none"}`,
-          );
-          return new Response("ok");
-        }
+  const { data: lead } = await db
+    .from("leads")
+    .select("id")
+    .eq("agency_id", agencyId)
+    .eq("phone", from)
+    .maybeSingle();
 
+  const { data: created } = await db
+    .from("conversations")
+    .insert({
+      agency_id: agencyId,
+      lead_id: lead?.id ?? null,
+      channel: "whatsapp",
+      external_id: from,
+    })
+    .select("id")
+    .single();
+  if (created?.id) return created.id as string;
+
+  const { data: raced } = await db
+    .from("conversations")
+    .select("id")
+    .eq("agency_id", agencyId)
+    .eq("external_id", from)
+    .maybeSingle();
+  return (raced?.id as string | undefined) ?? null;
+}
+
+/**
+ * Per-message processing. Business logic is unchanged; it is now callable once
+ * per message in a batched Meta delivery.
+ *
+ * Returns "retry" only for unexpected infrastructure failures, so Meta
+ * redelivers instead of the turn being lost.
+ */
+async function processInboundMessage(
+  value: WebhookValue,
+  message: InboundMessage,
+  phoneNumberId: string,
+): Promise<"ok" | "retry"> {
         // VOICE V1 PREP (1) — classify BEFORE any modality-specific work.
         // Sender resolution: `messages[0].from`, else `contacts[0].wa_id` from
         // the same webhook value (Meta omits `from` for newer LID-style sender
@@ -102,7 +106,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           console.log(
             `[whatsapp] inbound_dropped reason=missing_sender phone_number_id=${phoneNumberId} provider_message_id=${providerMessageId ?? "none"} message_type=${message.type ?? "none"} from_present=false contact_present=${Boolean(contact)} contact_keys=${contact ? Object.keys(contact).join("|") : "none"} message_keys=${Object.keys(message).join("|")}`,
           );
-          return new Response("ok");
+          return "ok";
         }
         console.log(`[whatsapp] sender resolved source=${inbound.senderSource}`);
 
@@ -113,24 +117,27 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         let config: { id: string; agency_id: string; access_token: string | null; auto_reply: boolean } | null = null;
         try {
-          const { data } = await supabaseAdmin
+          const { data, error } = await supabaseAdmin
             .from("whatsapp_configs")
             .select("id, agency_id, access_token, auto_reply")
             .eq("phone_number_id", phoneNumberId)
             .maybeSingle();
+          if (error) throw error;
           config = data ?? null;
         } catch (err) {
+          // P1-1 — an unexpected database failure must stay retryable so Meta
+          // redelivers instead of the message being silently lost.
           console.error(
-            `[whatsapp] config_lookup_failed phone_number_id=${phoneNumberId} error=${err instanceof Error ? err.message : String(err)}`,
+            `[whatsapp] conversation_terminal_outcome=config_lookup_failed phone_number_id=${phoneNumberId} error=${err instanceof Error ? err.message : String(err)}`,
           );
-          return new Response("ok");
+          return "retry";
         }
         if (!config) {
           // Return 200 so Meta does not disable/retry-storm the subscription.
           console.error(
             `[whatsapp] no agency connection matches phone_number_id=${phoneNumberId} — check Settings → WhatsApp`,
           );
-          return new Response("ok");
+          return "ok";
         }
         console.log(`[whatsapp] agency identified agency_id=${config.agency_id}`);
 
@@ -152,7 +159,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             console.log(
               `[whatsapp] duplicate delivery ignored provider_message_id=${providerMessageId} modality=${inbound.modality}`,
             );
-            return new Response("ok");
+            return "ok";
           }
         }
 
@@ -160,18 +167,45 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         // enters the EXISTING text pipeline unchanged. There is no second brain.
         // DOCUMENT V1 (STEP 1) — classification only. Documents are recognised
         // and logged, but nothing is retrieved or processed yet.
-        if (inbound.modality === "document") {
+        if (inbound.modality === "document" || inbound.modality === "unsupported") {
+          // P1-5 — the transcript must never have a hole. The inbound turn is
+          // persisted for its modality (no invented text, idempotency kept) and
+          // no AI reply is produced for content the pipeline cannot read.
           console.log(
-            `[whatsapp] document classified agency_id=${agencyId} has_media=${Boolean(inbound.mediaId)} has_filename=${Boolean(inbound.filename)} mime=${inbound.mimeType ?? "none"} size=${inbound.fileSize ?? "unknown"} processing=deferred`,
+            inbound.modality === "document"
+              ? `[whatsapp] document classified agency_id=${agencyId} has_media=${Boolean(inbound.mediaId)} has_filename=${Boolean(inbound.filename)} mime=${inbound.mimeType ?? "none"} size=${inbound.fileSize ?? "unknown"} processing=deferred`
+              : `[whatsapp] unsupported message type ignored agency_id=${agencyId} type=${inbound.rawType}`,
           );
-          return new Response("ok");
-        }
-
-        if (inbound.modality === "unsupported") {
-          console.log(
-            `[whatsapp] unsupported message type ignored agency_id=${agencyId} type=${inbound.rawType}`,
-          );
-          return new Response("ok");
+          const placeholderConversationId = await ensureConversationForPersist(supabaseAdmin, {
+            agencyId,
+            from,
+            profileName,
+          });
+          if (!placeholderConversationId) {
+            console.log(
+              `[whatsapp] conversation_terminal_outcome=unsupported_persist_no_conversation modality=${inbound.modality}`,
+            );
+            return "ok";
+          }
+          const { error: unsupportedInsertError } = await supabaseAdmin.from("messages").insert({
+            agency_id: agencyId,
+            conversation_id: placeholderConversationId,
+            sender: "customer",
+            body: "",
+            provider_message_id: providerMessageId,
+            modality: "text",
+            media_id: inbound.mediaId ?? null,
+          });
+          if (unsupportedInsertError && unsupportedInsertError.code !== "23505") {
+            console.error(
+              `[whatsapp] conversation_terminal_outcome=unsupported_persist_failed modality=${inbound.modality} reason=${unsupportedInsertError.code ?? "unknown"}`,
+            );
+          } else {
+            console.log(
+              `[whatsapp] conversation_terminal_outcome=unsupported_persisted modality=${inbound.modality}`,
+            );
+          }
+          return "ok";
         }
 
         let text = inbound.text;
@@ -180,7 +214,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             console.error(
               `[whatsapp] audio not processable agency_id=${agencyId} has_media=${Boolean(inbound.mediaId)} has_token=${Boolean(config.access_token)}`,
             );
-            return new Response("ok");
+            return "ok";
           }
           const { ingestVoiceNote } = await import("@/lib/voice/inbound.server");
           // voice_language is the agency's dedicated spoken language; it steers
@@ -241,7 +275,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               entity_id: null,
               meta: { reason: voice.reason, from },
             });
-            return new Response("ok");
+            return "ok";
           }
           text = voice.transcript;
         }
@@ -254,7 +288,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             console.error(
               `[whatsapp] image not processable agency_id=${agencyId} has_media=${Boolean(inbound.mediaId)} has_token=${Boolean(config.access_token)}`,
             );
-            return new Response("ok");
+            return "ok";
           }
           const { ingestInboundImage } = await import("@/lib/vision/inbound.server");
           const vision = await ingestInboundImage(supabaseAdmin as never, {
@@ -275,12 +309,17 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               entity_id: null,
               meta: { reason: vision.reason, from },
             });
-            return new Response("ok");
+            return "ok";
           }
           text = vision.text;
         }
 
-        if (!text.trim()) return new Response("ok");
+        if (!text.trim()) {
+          console.log(
+            `[whatsapp] conversation_terminal_outcome=no_usable_text modality=${inbound.modality} agency_id=${agencyId}`,
+          );
+          return "ok";
+        }
 
 
 
@@ -302,7 +341,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         } else {
           const { computeLeadScore, temperatureForScore } = await import("@/lib/sales-ai.server");
           const score = computeLeadScore({ full_name: profileName, phone: from });
-          const { data: created } = await supabaseAdmin
+          const { data: created, error: leadInsertError } = await supabaseAdmin
             .from("leads")
             .insert({
               agency_id: agencyId,
@@ -316,7 +355,23 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             .select("id")
             .single();
           leadId = created?.id ?? null;
-          if (leadId) {
+          // P0-2 — a concurrent delivery may have created the same lead first.
+          // The unique index turns that race into 23505; re-select the winner
+          // instead of creating a duplicate CRM record.
+          let leadWasCreated = Boolean(leadId);
+          if (!leadId && leadInsertError) {
+            const { data: existing } = await supabaseAdmin
+              .from("leads")
+              .select("id")
+              .eq("agency_id", agencyId)
+              .eq("phone", from)
+              .maybeSingle();
+            leadId = existing?.id ?? null;
+            if (leadId) {
+              console.log(`[whatsapp] lead_create_race_resolved agency_id=${agencyId}`);
+            }
+          }
+          if (leadId && leadWasCreated) {
             const { recordLeadCreated } = await import("@/lib/conversion/producers");
             await recordLeadCreated({
               db: supabaseAdmin,
@@ -383,7 +438,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             .eq("id", conversationId);
         } else {
 
-          const { data: created } = await supabaseAdmin
+          const { data: created, error: conversationInsertError } = await supabaseAdmin
             .from("conversations")
             .insert({
               agency_id: agencyId,
@@ -395,8 +450,27 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             .single();
           conversationId = created?.id ?? null;
           aiEnabled = created?.ai_enabled ?? true;
+          // P0-2 — same race protection for the conversation thread.
+          if (!conversationId && conversationInsertError) {
+            const { data: existingConversation } = await supabaseAdmin
+              .from("conversations")
+              .select("id, ai_enabled")
+              .eq("agency_id", agencyId)
+              .eq("external_id", from)
+              .maybeSingle();
+            conversationId = existingConversation?.id ?? null;
+            aiEnabled = existingConversation?.ai_enabled ?? true;
+            if (conversationId) {
+              console.log(`[whatsapp] conversation_create_race_resolved agency_id=${agencyId}`);
+            }
+          }
         }
-        if (!conversationId) return new Response("ok");
+        if (!conversationId) {
+          console.log(
+            `[whatsapp] conversation_terminal_outcome=conversation_unavailable agency_id=${agencyId} modality=${inbound.modality}`,
+          );
+          return "ok";
+        }
 
         const inboundAt = new Date();
         if (inbound.modality === "audio") {
@@ -421,10 +495,12 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             console.log(
               `[whatsapp] concurrent duplicate delivery ignored provider_message_id=${providerMessageId}`,
             );
-            return new Response("ok");
+            return "ok";
           }
-          console.error("[whatsapp] inbound message insert failed", insertError.message);
-          return new Response("ok");
+          console.error(
+            `[whatsapp] conversation_terminal_outcome=inbound_insert_failed modality=${inbound.modality} reason=${insertError.code ?? "unknown"}`,
+          );
+          return "ok";
         }
         await supabaseAdmin
           .from("whatsapp_configs")
@@ -464,7 +540,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             console.log(
               `[whatsapp] message coalesced into in-flight reply conversation=${conversationId}`,
             );
-            return new Response("ok");
+            return "ok";
           }
           console.log(`[whatsapp] inbound_claimed modality=${inbound.modality}`);
 
@@ -515,7 +591,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
               );
 
               await releaseConversationClaim(supabaseAdmin as never, { agencyId, conversationId });
-              return new Response("ok");
+              return "ok";
             }
             console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
 
@@ -757,6 +833,108 @@ export const Route = createFileRoute("/api/public/whatsapp")({
 
         }
 
+  return "ok";
+}
+
+export const Route = createFileRoute("/api/public/whatsapp")({
+  server: {
+    handlers: {
+      // Meta webhook verification handshake
+      GET: async ({ request }) => {
+        const url = new URL(request.url);
+        const mode = url.searchParams.get("hub.mode");
+        const token = url.searchParams.get("hub.verify_token");
+        const challenge = url.searchParams.get("hub.challenge") ?? "";
+        if (mode !== "subscribe" || !token) {
+          return new Response("Bad request", { status: 400 });
+        }
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data } = await supabaseAdmin
+          .from("whatsapp_configs")
+          .select("id")
+          .eq("verify_token", token)
+          .maybeSingle();
+        if (!data) return new Response("Forbidden", { status: 403 });
+        return new Response(challenge, { headers: { "Content-Type": "text/plain" } });
+      },
+
+      POST: async ({ request }) => {
+        // SECURITY: raw body → signature validation → parse → process.
+        // Nothing below this gate may touch the database, AI, quota or Meta.
+        const rawBody = await request.text();
+        const signature = verifyMetaSignature(
+          rawBody,
+          request.headers.get("x-hub-signature-256"),
+          process.env["META_APP_SECRET"],
+        );
+        if (!signature.valid) {
+          console.error(
+            `[whatsapp] webhook_signature_valid=false reason=${signature.reason} request_processing=rejected`,
+          );
+          return new Response("Unauthorized", { status: 401 });
+        }
+        console.log("[whatsapp] webhook_signature_valid=true");
+
+        let payload: WebhookBody;
+        try {
+          payload = JSON.parse(rawBody) as WebhookBody;
+        } catch {
+          return new Response("Bad request", { status: 400 });
+        }
+
+        // P0-1 — one delivery may carry several entries/changes/messages. All
+        // of them are processed (capped), never just the first.
+        const queued: Array<{ value: WebhookValue; message: InboundMessage }> = [];
+        let candidates = 0;
+        for (const entry of payload.entry ?? []) {
+          for (const change of entry.changes ?? []) {
+            const changeValue = change?.value;
+            if (!changeValue) continue;
+            for (const msg of changeValue.messages ?? []) {
+              candidates += 1;
+              if (queued.length < MAX_MESSAGES_PER_REQUEST) {
+                queued.push({ value: changeValue, message: msg });
+              }
+            }
+          }
+        }
+        if (candidates > MAX_MESSAGES_PER_REQUEST) {
+          console.log(
+            `[whatsapp] webhook_batch_cap_reached cap=${MAX_MESSAGES_PER_REQUEST} received=${candidates}`,
+          );
+        }
+        console.log(
+          `[whatsapp] webhook received batch_size=${queued.length} messages=${candidates}`,
+        );
+        if (queued.length === 0) {
+          console.log("[whatsapp] inbound_dropped reason=missing_message_or_phone_id messages_count=0");
+          return new Response("ok");
+        }
+
+        let retryable = false;
+        for (const item of queued) {
+          const itemPhoneNumberId = item.value.metadata?.phone_number_id?.trim();
+          if (!itemPhoneNumberId) {
+            console.log(
+              `[whatsapp] inbound_dropped reason=missing_message_or_phone_id message_type=${item.message.type ?? "none"}`,
+            );
+            continue;
+          }
+          try {
+            const outcome = await processInboundMessage(item.value, item.message, itemPhoneNumberId);
+            if (outcome === "retry") retryable = true;
+          } catch (error) {
+            console.error(
+              `[whatsapp] conversation_terminal_outcome=error failure_stage=inbound_processing reason=${error instanceof Error ? error.name : "unknown"}`,
+            );
+            retryable = true;
+          }
+        }
+
+        if (retryable) {
+          // P1-1 — no internal detail in the response body.
+          return new Response("Temporary processing failure", { status: 500 });
+        }
         return new Response("ok");
       },
     },
