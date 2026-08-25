@@ -119,12 +119,17 @@ async function structured<T extends z.ZodTypeAny>(
   prompt: string,
 ): Promise<z.infer<T>> {
   try {
+    // Provider-neutral: request options come from the active adapter, never
+    // from a hard-wired vendor key.
+    const config = getAiConfig();
+    const adapter = getProviderAdapter(config.provider);
+    const providerOptions = adapter.requestOptions("reasoning");
     const { output } = await generateText({
-      model: getModel(),
+      model: adapter.model(config.model, "reasoning"),
       output: Output.object({ schema }),
       system,
       prompt,
-      providerOptions: { lovable: { reasoningEffort: "none" } },
+      ...(providerOptions ? { providerOptions: providerOptions as never } : {}),
     });
     return output as z.infer<T>;
   } catch (error) {
