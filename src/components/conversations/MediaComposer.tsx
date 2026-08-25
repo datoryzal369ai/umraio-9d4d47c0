@@ -16,6 +16,8 @@ import {
   OUTBOUND_DOCUMENT_MIME,
   OUTBOUND_IMAGE_MIME,
   PREFERRED_RECORDING_MIME,
+  UNSUPPORTED_RECORDING_MESSAGE,
+  filenameForOutboundMime,
   formatBytes,
   formatDuration,
   normalizeOutboundMime,
@@ -109,7 +111,9 @@ export function MediaComposer({
   async function startRecording() {
     const mime = pickRecordingMime();
     if (!mime) {
-      toast.error("Voice recording isn't supported in this browser.");
+      // Never upload a container WhatsApp cannot play (e.g. audio/webm):
+      // Meta would accept it and the recipient would see nothing.
+      toast.error(UNSUPPORTED_RECORDING_MESSAGE);
       return;
     }
     try {
@@ -126,8 +130,10 @@ export function MediaComposer({
           setState("idle");
           return;
         }
-        const blob = new Blob(chunksRef.current, { type: normalizeOutboundMime(mime) });
-        acceptBlob(blob, "voice-note.ogg");
+        const recordedMime = normalizeOutboundMime(mime);
+        const blob = new Blob(chunksRef.current, { type: recordedMime });
+        // The filename extension must match the real container.
+        acceptBlob(blob, filenameForOutboundMime(recordedMime, "voice-note"));
       };
       recorderRef.current = recorder;
       setSeconds(0);

@@ -6,6 +6,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   MAX_OUTBOUND_BYTES,
   authorizeOutboundSend,
+  filenameForOutboundMime,
   outboundMediaBody,
 } from "@/lib/conversations/outbound-media.core";
 
@@ -107,7 +108,12 @@ export const sendConversationMedia = createServerFn({ method: "POST" })
     const mediaId = await uploadWhatsappMedia(phoneNumberId, accessToken, {
       bytes,
       mimeType,
-      filename: filename ?? (kind === "audio" ? "voice-note.ogg" : "attachment"),
+      // The extension must describe the real container; a hardcoded .ogg on an
+      // mp4/aac recording uploads fine and then never plays on WhatsApp.
+      filename:
+        kind === "audio"
+          ? filenameForOutboundMime(mimeType, "voice-note")
+          : (filename ?? filenameForOutboundMime(mimeType, "attachment")),
     });
     if (!mediaId) {
       // Nothing was persisted and nothing lives on Meta: a failed upload leaves

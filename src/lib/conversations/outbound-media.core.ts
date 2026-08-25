@@ -81,8 +81,40 @@ export function outboundMediaBody(kind: OutboundMediaKind, filename?: string | n
   return name ? `[Document sent] ${name}` : "[Document sent]";
 }
 
-/** Recording containers we are willing to hand to Meta, in preference order. */
+/**
+ * Recording containers we are willing to hand to Meta, in preference order.
+ * OGG/Opus is WhatsApp's native voice-note container; MP4/AAC is the accepted
+ * fallback. `audio/webm` is deliberately absent: Meta accepts the upload but
+ * WhatsApp cannot play it, which is exactly the silent failure we are fixing.
+ */
 export const PREFERRED_RECORDING_MIME = ["audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
+
+export const UNSUPPORTED_RECORDING_MESSAGE =
+  "This browser can only record a format WhatsApp can't play. Please use Safari, or attach an audio file instead.";
+
+/** File extension that matches the actual container, never a hardcoded .ogg. */
+const OUTBOUND_MIME_EXTENSION: Record<string, string> = {
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/amr": "amr",
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "application/pdf": "pdf",
+};
+
+export function filenameForOutboundMime(
+  raw: string | null | undefined,
+  base = "attachment",
+): string {
+  const mime = normalizeOutboundMime(raw);
+  const extension = OUTBOUND_MIME_EXTENSION[mime];
+  return extension ? `${base}.${extension}` : base;
+}
+
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
