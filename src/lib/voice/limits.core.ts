@@ -32,6 +32,7 @@ export type VoiceRejection =
   | "unsupported_media"
   | "media_unavailable"
   | "quota_exceeded"
+  | "inaudible"
   | "asr_failed";
 
 /**
@@ -50,9 +51,17 @@ export const VOICE_TOO_LONG_MESSAGE =
 export const VOICE_QUOTA_MESSAGE =
   "Maaf Datuk, penggunaan voice bulan ini dah mencapai had. Datuk boleh taip mesej di sini, atau sambung semula voice selepas had diperbaharui.";
 
+/**
+ * The provider transcribed successfully but heard nothing intelligible. Voice
+ * notes ARE supported — the customer is simply asked to resend.
+ */
+export const VOICE_INAUDIBLE_MESSAGE =
+  "Maaf Datuk, suara tadi tak dapat saya dengar dengan jelas. Boleh hantar sekali lagi?";
+
 export function fallbackMessageFor(reason: VoiceRejection): string {
   if (reason === "too_long" || reason === "too_large") return VOICE_TOO_LONG_MESSAGE;
   if (reason === "quota_exceeded") return VOICE_QUOTA_MESSAGE;
+  if (reason === "inaudible" || reason === "empty_audio") return VOICE_INAUDIBLE_MESSAGE;
   return VOICE_FALLBACK_MESSAGE;
 }
 
@@ -78,4 +87,20 @@ export function checkAudioLimits(args: {
  */
 export function normalizeTranscript(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A transcript that carries no speech content: empty, whitespace, or only
+ * punctuation / filler markers some models emit for silence. Malay words,
+ * digits, currency and code-switched English are ALWAYS content.
+ */
+export function isEffectivelyEmptyTranscript(text: string | null | undefined): boolean {
+  const value = normalizeTranscript(text ?? "");
+  if (!value) return true;
+  // Strip punctuation and bracketed markers such as "[silence]" / "(inaudible)".
+  const stripped = value
+    .replace(/[[(][^\])]*[\])]/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim();
+  return stripped.length === 0;
 }
