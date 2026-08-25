@@ -11,6 +11,9 @@ import type { AiProviderId } from "./config.server";
  * provider SDK. A future RÉNAIO.CORE™ engine registers its own adapter here and
  * the gateway keeps working unchanged. All provider-specific request options
  * live inside the adapter, never in the neutral gateway.
+ *
+ * Lovable is NOT a mandatory runtime dependency: it is one optional adapter
+ * among others and is only selected when explicitly configured.
  */
 
 export type ProviderTransport = "fast" | "reasoning";
@@ -19,6 +22,15 @@ export type ProviderAdapter = {
   id: string;
   /** Throws a clear configuration error when credentials are missing. */
   readApiKey: () => string;
+  /** True when this adapter's credentials are present (no secret is exposed). */
+  hasCredentials: () => boolean;
+  /** Name of the environment variable holding this provider's credential. */
+  credentialEnvVar: string;
+  /** Default primary/fast model ids for this provider. */
+  defaultModel: string;
+  defaultFastModel: string;
+  /** Provider-scoped fallback model, or null when none is safe by default. */
+  defaultFallbackModel: string | null;
   /** Build a model handle for the given transport class. */
   model: (modelId: string, transport: ProviderTransport) => LanguageModel;
   /** Provider-specific request options for a transport class. */
@@ -37,8 +49,57 @@ function isOpenAiModel(modelId: string) {
   return modelId.startsWith("openai/");
 }
 
+/* ------------------------------------------------------------------ */
+/* OpenAI Direct — production default when OPENAI_API_KEY is configured */
+/* ------------------------------------------------------------------ */
+
+/** Strip any gateway-style vendor prefix: OpenAI Direct takes bare model ids. */
+function bareOpenAiModelId(modelId: string): string {
+  return modelId.startsWith("openai/") ? modelId.slice("openai/".length) : modelId;
+}
+
+const openAiAdapter: ProviderAdapter = {
+  id: "openai",
+  credentialEnvVar: "OPENAI_API_KEY",
+  // Current, production-safe Responses API model ids.
+  defaultModel: "gpt-4.1",
+  defaultFastModel: "gpt-4.1-mini",
+  // No implicit fallback: a fallback must be configured explicitly so it can
+  // never silently reintroduce another provider dependency.
+  defaultFallbackModel: null,
+  hasCredentials() {
+    return Boolean(env("OPENAI_API_KEY"));
+  },
+  readApiKey() {
+    const key = env("OPENAI_API_KEY");
+    if (!key) throw new Error("AI configuration error: missing OPENAI_API_KEY");
+    return key;
+  },
+  model(modelId) {
+    const openai = createOpenAI({ apiKey: this.readApiKey() });
+    return openai.responses(bareOpenAiModelId(modelId));
+  },
+  requestOptions(transport) {
+    if (transport === "reasoning") {
+      return { openai: { store: false } };
+    }
+    return { openai: { store: false } };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* Lovable AI Gateway — optional, explicitly configured only            */
+/* ------------------------------------------------------------------ */
+
 const lovableAdapter: ProviderAdapter = {
   id: "lovable",
+  credentialEnvVar: "LOVABLE_API_KEY",
+  defaultModel: "openai/gpt-5.6-sol",
+  defaultFastModel: "openai/gpt-5.6-sol",
+  defaultFallbackModel: "google/gemini-2.5-flash",
+  hasCredentials() {
+    return Boolean(env("LOVABLE_API_KEY"));
+  },
   readApiKey() {
     const key = env("LOVABLE_API_KEY");
     if (!key) throw new Error("AI configuration error: missing LOVABLE_API_KEY");
@@ -80,7 +141,10 @@ const lovableAdapter: ProviderAdapter = {
   },
 };
 
-const ADAPTERS = new Map<string, ProviderAdapter>([[lovableAdapter.id, lovableAdapter]]);
+const ADAPTERS = new Map<string, ProviderAdapter>([
+  [openAiAdapter.id, openAiAdapter],
+  [lovableAdapter.id, lovableAdapter],
+]);
 
 export function registerProviderAdapter(adapter: ProviderAdapter) {
   ADAPTERS.set(adapter.id, adapter);
@@ -88,6 +152,10 @@ export function registerProviderAdapter(adapter: ProviderAdapter) {
 
 export function isSupportedProvider(id: string): id is AiProviderId {
   return ADAPTERS.has(id);
+}
+
+export function listProviderIds(): string[] {
+  return [...ADAPTERS.keys()];
 }
 
 export function getProviderAdapter(id: string): ProviderAdapter {
@@ -98,4 +166,19 @@ export function getProviderAdapter(id: string): ProviderAdapter {
     );
   }
   return adapter;
+}
+
+/**
+ * Resolve the active provider id.
+ *
+ * Explicit AI_PROVIDER always wins. Otherwise OpenAI Direct is preferred when
+ * its credential is present; Lovable is only used as a legacy last resort when
+ * it is the only configured provider.
+ */
+export function resolveProviderId(): string {
+  const explicit = env("AI_PROVIDER");
+  if (explicit) return explicit;
+  if (openAiAdapter.hasCredentials()) return openAiAdapter.id;
+  if (lovableAdapter.hasCredentials()) return lovableAdapter.id;
+  return openAiAdapter.id; // fail as configuration, not silently on Lovable
 }
