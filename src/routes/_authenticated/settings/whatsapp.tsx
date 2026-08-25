@@ -188,8 +188,16 @@ function WhatsappSettings() {
             </div>
           </section>
 
+          <EmbeddedSignupCard isConnected={Boolean(config?.is_connected)} />
+
           <section className="panel space-y-4 p-5">
-            <h2 className="font-display text-base font-semibold">{copy.credentials.title}</h2>
+            <div>
+              <h2 className="font-display text-base font-semibold">{copy.credentials.title}</h2>
+              <p className="text-xs text-muted-foreground">
+                Manual fallback for admins. Most agencies should use Connect with Meta above.
+              </p>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="display">{copy.credentials.displayNumber}</Label>
