@@ -17,6 +17,20 @@ export const LIVE_CALL_UNAVAILABLE_MS =
   "Buat masa ini panggilan telefon secara langsung belum tersedia, tetapi saya boleh terus berbual di WhatsApp sini.";
 
 /**
+ * Used when a reply consisted ONLY of forbidden capability-denial text. Never
+ * return the original in that case — it would ship the exact contradiction.
+ */
+export const VOICE_CAPABILITY_FALLBACK_MS =
+  "Baik, saya boleh terus bantu di sini — melalui mesej atau nota suara. Boleh saya tahu bulan berapa Datuk bercadang nak berangkat?";
+
+/** True when the text already tells the customer phone calls are unavailable. */
+function mentionsLiveCallUnavailable(text: string): boolean {
+  return /\b(?:panggilan\s+telefon|call|telefon|phone\s+call)\b[^.!?]{0,60}\b(?:belum|tidak|tak|not)\b/i.test(
+    text,
+  );
+}
+
+/**
  * Sentences that deny a capability UMRAIO actually has. Matched per sentence so
  * only the false sentence is removed, never the whole reply.
  */
@@ -61,19 +75,32 @@ function splitSentences(text: string): string[] {
  */
 export function sanitizeCapabilityClaims(
   text: string,
-  options: CapabilityState & { customerAskedIdentity?: boolean },
+  options: CapabilityState & { customerAskedIdentity?: boolean; liveCallRequested?: boolean },
 ): string {
-  if (!text) return text;
+  const original = (text ?? "").trim();
   const drop: RegExp[] = [];
   if (options.voiceAvailable) drop.push(...FALSE_VOICE_DENIAL_PATTERNS);
   if (!options.customerAskedIdentity) drop.push(...SELF_REFERENTIAL_PATTERNS);
-  if (!drop.length) return text;
 
-  const kept = splitSentences(text).filter(
-    (sentence) => !drop.some((pattern) => pattern.test(sentence)),
-  );
-  const cleaned = kept.join(" ").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-  return cleaned || text.trim();
+  let cleaned = original;
+  if (drop.length && original) {
+    const kept = splitSentences(original).filter(
+      (sentence) => !drop.some((pattern) => pattern.test(sentence)),
+    );
+    cleaned = kept.join(" ").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  // A reply made up ONLY of forbidden denial text must never be shipped as-is.
+  if (!cleaned) {
+    cleaned = options.voiceAvailable && original ? VOICE_CAPABILITY_FALLBACK_MS : original;
+  }
+
+  // Runtime enforcement (not prompt-only): the customer asked for a phone call.
+  if (options.liveCallRequested && !mentionsLiveCallUnavailable(cleaned)) {
+    cleaned = cleaned ? `${LIVE_CALL_UNAVAILABLE_MS} ${cleaned}` : LIVE_CALL_UNAVAILABLE_MS;
+  }
+
+  return cleaned;
 }
 
 /** Prompt lines injected into the sales system prompt. */
