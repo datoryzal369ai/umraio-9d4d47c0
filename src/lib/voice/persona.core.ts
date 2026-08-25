@@ -175,14 +175,23 @@ export function resolvePersona(input?: {
     const override = input?.controls?.[control];
     if (override !== undefined && override !== null) controls[control] = clampControl(override);
   }
-  return { key, voice: input?.voice?.trim() || base.voice, controls };
+  // An unsupported custom voice would be rejected by the engine; fall back to
+  // the persona's own voice instead of failing the whole voice turn.
+  const requested = input?.voice?.trim().toLowerCase() ?? "";
+  const voice = requested && isSupportedTtsVoice(requested) ? requested : base.voice;
+  return { key, voice, controls };
 }
 
-/** OpenAI TTS accepts 0.25–4.0; we stay inside a human conversational band. */
+/**
+ * OpenAI TTS accepts 0.25–4.0. Anything outside a narrow band sounds
+ * mechanically sped up or dragged, so we stay inside a genuinely
+ * conversational range and let the delivery come from the instructions.
+ */
 export function paceToSpeed(pace: number): number {
   const p = clampControl(pace);
-  return Math.round((0.82 + (p / 100) * 0.36) * 100) / 100; // 0.82 – 1.18
+  return Math.round((0.9 + (p / 100) * 0.18) * 100) / 100; // 0.90 – 1.08
 }
+
 
 function band(value: number, low: string, mid: string, high: string): string {
   if (value <= 33) return low;
