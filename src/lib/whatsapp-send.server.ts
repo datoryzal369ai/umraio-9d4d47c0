@@ -22,12 +22,17 @@ async function metaFetch(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
-export async function sendWhatsappText(
+/**
+ * Detailed text send. Returns Meta's `wamid` so console sends can persist the
+ * real provider message id. `sendWhatsappText` keeps its boolean contract for
+ * every existing caller.
+ */
+export async function sendWhatsappTextDetailed(
   phoneNumberId: string,
   accessToken: string,
   to: string,
   body: string,
-): Promise<boolean> {
+): Promise<{ ok: boolean; providerMessageId: string | null }> {
   try {
     const res = await metaFetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
       method: "POST",
@@ -45,18 +50,32 @@ export async function sendWhatsappText(
     if (!res.ok) {
       // Meta error bodies never contain the token; safe to log verbatim.
       console.error(`[whatsapp] outbound send failed status=${res.status} body=${await res.text()}`);
-      return false;
+      return { ok: false, providerMessageId: null };
     }
     console.log(`[whatsapp] outbound send ok status=${res.status}`);
-    return true;
+    const payload = (await res.json?.().catch(() => null)) as
+      | { messages?: Array<{ id?: string }> }
+      | null;
+    return { ok: true, providerMessageId: payload?.messages?.[0]?.id ?? null };
   } catch (error) {
     const aborted = error instanceof Error && error.name === "AbortError";
     console.error(
       `[whatsapp] outbound send failed reason=${aborted ? "timeout" : error instanceof Error ? error.name : "unknown"}`,
     );
-    return false;
+    return { ok: false, providerMessageId: null };
   }
 }
+
+export async function sendWhatsappText(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  body: string,
+): Promise<boolean> {
+  const result = await sendWhatsappTextDetailed(phoneNumberId, accessToken, to, body);
+  return result.ok;
+}
+
 
 /**
  * Best-effort WhatsApp typing/processing indicator.
