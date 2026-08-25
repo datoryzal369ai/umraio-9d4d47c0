@@ -49,37 +49,58 @@ export async function transcribeAudio(input: {
   mimeType: string;
   language?: string | null;
 }): Promise<AsrResult> {
-  const apiKey = process.env["LOVABLE_API_KEY"];
-  if (!apiKey) {
+  const providers = resolveAudioProviders();
+  if (providers.length === 0) {
     console.error("[voice] asr_failure category=config");
     return { ok: false, kind: "config", status: null };
   }
 
+  let last: AsrResult = { ok: false, kind: "provider", status: null };
+  for (const provider of providers) {
+    const result = await transcribeWith(provider, input);
+    if (result.ok) return result;
+    last = result;
+    // Terminal, provider-scoped failures (credential / entitlement / limits)
+    // are worth trying on the next configured provider. A genuinely invalid
+    // audio file is not — it would fail identically everywhere.
+    if (result.kind === "invalid_audio") return result;
+    console.error(`[voice] asr_failover provider=${provider.id} category=${result.kind}`);
+  }
+  return last;
+}
+
+async function transcribeWith(
+  provider: AudioProvider,
+  input: { bytes: Uint8Array; mimeType: string; language?: string | null },
+): Promise<AsrResult> {
   const base = input.mimeType.split(";")[0]!.trim().toLowerCase();
   const ext = EXT[base] ?? "ogg";
   const blob = new Blob([input.bytes.slice() as unknown as BlobPart], { type: base || "audio/ogg" });
+  const endpoint = `${provider.baseUrl}/audio/transcriptions`;
 
   const maxAttempts = 3;
   let lastStatus: number | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const form = new FormData();
-    form.append("model", ASR_MODEL);
+    form.append("model", provider.transcribeModel);
     form.append("file", blob, `voice-note.${ext}`);
     const asrLanguage = input.language === undefined ? null : asrLanguageFor(input.language);
     if (asrLanguage) form.append("language", asrLanguage);
 
     let res: Response;
     try {
-      res = await fetch(ASR_ENDPOINT, {
+      res = await fetch(endpoint, {
         method: "POST",
         // Never set Content-Type manually — the runtime sets the boundary.
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: provider.headers(),
         body: form,
       });
     } catch (error) {
       lastStatus = null;
-      console.error(`[voice] asr_failure category=network attempt=${attempt} name=${error instanceof Error ? error.name : "unknown"}`);
+      console.error(
+        `[voice] asr_failure provider=${provider.id} category=network attempt=${attempt} name=${error instanceof Error ? error.name : "unknown"}`,
+      );
       if (attempt < maxAttempts) {
         await sleep(400 * attempt);
         continue;
@@ -93,28 +114,29 @@ export async function transcribeAudio(input: {
         | null;
       const text = normalizeTranscript(payload?.text ?? "");
       if (!text) {
-        console.error("[voice] asr_failure category=empty_transcript");
+        console.error(`[voice] asr_failure provider=${provider.id} category=empty_transcript`);
         return { ok: false, kind: "invalid_audio", status: res.status };
       }
       const seconds =
         typeof payload?.usage?.seconds === "number" && payload.usage.seconds > 0
           ? Math.round(payload.usage.seconds)
           : null;
+      console.log(`[voice] asr_success provider=${provider.id}`);
       return { ok: true, text, durationSeconds: seconds };
     }
 
     lastStatus = res.status;
     // Terminal statuses: never retried, never surfaced to the customer.
     if (res.status === 400 || res.status === 404) {
-      console.error(`[voice] asr_failure category=invalid_audio status=${res.status}`);
+      console.error(`[voice] asr_failure provider=${provider.id} category=invalid_audio status=${res.status}`);
       return { ok: false, kind: "invalid_audio", status: res.status };
     }
     if (res.status === 401) {
-      console.error("[voice] asr_failure category=config status=401");
+      console.error(`[voice] asr_failure provider=${provider.id} category=config status=401`);
       return { ok: false, kind: "config", status: 401 };
     }
     if (res.status === 402 || res.status === 403) {
-      console.error(`[voice] asr_failure category=entitlement status=${res.status}`);
+      console.error(`[voice] asr_failure provider=${provider.id} category=entitlement status=${res.status}`);
       return { ok: false, kind: "entitlement", status: res.status };
     }
 
@@ -125,7 +147,9 @@ export async function transcribeAudio(input: {
       await sleep(Math.min(waitMs, 3_000));
       continue;
     }
-    console.error(`[voice] asr_failure category=${res.status === 429 ? "rate_limited" : "provider"} status=${res.status}`);
+    console.error(
+      `[voice] asr_failure provider=${provider.id} category=${res.status === 429 ? "rate_limited" : "provider"} status=${res.status}`,
+    );
     return {
       ok: false,
       kind: res.status === 429 ? "rate_limited" : "provider",
@@ -135,3 +159,4 @@ export async function transcribeAudio(input: {
 
   return { ok: false, kind: "provider", status: lastStatus };
 }
+
