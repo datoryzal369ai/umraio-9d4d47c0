@@ -149,13 +149,18 @@ function condenseToTarget(text: string, limit = TARGET_SPEECH_CHARS): string {
   const kept: string[] = [];
   let used = 0;
   for (const sentence of body) {
-    if (kept.length && used + sentence.length + 1 > budget) break;
+    // Keep going while there is budget. A short lead-in sentence (a package
+    // title, "Baik.") must never be the ONLY thing spoken — the next sentence
+    // usually carries the price/date fact, so allow it through.
+    const leadInOnly = kept.length === 1 && used < limit / 2;
+    if (kept.length && !leadInOnly && used + sentence.length + 1 > budget) break;
     kept.push(sentence);
     used += sentence.length + 1;
   }
   const out = [...kept, ...(closing ? [closing] : [])].join(" ").trim();
   return out || sentences[0]!;
 }
+
 
 /** Do not append a question to every reply; keep at most one closing ask. */
 function trimForcedEngagement(text: string): string {
