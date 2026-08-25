@@ -3,16 +3,21 @@
  *
  * ENGINE-AGNOSTIC BY DESIGN. `VoiceEngine` is the only contract the pipeline
  * knows about. Two drivers ship today:
- *   - `lovable`  : Lovable AI voice (OpenAI gpt-4o-mini-tts) — proven, emits a
- *                  complete OGG/Opus file, exactly what Meta accepts.
+ *   - `openai`   : OpenAI Direct (gpt-4o-mini-tts) — the PRODUCTION source of
+ *                  speech; emits a complete OGG/Opus file, exactly what Meta
+ *                  accepts.
+ *   - `lovable`  : OPTIONAL non-production compatibility adapter, used only
+ *                  when OpenAI Direct is not configured at all. It is never an
+ *                  implicit fallback when AI_PROVIDER=openai.
  *   - `xiaozhi`  : a SELF-HOSTED XiaoZhi TTS HTTP endpoint. XiaoZhi publishes
  *                  no hosted cloud TTS API, so this driver stays inert unless
  *                  XIAOZHI_TTS_URL is configured. When it is not configured it
  *                  fails cleanly and the chain falls back to `lovable`.
  *
  * FALLBACK CONTRACT: `synthesizeSpeech` tries the selected provider first and
- * falls back to the proven provider on any failure. A total TTS failure never
- * touches the text answer, the Islamic review workflow or the WhatsApp turn.
+ * falls back only to OpenAI Direct in strict mode (AI_PROVIDER=openai). A total
+ * TTS failure never touches the text answer, the Islamic review workflow or the
+ * WhatsApp turn.
  *
  * SECURITY: credentials stay in this module, are never logged and never
  * returned. Audio bytes are held in memory only and never persisted.
@@ -65,10 +70,14 @@ export function isWhatsappCompatibleAudio(mimeType: string): boolean {
 }
 
 export const LOVABLE_TTS_MODEL = "openai/gpt-4o-mini-tts";
-export const DEFAULT_VOICE = "sage";
+/**
+ * `marin` is the most natural, least announcer-like voice currently supported
+ * by gpt-4o-mini-tts (verified against the live supported-voice list).
+ */
+export const DEFAULT_VOICE = "marin";
 
 export const DEFAULT_VOICE_INSTRUCTIONS =
-  "You are a warm, confident Malaysian Umrah travel executive speaking Bahasa Melayu on a WhatsApp voice note. Speak conversationally, not like a news reader: unhurried pace, gentle warmth, natural rises and falls, a short breath at commas and a real pause at full stops. Pronounce Malay words with Malaysian pronunciation and Arabic terms respectfully. Never spell out punctuation, symbols, links or reference codes.";
+  "You are a senior Malaysian Umrah travel consultant recording a personal WhatsApp voice note in everyday Malaysian Malay. Speak like a real person in conversation: warm, unhurried, varied intonation, gentle micro-pauses and natural breaths between thoughts, never a repeating or metronome-like rhythm. No announcer, IVR, call-centre or audiobook-narrator delivery, no monotone, no exaggerated emotion, no rushing. Pronounce Malay with Malaysian pronunciation and Arabic or Islamic terms respectfully and exactly as written. Speak prices, dates and package names exactly as given, and never spell out punctuation, symbols, links or reference codes.";
 
 function classify(status: number): TtsFailureKind {
   if (status === 400 || status === 404) return "invalid_request";
@@ -222,19 +231,26 @@ export const VOICE_ENGINES: Record<VoiceEngineName, VoiceEngine> = {
   xiaozhi: xiaozhiVoiceEngine,
 };
 
-/** Legacy constant; the live fallback is resolved by `provenEngine()`. */
+/**
+ * Legacy constant kept for compatibility only. It is NOT the production
+ * fallback: in production (AI_PROVIDER=openai) there is no Lovable failover.
+ */
 export const FALLBACK_ENGINE_NAME: VoiceEngineName = "lovable";
 
+/** True when the operator pinned the runtime to OpenAI Direct. */
+export function isStrictOpenAiMode(): boolean {
+  return (process.env["AI_PROVIDER"] ?? "").trim().toLowerCase() === "openai";
+}
+
 /**
- * The proven provider every chain falls back to: OpenAI Direct in production,
- * the Lovable gateway only when OpenAI is not configured.
+ * The engine every chain resolves to: OpenAI Direct in production, the
+ * optional Lovable gateway only when OpenAI is not configured at all.
  */
 export function provenEngine(): VoiceEngine {
   const chain = resolveAudioProviders();
   const primary = chain[0];
-  if (primary?.id === "openai") return openAiVoiceEngine;
-  if (primary?.id === "lovable") return lovableVoiceEngine;
-  return lovableVoiceEngine;
+  if (primary?.id === "lovable" && !isStrictOpenAiMode()) return lovableVoiceEngine;
+  return openAiVoiceEngine;
 }
 
 export function selectVoiceEngine(name?: string | null): VoiceEngine {
@@ -245,9 +261,18 @@ export function selectVoiceEngine(name?: string | null): VoiceEngine {
   return provenEngine();
 }
 
-/** Selected provider first, proven provider second (deduplicated). */
+/**
+ * Selected provider first, proven provider second (deduplicated).
+ *
+ * HARD PRODUCTION RULE: when AI_PROVIDER=openai, OpenAI Direct is the only
+ * source of speech. A TTS failure stays a failure (the turn falls back to the
+ * already-delivered text answer) — it NEVER silently reroutes to Lovable.
+ */
 export function selectVoiceProviderChain(name?: string | null): VoiceEngine[] {
   const primary = selectVoiceEngine(name);
+  if (isStrictOpenAiMode()) {
+    return primary.name === "openai" ? [primary] : [primary, openAiVoiceEngine];
+  }
   const fallback = provenEngine();
   return primary.name === fallback.name ? [primary] : [primary, fallback];
 }
