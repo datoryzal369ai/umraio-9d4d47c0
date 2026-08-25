@@ -176,6 +176,7 @@ export async function sendWhatsappMediaMessage(
     mediaId: string;
     caption?: string;
     filename?: string;
+    voice?: boolean;
   },
 ): Promise<{ ok: boolean; providerMessageId: string | null }> {
   try {
@@ -185,6 +186,7 @@ export async function sendWhatsappMediaMessage(
       type: media.kind,
     };
     const object: Record<string, unknown> = { id: media.mediaId };
+    if (media.kind === "audio" && media.voice) object["voice"] = true;
     if (media.kind !== "audio" && media.caption) object["caption"] = media.caption;
     if (media.kind === "document" && media.filename) object["filename"] = media.filename;
     payload[media.kind] = object;

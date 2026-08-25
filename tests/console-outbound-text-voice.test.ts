@@ -16,6 +16,7 @@ import { authorizeOutboundText } from "../src/lib/conversations/outbound-text.co
 import {
   sendWhatsappText,
   sendWhatsappTextDetailed,
+  sendWhatsappMediaMessage,
   uploadWhatsappMedia,
 } from "../src/lib/whatsapp-send.server";
 
@@ -131,10 +132,27 @@ describe("console outbound VOICE — container/filename truth", () => {
     expect(validateRecordedAudioBytes("audio/mp4", aac)).toMatchObject({ ok: true, codec: "aac" });
     expect(validateRecordedAudioBytes("audio/mp4", opus)).toMatchObject({ ok: false });
   });
+
+  it("15. sends OGG/Opus with Meta's native voice-note flag", async () => {
+    const fetchSpy = vi.fn(async () =>
+      new Response(JSON.stringify({ messages: [{ id: "wamid.VOICE" }] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    await sendWhatsappMediaMessage("PN", "TOKEN", "60123456789", {
+      kind: "audio",
+      mediaId: "MEDIA",
+      voice: true,
+    });
+    const request = fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      type: "audio",
+      audio: { id: "MEDIA", voice: true },
+    });
+  });
 });
 
 describe("image path regression", () => {
-  it("15. image authorisation is unchanged", () => {
+  it("16. image authorisation is unchanged", () => {
     expect(authorizeOutboundSend({ conversation, mimeType: "image/jpeg", byteLength: 100_000 })).toMatchObject({
       ok: true,
       kind: "image",
@@ -143,25 +161,25 @@ describe("image path regression", () => {
     });
   });
 
-  it("16. picker filenames are preserved for images", () => {
+  it("17. picker filenames are preserved for images", () => {
     expect(filenameForOutboundMime("image/jpeg", "attachment")).toBe("attachment.jpg");
   });
 });
 
 describe("WhatsApp delivery status reconciliation", () => {
-  it("17. recognizes provider terminal and progress statuses", () => {
+  it("18. recognizes provider terminal and progress statuses", () => {
     expect(normalizeWhatsappDeliveryStatus("delivered")).toBe("delivered");
     expect(normalizeWhatsappDeliveryStatus("unknown")).toBeNull();
   });
 
-  it("18. advances status and refuses out-of-order regression", () => {
+  it("19. advances status and refuses out-of-order regression", () => {
     expect(shouldApplyWhatsappStatus("sent", "delivered")).toBe(true);
     expect(shouldApplyWhatsappStatus("delivered", "read")).toBe(true);
     expect(shouldApplyWhatsappStatus("read", "delivered")).toBe(false);
     expect(shouldApplyWhatsappStatus("read", "failed")).toBe(true);
   });
 
-  it("19. sanitizes status error diagnostics", () => {
+  it("20. sanitizes status error diagnostics", () => {
     expect(summarizeWhatsappStatusError({ code: 131053, title: "Media upload error\n", error_data: { details: "codec" } }))
       .toBe("code=131053 title=Media upload error  details=codec");
   });

@@ -131,6 +131,11 @@ export const sendConversationMedia = createServerFn({ method: "POST" })
     const send = await sendWhatsappMediaMessage(phoneNumberId, accessToken, to, {
       kind,
       mediaId,
+      // Native WhatsApp voice-note rendering requires OGG/Opus plus voice=true.
+      // AAC/MP4 remains a supported, playable generic audio attachment.
+      ...(audioBytes?.ok && audioBytes.container === "ogg" && audioBytes.codec === "opus"
+        ? { voice: true }
+        : {}),
       ...(caption ? { caption } : {}),
       ...(kind === "document" && filename ? { filename } : {}),
     });
