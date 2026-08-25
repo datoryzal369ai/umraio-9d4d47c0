@@ -1,76 +1,29 @@
 /**
- * UMRAIO® VOICE V4 — SPEECH SCRIPT LAYER.
+ * UMRAIO® VOICE — SPEECH SCRIPT LAYER (minimal, post-V4 rollback).
  *
- *   AI SALES REPLY (written, CRM-grade)
+ *   AI SALES REPLY (written)
  *      → SPEECH SCRIPT LAYER (this file)
  *      → VOICE PRESENTATION LAYER (rhythm + Malay normalisation)
  *      → OpenAI /v1/audio/speech
  *
- * PURE + DETERMINISTIC. No model call, no randomness.
+ * SCOPE DELIBERATELY NARROW. The V4 experiment rewrote written Malay through a
+ * large register dictionary ("selain itu" → "lepas tu", "merupakan" → "memang",
+ * …). It made voice notes sound like artificial slang, so it was REMOVED.
+ * Natural Malaysian conversational speech must come from the TTS model plus
+ * concise conversational source text — not from regex.
  *
- * WHY: the text a customer READS is a written sales answer — formal register,
- * markdown, bullets, currency symbols, "Datuk" in every sentence. Feeding that
- * straight to TTS is exactly what makes a voice note sound like someone
- * READING A BROCHURE. This layer rewrites the same answer into how a Malaysian
- * Umrah consultant would actually SAY it.
+ * What remains here is only what a text-to-speech engine genuinely cannot say:
+ * markdown/bullets written for the eye, and shorthand forms ("4 pax", "&",
+ * "5D/4M") that would otherwise be read out literally.
  *
  * HARD RULE — FACTS ARE NEVER TOUCHED: prices, dates, hotel names, package
- * names, durations and religious content pass through unchanged. Only register
- * (word choice, honorific repetition, sentence length) is changed.
+ * names, durations and religious content pass through unchanged.
  */
 
 /** Honorifics a Malaysian consultant uses — spoken at most ONCE per note. */
 const HONORIFICS = /\b(Datuk|Dato'|Datin|Tuan|Puan|Encik|Cik)\b/g;
 
-/**
- * Written → spoken register. Left side is formal/administrative Malay that
- * makes TTS sound like a circular; right side is what people actually say.
- * Meaning is identical in every pair.
- */
-const SPOKEN_REGISTER: Array<[RegExp, string]> = [
-  [/\bsekiranya\b/gi, "kalau"],
-  [/\bsekiranya\s+berminat\b/gi, "kalau berminat"],
-  [/\bjika\b/gi, "kalau"],
-  [/\bandai\b/gi, "kalau"],
-  [/\btersebut\b/gi, "tu"],
-  [/\bini\s+adalah\b/gi, "ini"],
-  [/\bmerupakan\b/gi, "memang"],
-  [/\bselain\s+itu\b/gi, "lepas tu"],
-  [/\bdi\s+samping\s+itu\b/gi, "lepas tu"],
-  [/\bseterusnya\b/gi, "lepas tu"],
-  [/\bwalau\s+bagaimanapun\b/gi, "tapi"],
-  [/\bnamun\s+begitu\b/gi, "tapi"],
-  [/\bnamun\b/gi, "tapi"],
-  [/\boleh\s+yang\s+demikian\b/gi, "jadi"],
-  [/\bdengan\s+itu\b/gi, "jadi"],
-  [/\bmaka\b/gi, "jadi"],
-  [/\bmemaklumkan\b/gi, "beritahu"],
-  [/\bmaklumat\s+lanjut\b/gi, "detail"],
-  [/\bpertanyaan\b/gi, "soalan"],
-  [/\bmenyediakan\b/gi, "ada"],
-  [/\bdisediakan\b/gi, "ada"],
-  [/\bmengandungi\b/gi, "ada"],
-  [/\btermasuklah\b/gi, "termasuk"],
-  [/\bpenginapan\b/gi, "hotel"],
-  [/\bberhampiran\s+dengan\b/gi, "dekat dengan"],
-  [/\bberhampiran\b/gi, "dekat dengan"],
-  [/\bboleh\s+dipertimbangkan\b/gi, "boleh"],
-  [/\bkami\s+ingin\s+memaklumkan\s+bahawa\b/gi, "saya nak beritahu"],
-  [/\bharga\s+bagi\s+pakej\b/gi, "harga pakej"],
-  [/\bpada\s+harga\s+sebanyak\b/gi, "harganya"],
-  [/\bsebanyak\s+(?=RM)/gi, ""],
-  [/\bbagi\s+setiap\s+orang\b/gi, "seorang"],
-  [/\bsetiap\s+peserta\b/gi, "seorang"],
-  [/\bper\s+pax\b/gi, "seorang"],
-  [/\bsila\s+maklumkan\b/gi, "bagitahu saya"],
-  [/\bsila\s+nyatakan\b/gi, "bagitahu saya"],
-  [/\bsila\b/gi, "boleh"],
-  [/\bterima\s+kasih\s+kerana\s+menghubungi\s+kami\b/gi, "terima kasih sebab hubungi kami"],
-  [/\bAdakah\s+anda\s+berminat\b/gi, "Kalau berminat"],
-  [/\bharap\s+maklum\b/gi, ""],
-];
-
-/** Currency and shorthand written for the eye, not the ear. */
+/** Shorthand written for the eye, not the ear. No register rewriting here. */
 const EYE_ONLY_FORMS: Array<[RegExp, string]> = [
   [/\bRM\s+(?=\d)/g, "RM"],
   [/(\d)\s*(?:pax|PAX|Pax)\b/g, "$1 orang"],
@@ -117,34 +70,13 @@ export function stripWrittenFormatting(text: string): string {
 }
 
 /**
- * One long written sentence becomes two spoken ones at a natural Malay clause
- * boundary. Voice notes breathe; written answers do not.
- */
-function breakLongSentences(text: string, maxChars = 120): string {
-  const sentences = (text.match(/[^.!?]+[.!?]*/g) ?? [text]).map((s) => s.trim()).filter(Boolean);
-  return sentences
-    .map((sentence) => {
-      if (sentence.length <= maxChars) return sentence;
-      const split = sentence.replace(
-        /,\s+(tapi|jadi|kalau|lepas tu|sebab|untuk)\s+/i,
-        (_m, w) => `. ${String(w).charAt(0).toUpperCase()}${String(w).slice(1)} `,
-      );
-      return split;
-    })
-    .join(" ");
-}
-
-/**
- * Turn a written sales reply into a spoken Malaysian Malay script.
- *
- * Deterministic and meaning-preserving: it changes REGISTER, never FACTS.
+ * Prepare a written sales reply for speech WITHOUT rewriting its wording.
+ * Deterministic and meaning-preserving.
  */
 export function toSpeechScript(raw: string): string {
   let text = stripWrittenFormatting(raw ?? "");
   for (const [pattern, replacement] of EYE_ONLY_FORMS) text = text.replace(pattern, replacement);
-  for (const [pattern, replacement] of SPOKEN_REGISTER) text = text.replace(pattern, replacement);
   text = limitHonorificRepetition(text);
-  text = breakLongSentences(text);
   return text
     .replace(/\s{2,}/g, " ")
     .replace(/\s+([,.!?;:])/g, "$1")
