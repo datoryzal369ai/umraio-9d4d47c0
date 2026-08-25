@@ -465,6 +465,7 @@ function systemPrompt(
       }),
     ),
     `You speak with prospective pilgrims on WhatsApp. Personality: ${personality} Tone: ${tone}. Always respect Islamic etiquette.`,
+    ...capabilityTruthInstructions({ voiceAvailable: true }),
 
     `${language} ${length} WhatsApp style, no markdown headings.`,
     s?.ai_emoji === false
