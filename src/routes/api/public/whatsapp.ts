@@ -348,7 +348,13 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         if (conversation) {
           conversationId = conversation.id;
           aiEnabled = conversation.ai_enabled;
-          const convUpdate: Record<string, unknown> = {
+          let convUpdate: {
+            last_message_at: string;
+            status: string;
+            ai_enabled?: boolean;
+            conversation_state?: string;
+            state_updated_at?: string;
+          } = {
             last_message_at: new Date().toISOString(),
             status: "open",
           };
@@ -359,9 +365,12 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           if (conversation.conversation_state === "DO_NOT_CONTACT") {
             const { detectOptOut } = await import("@/lib/sales/hardening.core");
             if (!detectOptOut(text).optedOut) {
-              convUpdate["ai_enabled"] = true;
-              convUpdate["conversation_state"] = "ACTIVE";
-              convUpdate["state_updated_at"] = new Date().toISOString();
+              convUpdate = {
+                ...convUpdate,
+                ai_enabled: true,
+                conversation_state: "ACTIVE",
+                state_updated_at: new Date().toISOString(),
+              };
               aiEnabled = true;
               console.log(
                 `[whatsapp] dnc_reengaged conversation=${conversationId} reason=customer_initiated_inbound`,
