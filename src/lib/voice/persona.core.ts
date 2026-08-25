@@ -189,7 +189,10 @@ export function resolvePersona(input?: {
  */
 export function paceToSpeed(pace: number): number {
   const p = clampControl(pace);
-  return Math.round((0.9 + (p / 100) * 0.18) * 100) / 100; // 0.90 – 1.08
+  // Tested band: below 0.90 drags and sounds sedated, above ~1.06 clips the
+  // natural micro-pauses and reintroduces the announcer cadence. The default
+  // persona (pace 55) lands on 0.97 — a relaxed Malaysian conversational rate.
+  return Math.round((0.86 + (p / 100) * 0.2) * 100) / 100; // 0.86 – 1.06
 }
 
 
@@ -247,6 +250,7 @@ export function buildVoiceInstructions(controls: VoiceControls, language = "ms-M
     "Cadence: vary sentence rhythm and pitch the way a person naturally does — some phrases slightly quicker, some slower. Use gentle micro-pauses and light natural breaths between thoughts. Never fall into a repeating, metronome-like or sing-song pattern, and never place equal stress on every word.",
     "Malaysian delivery: use everyday Malaysian Malay pronunciation and a relaxed Malaysian speech rhythm, not formal newsreader Malay and not Indonesian intonation.",
     "Openings: start naturally and differently each time; never use a fixed, repetitive greeting formula.",
+    "Delivery: speak the whole note as ONE continuous thought, not sentence by sentence with an identical drop at every full stop. Let a few words carry subtle emphasis, let the pitch drift as a person's does, and finish the last phrase naturally — a soft, settled ending rather than a hard announcer sign-off.",
     "Forbidden: robotic pronunciation, monotone, announcer, radio-presenter, IVR, call-centre script or audiobook-narrator delivery; exaggerated or theatrical emotion; over-articulated syllables; long unnatural silences; rushing.",
     "Accuracy: pronounce Arabic and Islamic terms respectfully and exactly as written, and speak prices, dates, package names and religious content exactly as given. Never spell out punctuation, symbols, links or reference codes.",
   ];
