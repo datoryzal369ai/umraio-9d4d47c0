@@ -121,7 +121,8 @@ describe("VOICE V3 — provider layer", () => {
       "ms-MY",
     ).toLowerCase();
     expect(instructions).toContain("malaysian malay");
-    expect(instructions).toContain("no robotic pronunciation");
-    expect(instructions).toContain("no monotone");
+    expect(instructions).toContain("robotic pronunciation");
+    expect(instructions).toContain("monotone");
+    expect(instructions).toContain("metronome-like");
   });
 });
