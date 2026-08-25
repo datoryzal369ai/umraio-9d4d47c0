@@ -12,19 +12,17 @@ import {
 import { DEFAULT_VOICE, DEFAULT_VOICE_INSTRUCTIONS } from "@/lib/voice/tts.server";
 import { VOICE_PERSONAS, paceToSpeed, isSupportedTtsVoice } from "@/lib/voice/persona.core";
 
-describe("VOICE V4 — speech script layer", () => {
-  it("rewrites formal written Malay into spoken Malaysian Malay", () => {
+describe("speech script layer — minimal, no register rewriting", () => {
+  it("does NOT invent casual slang or reword formal Malay", () => {
     const script = toSpeechScript(
       "Sekiranya Datuk berminat, pakej tersebut merupakan pilihan terbaik. Selain itu, penginapan berhampiran Masjidil Haram disediakan untuk 4 pax.",
     );
-    expect(script).toContain("kalau");
-    expect(script).toContain("lepas tu");
-    expect(script).toContain("hotel");
-    expect(script).toContain("dekat dengan");
+    // wording is preserved exactly — only eye-only shorthand is spoken out
+    expect(script).toContain("Sekiranya");
+    expect(script).toContain("tersebut");
+    expect(script).toContain("penginapan");
+    expect(script).not.toContain("lepas tu");
     expect(script).toContain("4 orang");
-    expect(script.toLowerCase()).not.toContain("sekiranya");
-    expect(script.toLowerCase()).not.toContain("tersebut");
-    expect(script.toLowerCase()).not.toContain("penginapan");
   });
 
   it("speaks a title at most once, never in every sentence", () => {
@@ -43,10 +41,10 @@ describe("VOICE V4 — speech script layer", () => {
     expect(out).toContain("Hotel dekat Haram");
   });
 
-  it("keeps prices, dates and hotel facts intact while sounding conversational", () => {
+  it("keeps a conversational Malaysian Malay reply intact, facts included", () => {
     const spoken = prepareSpokenResponse({
       replyText:
-        "Ya, pakej September tu RM9,800 seorang. Hotel pun dekat dengan Haram. Kalau Datuk nak, saya boleh terangkan apa yang termasuk.",
+        "Ya, untuk pakej September ni harganya RM9,800 seorang. Hotel pun dekat dengan Haram. Kalau Datuk nak, saya boleh semak tarikh yang masih ada.",
       language: "ms-MY",
     });
     expect(spoken.spokenText).toContain("sembilan ribu lapan ratus ringgit");
@@ -54,6 +52,8 @@ describe("VOICE V4 — speech script layer", () => {
     expect(spoken.spokenText.toLowerCase()).toContain("hotel");
     expect(spoken.spokenText).not.toMatch(/RM/);
     expect(spoken.spokenText).not.toMatch(/[*#_`]/);
+    expect((spoken.spokenText.match(/Datuk/g) ?? []).length).toBeLessThanOrEqual(1);
+    expect(spoken.estimatedSeconds).toBeLessThanOrEqual(25);
   });
 
   it("shortens a long package answer for speech but preserves the price fact", () => {
@@ -82,7 +82,7 @@ describe("VOICE V4 — speech script layer", () => {
   });
 });
 
-describe("VOICE V4 — TTS configuration", () => {
+describe("TTS configuration actually sent to /v1/audio/speech", () => {
   it("uses the natural default voice and a conversational speed", () => {
     expect(DEFAULT_VOICE).toBe("marin");
     expect(isSupportedTtsVoice(DEFAULT_VOICE)).toBe(true);
