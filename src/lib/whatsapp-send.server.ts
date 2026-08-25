@@ -195,9 +195,13 @@ export async function sendWhatsappMediaMessage(
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      console.error(`[whatsapp] media_send_failed kind=${media.kind} status=${res.status}`);
+      const detail = await res.text().catch(() => "");
+      console.error(
+        `[whatsapp] media_send_failed kind=${media.kind} status=${res.status} body=${detail}`,
+      );
       return { ok: false, providerMessageId: null };
     }
+
     const body = (await res.json().catch(() => null)) as
       | { messages?: Array<{ id?: string }> }
       | null;
