@@ -31,29 +31,6 @@ type WebhookBody = {
 
 import { sendWhatsappText } from "@/lib/whatsapp-send.server";
 
-export const Route = createFileRoute("/api/public/whatsapp")({
-  server: {
-    handlers: {
-      // Meta webhook verification handshake
-      GET: async ({ request }) => {
-        const url = new URL(request.url);
-        const mode = url.searchParams.get("hub.mode");
-        const token = url.searchParams.get("hub.verify_token");
-        const challenge = url.searchParams.get("hub.challenge") ?? "";
-        if (mode !== "subscribe" || !token) {
-          return new Response("Bad request", { status: 400 });
-        }
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data } = await supabaseAdmin
-          .from("whatsapp_configs")
-          .select("id")
-          .eq("verify_token", token)
-          .maybeSingle();
-        if (!data) return new Response("Forbidden", { status: 403 });
-        return new Response(challenge, { headers: { "Content-Type": "text/plain" } });
-      },
-
-
 /** P0-1 — defensive cap on how many inbound messages one delivery may process. */
 const MAX_MESSAGES_PER_REQUEST = 10;
 
