@@ -70,6 +70,49 @@ export function validateOutboundMedia(input: {
   return { ok: true, kind, mimeType };
 }
 
+export type AudioByteValidation =
+  | { ok: true; container: "ogg" | "mp4"; codec: "opus" | "aac" }
+  | { ok: false; message: string };
+
+const UNSUPPORTED_AUDIO_BYTES_MESSAGE =
+  "This recording uses an audio codec WhatsApp can't deliver. Please use Safari, or attach an MP3/OGG audio file instead.";
+
+function bytesContain(bytes: Uint8Array, marker: string): boolean {
+  if (!marker) return false;
+  const target = Array.from(marker, (char) => char.charCodeAt(0));
+  outer: for (let index = 0; index <= bytes.length - target.length; index += 1) {
+    for (let offset = 0; offset < target.length; offset += 1) {
+      if (bytes[index + offset] !== target[offset]) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Verify the real container/codec before trusting a browser-declared audio MIME. */
+export function validateRecordedAudioBytes(
+  rawMime: string | null | undefined,
+  bytes: Uint8Array,
+): AudioByteValidation {
+  const mime = normalizeOutboundMime(rawMime);
+  if (mime === "audio/ogg") {
+    const isOgg = bytes.length >= 4 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53;
+    return isOgg && bytesContain(bytes, "OpusHead")
+      ? { ok: true, container: "ogg", codec: "opus" }
+      : { ok: false, message: UNSUPPORTED_AUDIO_BYTES_MESSAGE };
+  }
+  if (mime === "audio/mp4") {
+    // Meta supports MP4/M4A audio with AAC. Chromium may advertise audio/mp4
+    // while recording Opus in that container, which Meta accepts on upload but
+    // later fails to deliver. `mp4a` is the MP4 sample-entry marker for AAC.
+    const isMp4 = bytesContain(bytes.subarray(0, Math.min(bytes.length, 64)), "ftyp");
+    return isMp4 && bytesContain(bytes, "mp4a")
+      ? { ok: true, container: "mp4", codec: "aac" }
+      : { ok: false, message: UNSUPPORTED_AUDIO_BYTES_MESSAGE };
+  }
+  return { ok: false, message: UNSUPPORTED_AUDIO_BYTES_MESSAGE };
+}
+
 /**
  * Timeline body for an outbound media row. Media bytes are never persisted, so
  * the body is a short, PII-free label used by the existing renderer.
@@ -87,7 +130,7 @@ export function outboundMediaBody(kind: OutboundMediaKind, filename?: string | n
  * fallback. `audio/webm` is deliberately absent: Meta accepts the upload but
  * WhatsApp cannot play it, which is exactly the silent failure we are fixing.
  */
-export const PREFERRED_RECORDING_MIME = ["audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
+export const PREFERRED_RECORDING_MIME = ["audio/ogg;codecs=opus", "audio/ogg", "audio/mp4;codecs=mp4a.40.2", "audio/mp4"];
 
 export const UNSUPPORTED_RECORDING_MESSAGE =
   "This browser can only record a format WhatsApp can't play. Please use Safari, or attach an audio file instead.";

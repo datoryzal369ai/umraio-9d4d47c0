@@ -5,7 +5,13 @@ import {
   authorizeOutboundSend,
   filenameForOutboundMime,
   validateOutboundMedia,
+  validateRecordedAudioBytes,
 } from "../src/lib/conversations/outbound-media.core";
+import {
+  normalizeWhatsappDeliveryStatus,
+  shouldApplyWhatsappStatus,
+  summarizeWhatsappStatusError,
+} from "../src/lib/whatsapp/delivery-status.core";
 import { authorizeOutboundText } from "../src/lib/conversations/outbound-text.core";
 import {
   sendWhatsappText,
@@ -109,10 +115,26 @@ describe("console outbound VOICE — container/filename truth", () => {
     expect(errors.join(" ")).not.toContain("TOKEN");
     spy.mockRestore();
   });
+
+  it("13. accepts real OGG/Opus bytes", () => {
+    const bytes = new TextEncoder().encode("OggS....OpusHead....");
+    expect(validateRecordedAudioBytes("audio/ogg;codecs=opus", bytes)).toEqual({
+      ok: true,
+      container: "ogg",
+      codec: "opus",
+    });
+  });
+
+  it("14. accepts MP4 only when the bytes declare AAC", () => {
+    const aac = new TextEncoder().encode("....ftypM4A ....mp4a....");
+    const opus = new TextEncoder().encode("....ftypisom....Opus....");
+    expect(validateRecordedAudioBytes("audio/mp4", aac)).toMatchObject({ ok: true, codec: "aac" });
+    expect(validateRecordedAudioBytes("audio/mp4", opus)).toMatchObject({ ok: false });
+  });
 });
 
 describe("image path regression", () => {
-  it("13. image authorisation is unchanged", () => {
+  it("15. image authorisation is unchanged", () => {
     expect(authorizeOutboundSend({ conversation, mimeType: "image/jpeg", byteLength: 100_000 })).toMatchObject({
       ok: true,
       kind: "image",
@@ -121,7 +143,26 @@ describe("image path regression", () => {
     });
   });
 
-  it("14. picker filenames are preserved for images", () => {
+  it("16. picker filenames are preserved for images", () => {
     expect(filenameForOutboundMime("image/jpeg", "attachment")).toBe("attachment.jpg");
+  });
+});
+
+describe("WhatsApp delivery status reconciliation", () => {
+  it("17. recognizes provider terminal and progress statuses", () => {
+    expect(normalizeWhatsappDeliveryStatus("delivered")).toBe("delivered");
+    expect(normalizeWhatsappDeliveryStatus("unknown")).toBeNull();
+  });
+
+  it("18. advances status and refuses out-of-order regression", () => {
+    expect(shouldApplyWhatsappStatus("sent", "delivered")).toBe(true);
+    expect(shouldApplyWhatsappStatus("delivered", "read")).toBe(true);
+    expect(shouldApplyWhatsappStatus("read", "delivered")).toBe(false);
+    expect(shouldApplyWhatsappStatus("read", "failed")).toBe(true);
+  });
+
+  it("19. sanitizes status error diagnostics", () => {
+    expect(summarizeWhatsappStatusError({ code: 131053, title: "Media upload error\n", error_data: { details: "codec" } }))
+      .toBe("code=131053 title=Media upload error  details=codec");
   });
 });
