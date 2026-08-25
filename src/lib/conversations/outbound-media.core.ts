@@ -71,7 +71,7 @@ export function validateOutboundMedia(input: {
 }
 
 export type AudioByteValidation =
-  | { ok: true; container: "ogg" | "mp4"; codec: "opus" | "aac" }
+  | { ok: true; container: "ogg" | "mp4" | "mp3"; codec: "opus" | "aac" | "mp3" }
   | { ok: false; message: string };
 
 const UNSUPPORTED_AUDIO_BYTES_MESSAGE =
@@ -110,6 +110,13 @@ export function validateRecordedAudioBytes(
       ? { ok: true, container: "mp4", codec: "aac" }
       : { ok: false, message: UNSUPPORTED_AUDIO_BYTES_MESSAGE };
   }
+  if (mime === "audio/mpeg") {
+    const hasId3 = bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
+    const hasFrameSync = bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
+    return hasId3 || hasFrameSync
+      ? { ok: true, container: "mp3", codec: "mp3" }
+      : { ok: false, message: UNSUPPORTED_AUDIO_BYTES_MESSAGE };
+  }
   return { ok: false, message: UNSUPPORTED_AUDIO_BYTES_MESSAGE };
 }
 
@@ -131,6 +138,9 @@ export function outboundMediaBody(kind: OutboundMediaKind, filename?: string | n
  * WhatsApp cannot play it, which is exactly the silent failure we are fixing.
  */
 export const PREFERRED_RECORDING_MIME = ["audio/ogg;codecs=opus", "audio/ogg", "audio/mp4;codecs=mp4a.40.2", "audio/mp4"];
+
+/** Console recordings are normalized to a deterministic Meta-sniffable format. */
+export const NORMALIZED_RECORDING_MIME = "audio/mpeg";
 
 export const UNSUPPORTED_RECORDING_MESSAGE =
   "This browser can only record a format WhatsApp can't play. Please use Safari, or attach an audio file instead.";

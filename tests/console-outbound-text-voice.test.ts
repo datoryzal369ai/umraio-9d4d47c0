@@ -133,6 +133,14 @@ describe("console outbound VOICE — container/filename truth", () => {
     expect(validateRecordedAudioBytes("audio/mp4", opus)).toMatchObject({ ok: false });
   });
 
+  it("14b. accepts a normalized MP3 recording and rejects fake MP3 bytes", () => {
+    expect(validateRecordedAudioBytes("audio/mpeg", new Uint8Array([0xff, 0xfb, 0x90, 0x64])))
+      .toEqual({ ok: true, container: "mp3", codec: "mp3" });
+    expect(validateRecordedAudioBytes("audio/mpeg", new TextEncoder().encode("not audio")))
+      .toMatchObject({ ok: false });
+    expect(filenameForOutboundMime("audio/mpeg", "voice-note")).toBe("voice-note.mp3");
+  });
+
   it("15. sends OGG/Opus with Meta's native voice-note flag", async () => {
     const fetchSpy = vi.fn(async () =>
       new Response(JSON.stringify({ messages: [{ id: "wamid.VOICE" }] }), { status: 200 }),

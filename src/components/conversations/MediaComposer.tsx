@@ -15,6 +15,7 @@ import {
   MAX_OUTBOUND_BYTES,
   OUTBOUND_DOCUMENT_MIME,
   OUTBOUND_IMAGE_MIME,
+  NORMALIZED_RECORDING_MIME,
   PREFERRED_RECORDING_MIME,
   UNSUPPORTED_RECORDING_MESSAGE,
   filenameForOutboundMime,
@@ -43,6 +44,34 @@ async function blobToBase64(blob: Blob): Promise<string> {
   let binary = "";
   for (const byte of buffer) binary += String.fromCharCode(byte);
   return btoa(binary);
+}
+
+async function normalizeRecordingForWhatsapp(blob: Blob): Promise<Blob> {
+  const AudioContextConstructor = window.AudioContext;
+  const context = new AudioContextConstructor();
+  try {
+    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    const { Mp3Encoder } = await import("@breezystack/lamejs");
+    const mono = decoded.getChannelData(0);
+    const pcm = new Int16Array(mono.length);
+    for (let index = 0; index < mono.length; index += 1) {
+      const sample = Math.max(-1, Math.min(1, mono[index] ?? 0));
+      pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    }
+    const encoder = new Mp3Encoder(1, decoded.sampleRate, 96);
+    const chunks: BlobPart[] = [];
+    for (let offset = 0; offset < pcm.length; offset += 1152) {
+      const encoded = encoder.encodeBuffer(pcm.subarray(offset, offset + 1152));
+      if (encoded.length) chunks.push(encoded.slice().buffer);
+    }
+    const flushed = encoder.flush();
+    if (flushed.length) chunks.push(flushed.slice().buffer);
+    const normalized = new Blob(chunks, { type: NORMALIZED_RECORDING_MIME });
+    if (!normalized.size) throw new Error("empty recording");
+    return normalized;
+  } finally {
+    await context.close();
+  }
 }
 
 function pickRecordingMime(): string | null {
@@ -132,16 +161,20 @@ export function MediaComposer({
       recorder.ondataavailable = (event) => {
         if (event.data.size) chunksRef.current.push(event.data);
       };
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
         if (cancelledRef.current) {
           setState("idle");
           return;
         }
-        const recordedMime = normalizeOutboundMime(mime);
-        const blob = new Blob(chunksRef.current, { type: recordedMime });
-        // The filename extension must match the real container.
-        void acceptBlob(blob, filenameForOutboundMime(recordedMime, "voice-note"));
+        try {
+          const captured = new Blob(chunksRef.current, { type: normalizeOutboundMime(mime) });
+          const blob = await normalizeRecordingForWhatsapp(captured);
+          await acceptBlob(blob, filenameForOutboundMime(NORMALIZED_RECORDING_MIME, "voice-note"));
+        } catch {
+          setState("idle");
+          toast.error("This recording could not be prepared for WhatsApp. Please try again.");
+        }
       };
       recorderRef.current = recorder;
       setSeconds(0);
