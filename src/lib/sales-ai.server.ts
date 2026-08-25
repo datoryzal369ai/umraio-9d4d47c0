@@ -1432,7 +1432,7 @@ export async function generateAgentReply(
     console.warn("[islamic] escalation guarantee skipped", (error as Error).message);
   }
 
-  return text || "Maaf, boleh ulang semula soalan tuan/puan?";
+  return text || "Maaf Datuk, saya tak dapat tangkap tadi. Boleh ulang sekali lagi?";
 }
 
 export type ConversationInsights = {
