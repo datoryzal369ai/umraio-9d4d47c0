@@ -33,8 +33,8 @@ describe("VOICE NATURALNESS V3", () => {
   });
 
   it("speed stays inside a conversational band", () => {
-    expect(paceToSpeed(0)).toBeGreaterThanOrEqual(0.9);
-    expect(paceToSpeed(100)).toBeLessThanOrEqual(1.08);
+    expect(paceToSpeed(0)).toBeGreaterThanOrEqual(0.86);
+    expect(paceToSpeed(100)).toBeLessThanOrEqual(1.06);
   });
 
   it("strict OpenAI mode never chains the Lovable gateway", () => {
