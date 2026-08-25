@@ -24,6 +24,7 @@ import {
   type ConversationIntelligenceSnapshot,
 } from "@/lib/conversations";
 import { aiReplyToConversation, conversationInsights } from "@/lib/sales-ai.functions";
+import { sendConversationText } from "@/lib/conversations/outbound-text.functions";
 import {
   mergeRealtimeMessage,
   reconcileMessages,
@@ -125,12 +126,14 @@ function ConversationPage() {
   const send = useMutation({
     mutationFn: async (body: string) => {
       if (!conversation) throw new Error(t.conversationNotLoadedError);
-      await insertMessage(
-        conversationId,
-        conversation.agency_id,
-        asHuman ? "human" : "customer",
-        body,
-      );
+      if (asHuman) {
+        // A human reply is a REAL outbound WhatsApp message: it goes through the
+        // server send path and persists the true delivery result.
+        await sendConversationText({ data: { conversationId, body } });
+      } else {
+        // "Sending as customer" stays a DB-only simulation for AI testing.
+        await insertMessage(conversationId, conversation.agency_id, "customer", body);
+      }
       await queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
       if (asHuman || !conversation.ai_enabled) return;
       const { reply, errorCode } = await aiReplyToConversation({ data: { conversationId } });
