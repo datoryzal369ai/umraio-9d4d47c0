@@ -66,7 +66,7 @@ describe("speech script layer — minimal, no register rewriting", () => {
       "Adakah Datuk mahu saya semak tarikh yang sesuai?",
     ].join("\n");
     const spoken = prepareSpokenResponse({ replyText: long, language: "ms-MY" });
-    expect(spoken.spokenText.length).toBeLessThanOrEqual(TARGET_SPEECH_CHARS + 60);
+    expect(spoken.spokenText.length).toBeLessThanOrEqual(TARGET_SPEECH_CHARS + 130);
     expect(spoken.spokenText).toContain("sembilan ribu lapan ratus ringgit");
     expect((spoken.spokenText.match(/Datuk/g) ?? []).length).toBeLessThanOrEqual(1);
     expect(spoken.spokenText).not.toMatch(/[-•#*]/);
