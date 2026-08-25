@@ -4,6 +4,7 @@
  */
 
 import { getProviderAdapter, isSupportedProvider, resolveProviderId } from "./providers.server";
+import { describeAudioProviders } from "./audio.server";
 
 /** Open by design: providers are resolved through the adapter registry. */
 export type AiProviderId = string;
@@ -72,6 +73,7 @@ export type AiConfigDiagnostic = {
   supportedProviders: string[];
   ok: boolean;
   message: string;
+  audio: ReturnType<typeof describeAudioProviders>;
 };
 
 /** Non-secret diagnostic: reports provider/model/credential presence only. */
@@ -92,6 +94,7 @@ export function describeAiConfig(): AiConfigDiagnostic {
       supportedProviders,
       ok: false,
       message: error instanceof Error ? error.message : "AI configuration error",
+      audio: describeAudioProviders(),
     };
   }
 
@@ -110,5 +113,6 @@ export function describeAiConfig(): AiConfigDiagnostic {
     message: credentialsConfigured
       ? `Provider "${config.provider}" configured.`
       : `AI configuration error: missing ${adapter.credentialEnvVar}`,
+    audio: describeAudioProviders(),
   };
 }

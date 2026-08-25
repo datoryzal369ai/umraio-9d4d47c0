@@ -2,15 +2,19 @@ import { generateText, Output, NoObjectGeneratedError } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { createLovableAiGatewayProvider, SALES_MODEL } from "./ai-gateway.server";
+import { getAiConfig } from "./ai/config.server";
+import { getProviderAdapter } from "./ai/providers.server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
 
+/**
+ * Provider-neutral model handle: OpenAI Direct in production, any other
+ * registered adapter when configured. Never hard-wired to one vendor.
+ */
 function getModel() {
-  const key = process.env["LOVABLE_API_KEY"];
-  if (!key) throw new Error("Missing LOVABLE_API_KEY");
-  return createLovableAiGatewayProvider(key)(SALES_MODEL);
+  const config = getAiConfig();
+  return getProviderAdapter(config.provider).model(config.model, "reasoning");
 }
 
 export const WORKER_KEYS = ["whatsapp", "marketing", "content", "lead_intel"] as const;
