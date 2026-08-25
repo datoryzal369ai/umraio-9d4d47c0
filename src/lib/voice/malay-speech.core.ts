@@ -136,8 +136,28 @@ function malayDigits(raw: string): string {
  * Apply every safe normalisation, longest-pattern first so a price inside a
  * date-like string is never mangled. Anything unmatched is left verbatim.
  */
+/** Written shorthand common in Umrah quotes that must not be read literally. */
+const ABBREVIATIONS: Array<[RegExp, string]> = [
+  [/\bpax\b/gi, "orang"],
+  [/\bhb\b/g, "haribulan"],
+  [/\bbln\b/gi, "bulan"],
+  [/\btgh\b/gi, "tengah"],
+  [/\bhrg\b/gi, "harga"],
+  [/\bjan\b\.?/gi, "Januari"],
+  [/\bfeb\b\.?/gi, "Februari"],
+  [/\bapr\b\.?/gi, "April"],
+  [/\bjul\b\.?/gi, "Julai"],
+  [/\bogo\b\.?/gi, "Ogos"],
+  [/\bsept?\b\.?/gi, "September"],
+  [/\bokt\b\.?/gi, "Oktober"],
+  [/\bnov\b\.?/gi, "November"],
+  [/\bdis\b\.?/gi, "Disember"],
+];
+
 export function normaliseMalaySpeech(text: string): string {
   let out = text;
+
+  for (const [pattern, replacement] of ABBREVIATIONS) out = out.replace(pattern, replacement);
 
   // Phone numbers (Malaysian mobile/landline) BEFORE plain numbers.
   out = out.replace(/(?:\+?60|0)1?\d[\d\s-]{6,12}\d/g, (match) => {
@@ -159,6 +179,19 @@ export function normaliseMalaySpeech(text: string): string {
   out = out.replace(/\b(\d{1,2}):(\d{2})\s*(am|pm)?\b/gi, (m, h, mi, mer) => {
     return malayTime(Number(h), Number(mi), mer as string | undefined) ?? m;
   });
+
+  // Malaysian written clock form "12.30 tengah hari" / "8.45 pagi" — must be
+  // read as a time, never as a decimal number.
+  out = out.replace(
+    /\b(\d{1,2})\.(\d{2})\s*(pagi|petang|malam|tengah hari|am|pm)\b/gi,
+    (m, h, mi, part) => {
+      const label = String(part).toLowerCase();
+      const meridiem = label === "pagi" || label === "am" ? "am" : "pm";
+      const spoken = malayTime(Number(h), Number(mi), meridiem);
+      if (!spoken) return m;
+      return label === "tengah hari" || label === "malam" ? `${spoken.replace(/ (pagi|petang|malam)$/, "")} ${label}` : spoken;
+    },
+  );
 
   // Currency: RM5,990 / RM 5,990.50 / 5990 ringgit.
   out = out.replace(/\bRM\s?([\d,]+(?:\.\d{1,2})?)/gi, (m, amount) => {
