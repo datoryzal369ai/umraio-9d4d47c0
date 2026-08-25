@@ -8,6 +8,7 @@ import {
   authorizeOutboundSend,
   filenameForOutboundMime,
   outboundMediaBody,
+  validateRecordedAudioBytes,
 } from "@/lib/conversations/outbound-media.core";
 
 
@@ -85,6 +86,8 @@ export const sendConversationMedia = createServerFn({ method: "POST" })
     });
     if (!auth.ok) throw new Error(auth.message);
     const { kind, mimeType, to } = auth;
+    const audioBytes = kind === "audio" ? validateRecordedAudioBytes(mimeType, bytes) : null;
+    if (audioBytes && !audioBytes.ok) throw new Error(audioBytes.message);
 
 
     // (4) credentials read only AFTER ownership is proven, and only for that agency.
@@ -120,17 +123,28 @@ export const sendConversationMedia = createServerFn({ method: "POST" })
       // no server-side temporary media to clean up.
       throw new Error("This media could not be uploaded to WhatsApp. Please try again.");
     }
+    console.log(
+      `[whatsapp] console_media_uploaded kind=${kind} mime=${mimeType} container=${audioBytes?.ok ? audioBytes.container : "n/a"} codec=${audioBytes?.ok ? audioBytes.codec : "n/a"} media_id=${mediaId}`,
+    );
 
     const caption = (data.caption ?? "").trim() || undefined;
     const send = await sendWhatsappMediaMessage(phoneNumberId, accessToken, to, {
       kind,
       mediaId,
+      // Native WhatsApp voice-note rendering requires OGG/Opus plus voice=true.
+      // AAC/MP4 remains a supported, playable generic audio attachment.
+      ...(audioBytes?.ok && audioBytes.container === "ogg" && audioBytes.codec === "opus"
+        ? { voice: true }
+        : {}),
       ...(caption ? { caption } : {}),
       ...(kind === "document" && filename ? { filename } : {}),
     });
 
     // (5) persist with the real delivery result — never a false "sent".
     const deliveryStatus = send.ok ? "sent" : "send_failed";
+    console.log(
+      `[whatsapp] console_media_send_result kind=${kind} ok=${send.ok} media_id=${mediaId} provider_message_id=${send.providerMessageId ?? "none"}`,
+    );
     const { data: row, error: insertError } = await supabaseAdmin
       .from("messages")
       .insert({

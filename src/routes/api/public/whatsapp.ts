@@ -2,6 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { verifyMetaSignature } from "@/lib/whatsapp-signature";
 import { classifyInboundMessage, persistedModality } from "@/lib/whatsapp/message-classification.core";
+import {
+  normalizeWhatsappDeliveryStatus,
+  shouldApplyWhatsappStatus,
+  summarizeWhatsappStatusError,
+} from "@/lib/whatsapp/delivery-status.core";
 
 type WebhookValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
@@ -22,6 +27,17 @@ type WebhookValue = {
       caption?: string;
     };
   }>;
+  statuses?: Array<{
+    id?: string;
+    status?: string;
+    timestamp?: string;
+    errors?: Array<{
+      code?: number;
+      title?: string;
+      message?: string;
+      error_data?: { details?: string };
+    }>;
+  }>;
 
 };
 
@@ -35,6 +51,62 @@ import { sendWhatsappText } from "@/lib/whatsapp-send.server";
 const MAX_MESSAGES_PER_REQUEST = 10;
 
 type InboundMessage = NonNullable<WebhookValue["messages"]>[number];
+type DeliveryStatusEvent = NonNullable<WebhookValue["statuses"]>[number];
+
+async function processDeliveryStatus(
+  value: WebhookValue,
+  statusEvent: DeliveryStatusEvent,
+): Promise<"ok" | "retry"> {
+  const providerMessageId = statusEvent.id?.trim();
+  const incoming = normalizeWhatsappDeliveryStatus(statusEvent.status);
+  const phoneNumberId = value.metadata?.phone_number_id?.trim();
+  if (!providerMessageId || !incoming || !phoneNumberId) {
+    console.log("[whatsapp] delivery_status_ignored reason=invalid_status_event");
+    return "ok";
+  }
+
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: config, error: configError } = await supabaseAdmin
+      .from("whatsapp_configs")
+      .select("agency_id")
+      .eq("phone_number_id", phoneNumberId)
+      .maybeSingle();
+    if (configError) throw configError;
+    if (!config?.agency_id) {
+      console.log(`[whatsapp] delivery_status_ignored reason=config_not_found provider_message_id=${providerMessageId}`);
+      return "ok";
+    }
+
+    const { data: message, error: messageError } = await supabaseAdmin
+      .from("messages")
+      .select("id, delivery_status")
+      .eq("agency_id", config.agency_id)
+      .eq("provider_message_id", providerMessageId)
+      .maybeSingle();
+    if (messageError) throw messageError;
+    if (!message) {
+      console.log(`[whatsapp] delivery_status_ignored reason=message_not_found provider_message_id=${providerMessageId} status=${incoming}`);
+      return "ok";
+    }
+    if (!shouldApplyWhatsappStatus(message.delivery_status, incoming)) {
+      console.log(`[whatsapp] delivery_status_ignored reason=regression provider_message_id=${providerMessageId} current=${message.delivery_status ?? "none"} incoming=${incoming}`);
+      return "ok";
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("messages")
+      .update({ delivery_status: incoming })
+      .eq("id", message.id);
+    if (updateError) throw updateError;
+    const errorSummary = summarizeWhatsappStatusError(statusEvent.errors?.[0]);
+    console.log(`[whatsapp] delivery_status_updated provider_message_id=${providerMessageId} status=${incoming} error=${errorSummary}`);
+    return "ok";
+  } catch (error) {
+    console.error(`[whatsapp] delivery_status_update_failed provider_message_id=${providerMessageId} reason=${error instanceof Error ? error.message : "unknown"}`);
+    return "retry";
+  }
+}
 
 /**
  * P1-5 — minimal find-or-create used ONLY to give an unsupported/document
@@ -885,6 +957,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         // P0-1 — one delivery may carry several entries/changes/messages. All
         // of them are processed (capped), never just the first.
         const queued: Array<{ value: WebhookValue; message: InboundMessage }> = [];
+        const statusEvents: Array<{ value: WebhookValue; status: DeliveryStatusEvent }> = [];
         let candidates = 0;
         for (const entry of payload.entry ?? []) {
           for (const change of entry.changes ?? []) {
@@ -896,6 +969,9 @@ export const Route = createFileRoute("/api/public/whatsapp")({
                 queued.push({ value: changeValue, message: msg });
               }
             }
+            for (const status of changeValue.statuses ?? []) {
+              statusEvents.push({ value: changeValue, status });
+            }
           }
         }
         if (candidates > MAX_MESSAGES_PER_REQUEST) {
@@ -904,14 +980,18 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           );
         }
         console.log(
-          `[whatsapp] webhook received batch_size=${queued.length} messages=${candidates}`,
+          `[whatsapp] webhook received batch_size=${queued.length} messages=${candidates} statuses=${statusEvents.length}`,
         );
-        if (queued.length === 0) {
+        if (queued.length === 0 && statusEvents.length === 0) {
           console.log("[whatsapp] inbound_dropped reason=missing_message_or_phone_id messages_count=0");
           return new Response("ok");
         }
 
         let retryable = false;
+        for (const item of statusEvents) {
+          const outcome = await processDeliveryStatus(item.value, item.status);
+          if (outcome === "retry") retryable = true;
+        }
         for (const item of queued) {
           const itemPhoneNumberId = item.value.metadata?.phone_number_id?.trim();
           if (!itemPhoneNumberId) {

@@ -5,11 +5,18 @@ import {
   authorizeOutboundSend,
   filenameForOutboundMime,
   validateOutboundMedia,
+  validateRecordedAudioBytes,
 } from "../src/lib/conversations/outbound-media.core";
+import {
+  normalizeWhatsappDeliveryStatus,
+  shouldApplyWhatsappStatus,
+  summarizeWhatsappStatusError,
+} from "../src/lib/whatsapp/delivery-status.core";
 import { authorizeOutboundText } from "../src/lib/conversations/outbound-text.core";
 import {
   sendWhatsappText,
   sendWhatsappTextDetailed,
+  sendWhatsappMediaMessage,
   uploadWhatsappMedia,
 } from "../src/lib/whatsapp-send.server";
 
@@ -109,10 +116,43 @@ describe("console outbound VOICE — container/filename truth", () => {
     expect(errors.join(" ")).not.toContain("TOKEN");
     spy.mockRestore();
   });
+
+  it("13. accepts real OGG/Opus bytes", () => {
+    const bytes = new TextEncoder().encode("OggS....OpusHead....");
+    expect(validateRecordedAudioBytes("audio/ogg;codecs=opus", bytes)).toEqual({
+      ok: true,
+      container: "ogg",
+      codec: "opus",
+    });
+  });
+
+  it("14. accepts MP4 only when the bytes declare AAC", () => {
+    const aac = new TextEncoder().encode("....ftypM4A ....mp4a....");
+    const opus = new TextEncoder().encode("....ftypisom....Opus....");
+    expect(validateRecordedAudioBytes("audio/mp4", aac)).toMatchObject({ ok: true, codec: "aac" });
+    expect(validateRecordedAudioBytes("audio/mp4", opus)).toMatchObject({ ok: false });
+  });
+
+  it("15. sends OGG/Opus with Meta's native voice-note flag", async () => {
+    const fetchSpy = vi.fn(async () =>
+      new Response(JSON.stringify({ messages: [{ id: "wamid.VOICE" }] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    await sendWhatsappMediaMessage("PN", "TOKEN", "60123456789", {
+      kind: "audio",
+      mediaId: "MEDIA",
+      voice: true,
+    });
+    const request = fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      type: "audio",
+      audio: { id: "MEDIA", voice: true },
+    });
+  });
 });
 
 describe("image path regression", () => {
-  it("13. image authorisation is unchanged", () => {
+  it("16. image authorisation is unchanged", () => {
     expect(authorizeOutboundSend({ conversation, mimeType: "image/jpeg", byteLength: 100_000 })).toMatchObject({
       ok: true,
       kind: "image",
@@ -121,7 +161,26 @@ describe("image path regression", () => {
     });
   });
 
-  it("14. picker filenames are preserved for images", () => {
+  it("17. picker filenames are preserved for images", () => {
     expect(filenameForOutboundMime("image/jpeg", "attachment")).toBe("attachment.jpg");
+  });
+});
+
+describe("WhatsApp delivery status reconciliation", () => {
+  it("18. recognizes provider terminal and progress statuses", () => {
+    expect(normalizeWhatsappDeliveryStatus("delivered")).toBe("delivered");
+    expect(normalizeWhatsappDeliveryStatus("unknown")).toBeNull();
+  });
+
+  it("19. advances status and refuses out-of-order regression", () => {
+    expect(shouldApplyWhatsappStatus("sent", "delivered")).toBe(true);
+    expect(shouldApplyWhatsappStatus("delivered", "read")).toBe(true);
+    expect(shouldApplyWhatsappStatus("read", "delivered")).toBe(false);
+    expect(shouldApplyWhatsappStatus("read", "failed")).toBe(true);
+  });
+
+  it("20. sanitizes status error diagnostics", () => {
+    expect(summarizeWhatsappStatusError({ code: 131053, title: "Media upload error\n", error_data: { details: "codec" } }))
+      .toBe("code=131053 title=Media upload error  details=codec");
   });
 });

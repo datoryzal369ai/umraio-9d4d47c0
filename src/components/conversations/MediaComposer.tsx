@@ -21,6 +21,7 @@ import {
   formatBytes,
   formatDuration,
   normalizeOutboundMime,
+  validateRecordedAudioBytes,
   validateOutboundMedia,
   type OutboundMediaKind,
 } from "@/lib/conversations/outbound-media.core";
@@ -90,12 +91,19 @@ export function MediaComposer({
     setState("idle");
   }
 
-  function acceptBlob(blob: Blob, filename: string | null) {
+  async function acceptBlob(blob: Blob, filename: string | null) {
     const mimeType = normalizeOutboundMime(blob.type);
     const validation = validateOutboundMedia({ mimeType, byteLength: blob.size });
     if (!validation.ok) {
       toast.error(validation.message);
       return;
+    }
+    if (validation.kind === "audio") {
+      const byteCheck = validateRecordedAudioBytes(mimeType, new Uint8Array(await blob.arrayBuffer()));
+      if (!byteCheck.ok) {
+        toast.error(byteCheck.message);
+        return;
+      }
     }
     setAttachment({
       kind: validation.kind,
@@ -133,7 +141,7 @@ export function MediaComposer({
         const recordedMime = normalizeOutboundMime(mime);
         const blob = new Blob(chunksRef.current, { type: recordedMime });
         // The filename extension must match the real container.
-        acceptBlob(blob, filenameForOutboundMime(recordedMime, "voice-note"));
+        void acceptBlob(blob, filenameForOutboundMime(recordedMime, "voice-note"));
       };
       recorderRef.current = recorder;
       setSeconds(0);
@@ -187,7 +195,7 @@ export function MediaComposer({
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = "";
-          if (file) acceptBlob(file, file.name);
+          if (file) void acceptBlob(file, file.name);
         }}
       />
       <input
@@ -198,7 +206,7 @@ export function MediaComposer({
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = "";
-          if (file) acceptBlob(file, file.name);
+          if (file) void acceptBlob(file, file.name);
         }}
       />
 

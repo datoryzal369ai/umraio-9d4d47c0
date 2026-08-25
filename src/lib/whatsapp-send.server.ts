@@ -154,6 +154,9 @@ export async function uploadWhatsappMedia(
       console.error("[whatsapp] media_upload_failed reason=missing_media_id");
       return null;
     }
+    console.log(
+      `[whatsapp] media_upload_ok mime=${media.mimeType} filename=${media.filename ?? "none"} media_id=${uploaded.id}`,
+    );
     return uploaded.id;
   } catch (error) {
     console.error(
@@ -173,6 +176,7 @@ export async function sendWhatsappMediaMessage(
     mediaId: string;
     caption?: string;
     filename?: string;
+    voice?: boolean;
   },
 ): Promise<{ ok: boolean; providerMessageId: string | null }> {
   try {
@@ -182,6 +186,7 @@ export async function sendWhatsappMediaMessage(
       type: media.kind,
     };
     const object: Record<string, unknown> = { id: media.mediaId };
+    if (media.kind === "audio" && media.voice) object["voice"] = true;
     if (media.kind !== "audio" && media.caption) object["caption"] = media.caption;
     if (media.kind === "document" && media.filename) object["filename"] = media.filename;
     payload[media.kind] = object;
@@ -205,7 +210,11 @@ export async function sendWhatsappMediaMessage(
     const body = (await res.json().catch(() => null)) as
       | { messages?: Array<{ id?: string }> }
       | null;
-    return { ok: true, providerMessageId: body?.messages?.[0]?.id ?? null };
+    const providerMessageId = body?.messages?.[0]?.id ?? null;
+    console.log(
+      `[whatsapp] media_send_ok kind=${media.kind} media_id=${media.mediaId} provider_message_id=${providerMessageId ?? "none"}`,
+    );
+    return { ok: true, providerMessageId };
   } catch (error) {
     console.error(
       `[whatsapp] media_send_failed reason=${error instanceof Error ? error.name : "unknown"}`,
