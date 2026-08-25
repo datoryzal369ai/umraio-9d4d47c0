@@ -43,6 +43,11 @@ import {
   type LanguagePreference,
 } from "./sales/conversation-intelligence.core";
 import { applySafetyGate } from "./sales/safety-gate.server";
+import {
+  capabilityTruthInstructions,
+  customerAskedAboutAiIdentity,
+  sanitizeCapabilityClaims,
+} from "./sales/capability-truth.core";
 import { buildSocialProfile, socialPresenceInstruction } from "./sales/social-presence.core";
 import {
   buildConfidenceRead,
