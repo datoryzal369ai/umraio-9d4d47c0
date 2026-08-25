@@ -5,32 +5,57 @@
  * delivery) goes through here so credentials stay server-side and every send
  * is logged the same way.
  */
+
+/**
+ * P1-2 — every outbound Meta Graph call is bounded. A hung Meta connection must
+ * fail cleanly instead of holding the webhook turn open indefinitely.
+ */
+const META_REQUEST_TIMEOUT_MS = 12_000;
+
+async function metaFetch(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), META_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function sendWhatsappText(
   phoneNumberId: string,
   accessToken: string,
   to: string,
   body: string,
 ): Promise<boolean> {
-  const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { body },
-    }),
-  });
-  if (!res.ok) {
-    // Meta error bodies never contain the token; safe to log verbatim.
-    console.error(`[whatsapp] outbound send failed status=${res.status} body=${await res.text()}`);
+  try {
+    const res = await metaFetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body },
+      }),
+    });
+    if (!res.ok) {
+      // Meta error bodies never contain the token; safe to log verbatim.
+      console.error(`[whatsapp] outbound send failed status=${res.status} body=${await res.text()}`);
+      return false;
+    }
+    console.log(`[whatsapp] outbound send ok status=${res.status}`);
+    return true;
+  } catch (error) {
+    const aborted = error instanceof Error && error.name === "AbortError";
+    console.error(
+      `[whatsapp] outbound send failed reason=${aborted ? "timeout" : error instanceof Error ? error.name : "unknown"}`,
+    );
     return false;
   }
-  console.log(`[whatsapp] outbound send ok status=${res.status}`);
-  return true;
 }
 
 /**
@@ -46,7 +71,7 @@ export async function sendWhatsappTypingIndicator(
   providerMessageId: string,
 ): Promise<boolean> {
   try {
-    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+    const res = await metaFetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -90,7 +115,7 @@ export async function uploadWhatsappMedia(
       media.filename ?? "upload.bin",
     );
 
-    const upload = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/media`, {
+    const upload = await metaFetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/media`, {
       method: "POST",
       // No Content-Type: the runtime sets the multipart boundary.
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -137,7 +162,7 @@ export async function sendWhatsappMediaMessage(
     if (media.kind === "document" && media.filename) object["filename"] = media.filename;
     payload[media.kind] = object;
 
-    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+    const res = await metaFetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
