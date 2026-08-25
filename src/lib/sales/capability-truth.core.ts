@@ -17,6 +17,20 @@ export const LIVE_CALL_UNAVAILABLE_MS =
   "Buat masa ini panggilan telefon secara langsung belum tersedia, tetapi saya boleh terus berbual di WhatsApp sini.";
 
 /**
+ * Used when a reply consisted ONLY of forbidden capability-denial text. Never
+ * return the original in that case — it would ship the exact contradiction.
+ */
+export const VOICE_CAPABILITY_FALLBACK_MS =
+  "Baik, saya boleh terus bantu di sini — melalui mesej atau nota suara. Boleh saya tahu bulan berapa Datuk bercadang nak berangkat?";
+
+/** True when the text already tells the customer phone calls are unavailable. */
+function mentionsLiveCallUnavailable(text: string): boolean {
+  return /\b(?:panggilan\s+telefon|call|telefon|phone\s+call)\b[^.!?]{0,60}\b(?:belum|tidak|tak|not)\b/i.test(
+    text,
+  );
+}
+
+/**
  * Sentences that deny a capability UMRAIO actually has. Matched per sentence so
  * only the false sentence is removed, never the whole reply.
  */
