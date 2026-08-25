@@ -18,7 +18,6 @@ import {
 import {
   buildObjectionLifecycle,
   classifyHotelMention,
-  conversationOptedOut,
   detectBookingIntent,
   detectBudget,
   detectDepositIntent,
@@ -469,7 +468,13 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
   const signals = detectConversationalSignals(latest);
 
   // Step 3.6 — customer-control state, evaluated before anything positive.
-  const optOutReading = conversationOptedOut(customerMessages);
+  // CURRENT-TURN RULE: opt-out is a decision about THIS inbound turn only. A
+  // historical STOP (or a historical do_not_contact flag on the lead) must
+  // never block a NEW customer-initiated turn — the customer came back on
+  // their own. Outbound/proactive contact stays blocked by the lead flag in
+  // the follow-up dispatcher.
+  const optOutReading = detectOptOut(latest);
+
   const humanRequested = customerMessages.slice(-3).some((m) => detectHumanRequest(m));
   const frustration = detectFrustration(latest);
   const repetitionComplaint = frustration.includes("REPETITION_COMPLAINT");
@@ -552,7 +557,7 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
   let state: ConversationState;
   let confidence = 0.6;
 
-  if (optOutReading.optedOut || lead.doNotContact) {
+  if (optOutReading.optedOut) {
     state = "DO_NOT_CONTACT";
     confidence = 0.95;
   } else if (input.humanTakeover || humanRequested) {
@@ -685,7 +690,7 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
   const behavior = buildBehavioralProfile({
     customerMessages,
     agentMessages: input.messages.filter((m) => m.sender !== "customer").map((m) => m.body),
-    optedOut: Boolean(optOutReading.optedOut || lead.doNotContact),
+    optedOut: Boolean(optOutReading.optedOut),
     humanTakeover: input.humanTakeover ?? false,
     quotationStatus: input.quotation?.status ?? null,
     bookingConfirmed: input.bookingConfirmed ?? false,
@@ -736,7 +741,7 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
     nextBestAction,
     confidence,
     latestCustomerMessage: latest,
-    optOut: Boolean(optOutReading.optedOut || lead.doNotContact),
+    optOut: Boolean(optOutReading.optedOut),
     optOutPhrase: optOutReading.matched,
     humanRequested,
     travellerNeeds,
