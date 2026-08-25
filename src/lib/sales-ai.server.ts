@@ -1306,11 +1306,11 @@ export async function generateAgentReply(
 
   // CAPABILITY TRUTH — the model may never deny a capability the system has.
   // Enforced deterministically, not left to the prompt.
+  const latestCustomerBody = [...ctx.messages].reverse().find((m) => m.sender === "customer")?.body;
   const text = sanitizeCapabilityClaims((result.data ?? "").trim(), {
     voiceAvailable: true,
-    customerAskedIdentity: customerAskedAboutAiIdentity(
-      [...ctx.messages].reverse().find((m) => m.sender === "customer")?.body,
-    ),
+    customerAskedIdentity: customerAskedAboutAiIdentity(latestCustomerBody),
+    liveCallRequested: customerAskedForLiveCall(latestCustomerBody),
   });
 
   // Step 3 — persist derived conversation memory (real data only, no fabrication).
