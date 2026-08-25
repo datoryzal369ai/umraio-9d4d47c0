@@ -4,6 +4,7 @@ import {
   capabilityTruthInstructions,
   customerAskedAboutAiIdentity,
   customerAskedForLiveCall,
+  VOICE_CAPABILITY_FALLBACK_MS,
   sanitizeCapabilityClaims,
 } from "@/lib/sales/capability-truth.core";
 
@@ -78,5 +79,40 @@ describe("prompt instructions", () => {
     expect(joined).toMatch(/text reply = available/i);
     expect(joined).toMatch(/voice-note reply = AVAILABLE/i);
     expect(joined).toMatch(/Live phone call = NOT available/i);
+  });
+});
+
+describe("hard guarantees", () => {
+  it("never returns a denial-only reply unchanged", () => {
+    const raws = [
+      "Maaf, saya tidak boleh hantar voice note.",
+      "I'm only a text-based AI.",
+      "Saya hanya boleh balas mesej tulisan.",
+    ];
+    for (const raw of raws) {
+      const out = sanitizeCapabilityClaims(raw, { voiceAvailable: true });
+      expect(out).not.toBe(raw);
+      expect(out).toBe(VOICE_CAPABILITY_FALLBACK_MS);
+      expect(out).not.toMatch(FORBIDDEN);
+    }
+  });
+
+  it("enforces the live-call rule at runtime, not just in the prompt", () => {
+    const out = sanitizeCapabilityClaims("Pakej Madinah bermula RM6,900 seorang.", {
+      voiceAvailable: true,
+      liveCallRequested: true,
+    });
+    expect(out).toContain("panggilan telefon");
+    expect(out).toContain("WhatsApp");
+    expect(out).toContain("RM6,900");
+    expect(out).not.toMatch(FORBIDDEN);
+  });
+
+  it("does not duplicate the live-call notice when already present", () => {
+    const out = sanitizeCapabilityClaims(LIVE_CALL_UNAVAILABLE_MS, {
+      voiceAvailable: true,
+      liveCallRequested: true,
+    });
+    expect(out.match(/panggilan telefon/gi)?.length).toBe(1);
   });
 });
