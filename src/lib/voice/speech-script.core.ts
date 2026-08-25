@@ -77,8 +77,9 @@ const EYE_ONLY_FORMS: Array<[RegExp, string]> = [
   [/\b(\d+)\s*[dD]\/?\s*(\d+)\s*[mM]\b/g, "$1 hari $2 malam"],
   [/\bpp\b/gi, "seorang"],
   [/\b&\b/g, "dan"],
-  [/\+/g, " tambah "],
-  [/\//g, " atau "],
+  // Only word/word slashes are spoken as "atau" — never digits, which would
+  // destroy dates like 23/12/2026 and 3/4 occupancy.
+  [/(?<=\p{L})\s*\/\s*(?=\p{L})/gu, " atau "],
 ];
 
 /**
