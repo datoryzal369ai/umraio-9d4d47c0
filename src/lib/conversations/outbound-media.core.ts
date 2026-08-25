@@ -137,10 +137,7 @@ export function outboundMediaBody(kind: OutboundMediaKind, filename?: string | n
  * fallback. `audio/webm` is deliberately absent: Meta accepts the upload but
  * WhatsApp cannot play it, which is exactly the silent failure we are fixing.
  */
-export const PREFERRED_RECORDING_MIME = ["audio/ogg;codecs=opus", "audio/ogg", "audio/mp4;codecs=mp4a.40.2", "audio/mp4"];
-
-/** Console recordings are normalized to a deterministic Meta-sniffable format. */
-export const NORMALIZED_RECORDING_MIME = "audio/mpeg";
+export const PREFERRED_RECORDING_MIME = ["audio/ogg;codecs=opus", "audio/ogg"];
 
 export const UNSUPPORTED_RECORDING_MESSAGE =
   "This browser can only record a format WhatsApp can't play. Please use Safari, or attach an audio file instead.";

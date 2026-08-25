@@ -15,7 +15,6 @@ import {
   MAX_OUTBOUND_BYTES,
   OUTBOUND_DOCUMENT_MIME,
   OUTBOUND_IMAGE_MIME,
-  NORMALIZED_RECORDING_MIME,
   PREFERRED_RECORDING_MIME,
   UNSUPPORTED_RECORDING_MESSAGE,
   filenameForOutboundMime,
@@ -46,40 +45,14 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
-async function normalizeRecordingForWhatsapp(blob: Blob): Promise<Blob> {
-  const AudioContextConstructor = window.AudioContext;
-  const context = new AudioContextConstructor();
-  try {
-    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
-    const { Mp3Encoder } = await import("@breezystack/lamejs");
-    const mono = decoded.getChannelData(0);
-    const pcm = new Int16Array(mono.length);
-    for (let index = 0; index < mono.length; index += 1) {
-      const sample = Math.max(-1, Math.min(1, mono[index] ?? 0));
-      pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-    }
-    const encoder = new Mp3Encoder(1, decoded.sampleRate, 96);
-    const chunks: BlobPart[] = [];
-    for (let offset = 0; offset < pcm.length; offset += 1152) {
-      const encoded = encoder.encodeBuffer(pcm.subarray(offset, offset + 1152));
-      if (encoded.length) chunks.push(encoded.slice().buffer);
-    }
-    const flushed = encoder.flush();
-    if (flushed.length) chunks.push(flushed.slice().buffer);
-    const normalized = new Blob(chunks, { type: NORMALIZED_RECORDING_MIME });
-    if (!normalized.size) throw new Error("empty recording");
-    return normalized;
-  } finally {
-    await context.close();
-  }
-}
-
 function pickRecordingMime(): string | null {
   if (typeof MediaRecorder === "undefined") return null;
   for (const candidate of PREFERRED_RECORDING_MIME) {
     if (MediaRecorder.isTypeSupported(candidate)) return candidate;
   }
-  return null;
+  // Chrome does not natively produce OGG. A WASM Opus recorder is loaded only
+  // when recording starts, keeping the rest of the console path unchanged.
+  return "audio/ogg";
 }
 
 export function MediaComposer({
@@ -155,26 +128,30 @@ export function MediaComposer({
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      const nativeOgg = MediaRecorder.isTypeSupported(mime);
+      const Recorder = nativeOgg
+        ? MediaRecorder
+        : (await import("opus-media-recorder")).default;
+      const recorder = nativeOgg
+        ? new Recorder(stream, { mimeType: mime })
+        : new Recorder(stream, { mimeType: "audio/ogg" }, {
+            encoderWorkerFactory: () => new Worker("/opus/encoderWorker.umd.js"),
+            OggOpusEncoderWasmPath: "/opus/OggOpusEncoder.wasm",
+          });
       chunksRef.current = [];
       cancelledRef.current = false;
       recorder.ondataavailable = (event) => {
         if (event.data.size) chunksRef.current.push(event.data);
       };
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
         if (cancelledRef.current) {
           setState("idle");
           return;
         }
-        try {
-          const captured = new Blob(chunksRef.current, { type: normalizeOutboundMime(mime) });
-          const blob = await normalizeRecordingForWhatsapp(captured);
-          await acceptBlob(blob, filenameForOutboundMime(NORMALIZED_RECORDING_MIME, "voice-note"));
-        } catch {
-          setState("idle");
-          toast.error("This recording could not be prepared for WhatsApp. Please try again.");
-        }
+        const recordedMime = "audio/ogg";
+        const blob = new Blob(chunksRef.current, { type: recordedMime });
+        void acceptBlob(blob, filenameForOutboundMime(recordedMime, "voice-note"));
       };
       recorderRef.current = recorder;
       setSeconds(0);
