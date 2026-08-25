@@ -112,7 +112,7 @@ export function validateRecordedAudioBytes(
   }
   if (mime === "audio/mpeg") {
     const hasId3 = bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
-    const hasFrameSync = bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
+    const hasFrameSync = bytes.length >= 2 && bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0;
     return hasId3 || hasFrameSync
       ? { ok: true, container: "mp3", codec: "mp3" }
       : { ok: false, message: UNSUPPORTED_AUDIO_BYTES_MESSAGE };
