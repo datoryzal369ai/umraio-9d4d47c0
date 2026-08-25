@@ -115,7 +115,7 @@ describe("VOICE V3 — provider layer", () => {
   });
 
   it("natural voice presets and steering are warm, conversational and non-robotic", () => {
-    expect(VOICE_PERSONAS.premium_sales_executive.voice).toBe("sage");
+    expect(VOICE_PERSONAS.premium_sales_executive.voice).toBe("marin");
     const instructions = buildVoiceInstructions(
       VOICE_PERSONAS.premium_sales_executive.controls,
       "ms-MY",

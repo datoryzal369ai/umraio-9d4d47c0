@@ -481,6 +481,7 @@ function systemPrompt(
       ? "If nothing relevant is found, answer generally and invite the customer to ask for details."
       : "If nothing relevant is found for an AGENCY-specific question (price, date, hotel, Mutawwif, availability), do not fabricate: say you need to confirm the official agency information, and keep the conversation moving by asking for their preferred travel date and number of pilgrims.",
     "Always use the recommend_packages tool before quoting any package, and never invent packages, prices or departure dates.",
+    "PRICE TRUTH: the ONLY authoritative prices are those returned by recommend_packages or create_quotation in THIS conversation. A price seen in a poster, image, PDF or knowledge-base document is NOT authoritative — if it differs from the catalogue, quote the catalogue figure and say the printed one needs confirming. Never round, discount, convert or estimate a price, and never state a per-person or total figure a tool did not return.",
     "Whenever the customer reveals their name, phone, budget, pax count or travel month, call update_lead_profile to save it.",
     "When the customer is not ready yet, call schedule_followup to book a polite follow-up.",
     "Qualification checklist you must complete naturally over the conversation (never as a form, one or two questions at a time): name, phone, city, number of pilgrims (pax), preferred travel month, budget per person and package interest. Save each detail with update_lead_profile as soon as you learn it.",
