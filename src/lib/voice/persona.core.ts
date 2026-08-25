@@ -84,52 +84,76 @@ export const VOICE_PERSONAS: Record<VoicePersonaKey, VoicePersonaPreset> = {
     "premium_sales_executive",
     "Premium Sales Executive",
     "Warm, confident, calm and unhurried — a senior Malaysian Umrah consultant.",
-    "sage",
-    { naturalness: 85, warmth: 72, energy: 45, confidence: 78, expression: 55, pace: 62, pause: 65 },
+    // `marin` is the most natural, least announcer-like voice currently
+    // supported by gpt-4o-mini-tts (verified against the live voice list).
+    "marin",
+    { naturalness: 92, warmth: 76, energy: 48, confidence: 74, expression: 62, pace: 55, pause: 58 },
   ),
   warm_malaysian_consultant: preset(
     "warm_malaysian_consultant",
     "Warm Malaysian Consultant",
     "Familiar, kampung-warm and reassuring, still professional.",
     "coral",
-    { naturalness: 92, warmth: 90, energy: 48, confidence: 62, expression: 66, pace: 58, pause: 72 },
+    { naturalness: 94, warmth: 90, energy: 50, confidence: 62, expression: 68, pace: 52, pause: 62 },
   ),
   friendly: preset(
     "friendly",
     "Friendly",
     "Light, approachable and easy-going.",
     "nova",
-    { naturalness: 88, warmth: 82, energy: 68, confidence: 58, expression: 72, pace: 70, pause: 55 },
+    { naturalness: 90, warmth: 82, energy: 66, confidence: 58, expression: 72, pace: 60, pause: 52 },
   ),
   professional: preset(
     "professional",
     "Professional",
     "Composed and businesslike without sounding stiff.",
-    "ash",
-    { naturalness: 70, warmth: 45, energy: 45, confidence: 72, expression: 38, pace: 60, pause: 55 },
+    "cedar",
+    { naturalness: 78, warmth: 48, energy: 46, confidence: 72, expression: 44, pace: 55, pause: 52 },
   ),
   calm: preset(
     "calm",
     "Calm",
     "Slow, steady and settling — good for anxious first-time pilgrims.",
     "sage",
-    { naturalness: 80, warmth: 70, energy: 22, confidence: 60, expression: 35, pace: 40, pause: 80 },
+    { naturalness: 86, warmth: 72, energy: 26, confidence: 60, expression: 40, pace: 42, pause: 72 },
   ),
   confident: preset(
     "confident",
     "Confident",
     "Assured and decisive, closes without pressure.",
-    "ash",
-    { naturalness: 78, warmth: 52, energy: 62, confidence: 92, expression: 52, pace: 68, pause: 50 },
+    "marin",
+    { naturalness: 84, warmth: 56, energy: 60, confidence: 90, expression: 56, pace: 62, pause: 48 },
   ),
   empathetic: preset(
     "empathetic",
     "Empathetic",
     "Soft, patient and attentive to concern.",
     "coral",
-    { naturalness: 86, warmth: 95, energy: 30, confidence: 50, expression: 62, pace: 48, pause: 78 },
+    { naturalness: 90, warmth: 95, energy: 32, confidence: 52, expression: 64, pace: 48, pause: 70 },
   ),
 };
+
+/** Voices the current gpt-4o-mini-tts endpoint accepts (verified live). */
+export const SUPPORTED_TTS_VOICES = [
+  "alloy",
+  "echo",
+  "fable",
+  "onyx",
+  "nova",
+  "shimmer",
+  "coral",
+  "verse",
+  "ballad",
+  "ash",
+  "sage",
+  "marin",
+  "cedar",
+] as const;
+
+export function isSupportedTtsVoice(voice: string): boolean {
+  return (SUPPORTED_TTS_VOICES as readonly string[]).includes((voice || "").trim().toLowerCase());
+}
+
 
 export function clampControl(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
