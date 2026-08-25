@@ -18,6 +18,7 @@ const realFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  delete process.env["AI_PROVIDER"];
   vi.restoreAllMocks();
 });
 
@@ -55,7 +56,11 @@ describe("voice reply decision (pure)", () => {
 });
 
 describe("voice engine selection (engine-agnostic)", () => {
-  it("defaults to the Lovable driver and can select XiaoZhi when configured", () => {
+  it("defaults to the configured provider driver and can select XiaoZhi when configured", () => {
+    process.env["AI_PROVIDER"] = "openai";
+    expect(selectVoiceEngine().name).toBe("openai");
+    process.env["AI_PROVIDER"] = "lovable";
+    process.env["LOVABLE_API_KEY"] = "test-key";
     expect(selectVoiceEngine().name).toBe("lovable");
     expect(selectVoiceEngine("xiaozhi").name).toBe("xiaozhi");
   });

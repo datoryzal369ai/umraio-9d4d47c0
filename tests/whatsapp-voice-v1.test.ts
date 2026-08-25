@@ -246,7 +246,7 @@ beforeEach(() => {
   process.env["META_APP_SECRET"] = SECRET;
   fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
-    if (url.includes("ai.gateway.lovable.dev/v1/audio/speech")) {
+    if (url.includes("/v1/audio/speech")) {
       state.ttsCalls += 1;
       return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
     }

@@ -19,16 +19,27 @@ afterEach(() => {
   delete process.env["XIAOZHI_TTS_URL"];
   delete process.env["XIAOZHI_TTS_API_KEY"];
   delete process.env["VOICE_TTS_ENGINE"];
+  delete process.env["AI_PROVIDER"];
   vi.restoreAllMocks();
 });
 
 describe("VOICE V3 — provider layer", () => {
+  it("defaults to OpenAI Direct when it is the configured provider", () => {
+    process.env["AI_PROVIDER"] = "openai";
+    expect(selectVoiceEngine().name).toBe("openai");
+    expect(selectVoiceProviderChain().map((e) => e.name)).toEqual(["openai"]);
+  });
+
   it("defaults to the proven provider and never chains it twice", () => {
+    process.env["AI_PROVIDER"] = "lovable";
+    process.env["LOVABLE_API_KEY"] = "test-key";
     expect(selectVoiceEngine().name).toBe("lovable");
     expect(selectVoiceProviderChain().map((e) => e.name)).toEqual(["lovable"]);
   });
 
   it("selecting XiaoZhi always keeps the proven provider as fallback", () => {
+    process.env["AI_PROVIDER"] = "lovable";
+    process.env["LOVABLE_API_KEY"] = "test-key";
     expect(selectVoiceProviderChain("xiaozhi").map((e) => e.name)).toEqual([
       "xiaozhi",
       FALLBACK_ENGINE_NAME,
@@ -41,6 +52,7 @@ describe("VOICE V3 — provider layer", () => {
   });
 
   it("TEST E — XiaoZhi unavailable falls back to the proven provider and still delivers audio", async () => {
+    process.env["AI_PROVIDER"] = "lovable";
     process.env["LOVABLE_API_KEY"] = "test-key";
     process.env["XIAOZHI_TTS_URL"] = "https://xiaozhi.internal/tts";
     const calls: string[] = [];
