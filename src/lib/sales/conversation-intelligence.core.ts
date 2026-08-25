@@ -469,7 +469,13 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
   const signals = detectConversationalSignals(latest);
 
   // Step 3.6 — customer-control state, evaluated before anything positive.
-  const optOutReading = conversationOptedOut(customerMessages);
+  // CURRENT-TURN RULE: opt-out is a decision about THIS inbound turn only. A
+  // historical STOP (or a historical do_not_contact flag on the lead) must
+  // never block a NEW customer-initiated turn — the customer came back on
+  // their own. Outbound/proactive contact stays blocked by the lead flag in
+  // the follow-up dispatcher.
+  const optOutReading = detectOptOut(latest);
+
   const humanRequested = customerMessages.slice(-3).some((m) => detectHumanRequest(m));
   const frustration = detectFrustration(latest);
   const repetitionComplaint = frustration.includes("REPETITION_COMPLAINT");
