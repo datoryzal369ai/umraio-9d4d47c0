@@ -558,7 +558,7 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
   let state: ConversationState;
   let confidence = 0.6;
 
-  if (optOutReading.optedOut || lead.doNotContact) {
+  if (optOutReading.optedOut) {
     state = "DO_NOT_CONTACT";
     confidence = 0.95;
   } else if (input.humanTakeover || humanRequested) {
@@ -691,7 +691,7 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
   const behavior = buildBehavioralProfile({
     customerMessages,
     agentMessages: input.messages.filter((m) => m.sender !== "customer").map((m) => m.body),
-    optedOut: Boolean(optOutReading.optedOut || lead.doNotContact),
+    optedOut: Boolean(optOutReading.optedOut),
     humanTakeover: input.humanTakeover ?? false,
     quotationStatus: input.quotation?.status ?? null,
     bookingConfirmed: input.bookingConfirmed ?? false,
@@ -742,7 +742,7 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
     nextBestAction,
     confidence,
     latestCustomerMessage: latest,
-    optOut: Boolean(optOutReading.optedOut || lead.doNotContact),
+    optOut: Boolean(optOutReading.optedOut),
     optOutPhrase: optOutReading.matched,
     humanRequested,
     travellerNeeds,
