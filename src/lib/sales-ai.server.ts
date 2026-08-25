@@ -1304,7 +1304,14 @@ export async function generateAgentReply(
     throw new Error(result.error?.message ?? "AI provider unavailable");
   }
 
-  const text = (result.data ?? "").trim();
+  // CAPABILITY TRUTH — the model may never deny a capability the system has.
+  // Enforced deterministically, not left to the prompt.
+  const text = sanitizeCapabilityClaims((result.data ?? "").trim(), {
+    voiceAvailable: true,
+    customerAskedIdentity: customerAskedAboutAiIdentity(
+      [...ctx.messages].reverse().find((m) => m.sender === "customer")?.body,
+    ),
+  });
 
   // Step 3 — persist derived conversation memory (real data only, no fabrication).
   try {
