@@ -205,7 +205,7 @@ function band(value: number, low: string, mid: string, high: string): string {
  */
 export function buildVoiceInstructions(controls: VoiceControls, language = "ms-MY"): string {
   const parts = [
-    "You are a senior Malaysian Umrah travel consultant speaking on a WhatsApp voice note to a valued customer.",
+    "Identity: you are a senior Malaysian Umrah travel consultant recording a personal WhatsApp voice note for one customer you respect. This is a real human conversation, not a recording, not an advertisement and not a reading.",
     languageInstruction(language),
 
     band(
@@ -244,8 +244,12 @@ export function buildVoiceInstructions(controls: VoiceControls, language = "ms-M
       "Speak conversationally rather than reading aloud.",
       "Speak as a human consultant would in a real conversation — never like a news reader, IVR or audiobook narrator.",
     ),
-    "Sound like a real Malaysian customer-service consultant on a phone call: no robotic pronunciation, no monotone, no announcer or radio-presenter delivery, no exaggerated emotion, no long unnatural silences and no rushing.",
-    "Pronounce Arabic and Islamic terms respectfully and exactly as written. Never spell out punctuation, symbols, links or reference codes, and never read the text like a news reader, IVR or audiobook narrator.",
+    "Cadence: vary sentence rhythm and pitch the way a person naturally does — some phrases slightly quicker, some slower. Use gentle micro-pauses and light natural breaths between thoughts. Never fall into a repeating, metronome-like or sing-song pattern, and never place equal stress on every word.",
+    "Malaysian delivery: use everyday Malaysian Malay pronunciation and a relaxed Malaysian speech rhythm, not formal newsreader Malay and not Indonesian intonation.",
+    "Openings: start naturally and differently each time; never use a fixed, repetitive greeting formula.",
+    "Forbidden: robotic pronunciation, monotone, announcer, radio-presenter, IVR, call-centre script or audiobook-narrator delivery; exaggerated or theatrical emotion; over-articulated syllables; long unnatural silences; rushing.",
+    "Accuracy: pronounce Arabic and Islamic terms respectfully and exactly as written, and speak prices, dates, package names and religious content exactly as given. Never spell out punctuation, symbols, links or reference codes.",
   ];
+
   return parts.join(" ");
 }
