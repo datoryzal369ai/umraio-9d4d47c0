@@ -46,6 +46,7 @@ import { applySafetyGate } from "./sales/safety-gate.server";
 import {
   capabilityTruthInstructions,
   customerAskedAboutAiIdentity,
+  customerAskedForLiveCall,
   sanitizeCapabilityClaims,
 } from "./sales/capability-truth.core";
 import { buildSocialProfile, socialPresenceInstruction } from "./sales/social-presence.core";
