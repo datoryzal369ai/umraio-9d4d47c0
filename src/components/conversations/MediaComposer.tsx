@@ -129,12 +129,9 @@ export function MediaComposer({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const nativeOgg = MediaRecorder.isTypeSupported(mime);
-      const Recorder = nativeOgg
-        ? MediaRecorder
-        : (await import("opus-media-recorder")).default;
       const recorder = nativeOgg
-        ? new Recorder(stream, { mimeType: mime })
-        : new Recorder(stream, { mimeType: "audio/ogg" }, {
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new (await import("opus-media-recorder")).default(stream, { mimeType: "audio/ogg" }, {
             encoderWorkerFactory: () => new Worker("/opus/encoderWorker.umd.js"),
             OggOpusEncoderWasmPath: "/opus/OggOpusEncoder.wasm",
           });
