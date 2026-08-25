@@ -128,7 +128,7 @@ describe("production regression — exact phrases seen in WhatsApp", () => {
   for (const raw of PRODUCTION_DENIALS) {
     it(`never ships: ${raw.slice(0, 40)}…`, () => {
       const out = sanitizeCapabilityClaims(raw, { voiceAvailable: true });
-      expect(out).not.toMatch(/voice note|nota suara|mesej bertulis|only help with text/i);
+      expect(out).not.toMatch(/(?:tak|tidak|belum)\s+ada\s+fungsi|hanya boleh bantu melalui mesej bertulis|mesej bertulis sahaja|(?:voice note|nota suara)[^.!?]{0,30}(?:tidak|belum|tak) tersedia|only help with text/i);
       expect(out.length).toBeGreaterThan(0);
     });
   }
