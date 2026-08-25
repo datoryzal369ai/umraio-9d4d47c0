@@ -141,9 +141,14 @@ export async function uploadWhatsappMedia(
       body: form,
     });
     if (!upload.ok) {
-      console.error(`[whatsapp] media_upload_failed status=${upload.status}`);
+      // Meta error bodies never contain the token; safe to log verbatim.
+      const detail = await upload.text().catch(() => "");
+      console.error(
+        `[whatsapp] media_upload_failed status=${upload.status} mime=${media.mimeType} filename=${media.filename ?? "none"} body=${detail}`,
+      );
       return null;
     }
+
     const uploaded = (await upload.json().catch(() => null)) as { id?: string } | null;
     if (!uploaded?.id) {
       console.error("[whatsapp] media_upload_failed reason=missing_media_id");
