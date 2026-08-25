@@ -54,20 +54,12 @@ const INTERNAL_TERMS =
 
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
-/** Written-Malay → spoken-Malay swaps. Same meaning, conversational register. */
-const CONVERSATIONAL_SWAPS: Array<[RegExp, string]> = [
-  [/\bterdapat\b/gi, "ada"],
-  [/\bialah\b/gi, "ia"],
-  [/\badalah\s+/gi, ""],
-  [/\bdaripada\b/gi, "dari"],
-  [/\bmemerlukan\b/gi, "perlukan"],
-  [/\bAdakah\s+(Datuk|Tuan|Puan|anda)\s+mahu\b/gi, "Kalau $1 nak"],
-  [/\bAdakah\s+(Datuk|Tuan|Puan|anda)\s+ingin\b/gi, "Kalau $1 nak"],
-  [/\bmembantu\s+(Datuk|Tuan|Puan|anda)\b/gi, "tolong $1"],
-  [/\bsila\s+hubungi\b/gi, "boleh hubungi"],
-  [/\bbagaimanapun\b/gi, "tapi"],
-  [/\boleh\s+itu\b/gi, "jadi"],
-];
+/**
+ * Written-Malay → spoken-Malay swaps were REMOVED after the V4 experiment:
+ * deterministic register rewriting produced artificial slang. Conversational
+ * tone now comes from the source text and the TTS engine instructions.
+ */
+
 
 const HONORIFIC_OPENING =
   /^(baik|baiklah|ok|okay|terima kasih)[,!.]?\s*(datuk|tuan|puan|encik|cik)?[,.!]?\s*/i;
