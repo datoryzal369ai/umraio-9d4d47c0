@@ -43,6 +43,11 @@ import {
   type LanguagePreference,
 } from "./sales/conversation-intelligence.core";
 import { applySafetyGate } from "./sales/safety-gate.server";
+import {
+  capabilityTruthInstructions,
+  customerAskedAboutAiIdentity,
+  sanitizeCapabilityClaims,
+} from "./sales/capability-truth.core";
 import { buildSocialProfile, socialPresenceInstruction } from "./sales/social-presence.core";
 import {
   buildConfidenceRead,
@@ -460,6 +465,7 @@ function systemPrompt(
       }),
     ),
     `You speak with prospective pilgrims on WhatsApp. Personality: ${personality} Tone: ${tone}. Always respect Islamic etiquette.`,
+    ...capabilityTruthInstructions({ voiceAvailable: true }),
 
     `${language} ${length} WhatsApp style, no markdown headings.`,
     s?.ai_emoji === false
@@ -1298,7 +1304,14 @@ export async function generateAgentReply(
     throw new Error(result.error?.message ?? "AI provider unavailable");
   }
 
-  const text = (result.data ?? "").trim();
+  // CAPABILITY TRUTH — the model may never deny a capability the system has.
+  // Enforced deterministically, not left to the prompt.
+  const text = sanitizeCapabilityClaims((result.data ?? "").trim(), {
+    voiceAvailable: true,
+    customerAskedIdentity: customerAskedAboutAiIdentity(
+      [...ctx.messages].reverse().find((m) => m.sender === "customer")?.body,
+    ),
+  });
 
   // Step 3 — persist derived conversation memory (real data only, no fabrication).
   try {
