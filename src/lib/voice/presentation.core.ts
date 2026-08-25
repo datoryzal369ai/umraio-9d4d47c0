@@ -234,14 +234,10 @@ export function prepareSpokenResponse(input: VoicePresentationInput): VoicePrese
         text = text.charAt(0).toUpperCase() + text.slice(1);
       }
     }
-    // V4 — SPEECH SCRIPT LAYER: written sales register becomes spoken
-    // Malaysian Malay before any rhythm work. Facts are untouched.
+    // SPEECH SCRIPT LAYER: removes eye-only formatting and shorthand and keeps
+    // one honorific per note. It does NOT reword the reply.
     text = toSpeechScript(text);
-    if (controls.naturalness >= 50) {
-      for (const [pattern, replacement] of CONVERSATIONAL_SWAPS) {
-        text = text.replace(pattern, replacement);
-      }
-    }
+
     text = trimForcedEngagement(text);
     text = condenseToTarget(text);
     text = shapeRhythm(text, controls.pause);
