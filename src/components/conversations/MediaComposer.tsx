@@ -50,7 +50,9 @@ function pickRecordingMime(): string | null {
   for (const candidate of PREFERRED_RECORDING_MIME) {
     if (MediaRecorder.isTypeSupported(candidate)) return candidate;
   }
-  return null;
+  // Chrome does not natively produce OGG. A WASM Opus recorder is loaded only
+  // when recording starts, keeping the rest of the console path unchanged.
+  return "audio/ogg";
 }
 
 export function MediaComposer({
@@ -126,7 +128,13 @@ export function MediaComposer({
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      const nativeOgg = MediaRecorder.isTypeSupported(mime);
+      const recorder = nativeOgg
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new (await import("opus-media-recorder")).default(stream, { mimeType: "audio/ogg" }, {
+            encoderWorkerFactory: () => new Worker("/opus/encoderWorker.umd.js"),
+            OggOpusEncoderWasmPath: "/opus/OggOpusEncoder.wasm",
+          });
       chunksRef.current = [];
       cancelledRef.current = false;
       recorder.ondataavailable = (event) => {
@@ -138,9 +146,8 @@ export function MediaComposer({
           setState("idle");
           return;
         }
-        const recordedMime = normalizeOutboundMime(mime);
+        const recordedMime = "audio/ogg";
         const blob = new Blob(chunksRef.current, { type: recordedMime });
-        // The filename extension must match the real container.
         void acceptBlob(blob, filenameForOutboundMime(recordedMime, "voice-note"));
       };
       recorderRef.current = recorder;
