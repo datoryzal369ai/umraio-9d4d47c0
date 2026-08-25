@@ -3,7 +3,7 @@
  * Server-only. API keys are read at call time and never leave the server.
  */
 
-import { getProviderAdapter, isSupportedProvider } from "./providers.server";
+import { getProviderAdapter, isSupportedProvider, resolveProviderId } from "./providers.server";
 
 /** Open by design: providers are resolved through the adapter registry. */
 export type AiProviderId = string;
@@ -21,9 +21,6 @@ export type AiConfig = {
   timeouts: { fast: number; reasoning: number; evaluation: number };
 };
 
-const DEFAULT_MODEL = "openai/gpt-5.6-sol";
-const DEFAULT_FALLBACK_MODEL = "google/gemini-2.5-flash";
-
 function env(name: string): string | undefined {
   const value = process.env[name];
   return value && value.trim() ? value.trim() : undefined;
@@ -36,17 +33,19 @@ function num(name: string, fallback: number): number {
 
 /** Read configuration inside a handler — never at module scope. */
 export function getAiConfig(): AiConfig {
-  const provider = env("AI_PROVIDER") ?? "lovable";
+  const provider = resolveProviderId();
   if (!isSupportedProvider(provider)) {
     throw new Error(`AI configuration error: unsupported AI_PROVIDER "${provider}"`);
   }
-  const model = env("AI_MODEL") ?? DEFAULT_MODEL;
+  const adapter = getProviderAdapter(provider);
+  const model = env("AI_MODEL") ?? adapter.defaultModel;
   return {
     provider,
     model,
-    fastModel: env("AI_FAST_MODEL") ?? model,
-    // A transient primary-model failure must not end a live sales conversation.
-    fallbackModel: env("AI_FALLBACK_MODEL") ?? DEFAULT_FALLBACK_MODEL,
+    fastModel: env("AI_FAST_MODEL") ?? adapter.defaultFastModel,
+    // Provider-aware: a fallback is only used when it belongs to the active
+    // provider, so it can never silently reintroduce another dependency.
+    fallbackModel: env("AI_FALLBACK_MODEL") ?? adapter.defaultFallbackModel,
     maxRetries: Math.max(0, Math.min(3, Number(env("AI_MAX_RETRIES") ?? 1) || 0)),
     timeouts: {
       // Long RAIŌ conversations carry a large system prompt; 20s was too tight
@@ -60,4 +59,56 @@ export function getAiConfig(): AiConfig {
 
 export function getProviderApiKey(provider: AiProviderId): string {
   return getProviderAdapter(provider).readApiKey();
+}
+
+export type AiConfigDiagnostic = {
+  provider: AiProviderId;
+  providerSource: "explicit" | "resolved";
+  model: string;
+  fastModel: string;
+  fallbackModel: string | null;
+  credentialEnvVar: string;
+  credentialsConfigured: boolean;
+  supportedProviders: string[];
+  ok: boolean;
+  message: string;
+};
+
+/** Non-secret diagnostic: reports provider/model/credential presence only. */
+export function describeAiConfig(): AiConfigDiagnostic {
+  const supportedProviders = ["openai", "lovable"];
+  let config: AiConfig;
+  try {
+    config = getAiConfig();
+  } catch (error) {
+    return {
+      provider: env("AI_PROVIDER") ?? "unknown",
+      providerSource: env("AI_PROVIDER") ? "explicit" : "resolved",
+      model: "unknown",
+      fastModel: "unknown",
+      fallbackModel: null,
+      credentialEnvVar: "unknown",
+      credentialsConfigured: false,
+      supportedProviders,
+      ok: false,
+      message: error instanceof Error ? error.message : "AI configuration error",
+    };
+  }
+
+  const adapter = getProviderAdapter(config.provider);
+  const credentialsConfigured = adapter.hasCredentials();
+  return {
+    provider: config.provider,
+    providerSource: env("AI_PROVIDER") ? "explicit" : "resolved",
+    model: config.model,
+    fastModel: config.fastModel,
+    fallbackModel: config.fallbackModel,
+    credentialEnvVar: adapter.credentialEnvVar,
+    credentialsConfigured,
+    supportedProviders,
+    ok: credentialsConfigured,
+    message: credentialsConfigured
+      ? `Provider "${config.provider}" configured.`
+      : `AI configuration error: missing ${adapter.credentialEnvVar}`,
+  };
 }
