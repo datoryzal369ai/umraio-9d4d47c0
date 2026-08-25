@@ -199,13 +199,40 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           });
           if (!voice.ok) {
             // Never silently drop, never fabricate a transcript, never let the
-            // sales brain answer guessed content.
-            await sendWhatsappText(
-              phoneNumberId,
-              config.access_token,
-              from,
-              voice.customerMessage,
-            );
+            // sales brain answer guessed content. Voice notes are supported —
+            // the customer is told what went wrong with THIS recording only.
+            //
+            // Repetition guard: back-to-back failures of the same kind within a
+            // short window must not spam the customer with identical replies.
+            const dedupeSince = new Date(Date.now() - 120_000).toISOString();
+            const { data: recentFallback } = await supabaseAdmin
+              .from("activity_log")
+              .select("id, meta, created_at")
+              .eq("agency_id", agencyId)
+              .eq("action", "Voice note could not be processed")
+              .gte("created_at", dedupeSince)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            const recentMeta = (recentFallback?.meta ?? null) as
+              | { reason?: string; from?: string }
+              | null;
+            const isDuplicateFallback =
+              Boolean(recentFallback) &&
+              recentMeta?.from === from &&
+              recentMeta?.reason === voice.reason;
+            if (isDuplicateFallback) {
+              console.log(
+                `[voice] fallback_suppressed reason=${voice.reason} agency_id=${agencyId} window_s=120`,
+              );
+            } else {
+              await sendWhatsappText(
+                phoneNumberId,
+                config.access_token,
+                from,
+                voice.customerMessage,
+              );
+            }
             await supabaseAdmin.from("activity_log").insert({
               agency_id: agencyId,
               actor: "ai",

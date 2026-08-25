@@ -18,6 +18,7 @@ import {
   checkAudioLimits,
   estimateDurationSeconds,
   fallbackMessageFor,
+  isEffectivelyEmptyTranscript,
   normalizeTranscript,
   type VoiceRejection,
 } from "./limits.core";
@@ -115,12 +116,18 @@ export async function ingestVoiceNote(
       latencyMs: Date.now() - startedAt,
       meta: { failure: asr.kind },
     });
-    console.error(`[voice] asr_failure category=${asr.kind}`);
-    return reject("asr_failed");
+    console.error(`[voice] asr_failure category=${asr.kind} status=${asr.status ?? "none"}`);
+    // A silent/inaudible recording is NOT a pipeline failure and is NEVER
+    // reported as "voice notes unsupported" — the customer is asked to resend.
+    return reject(asr.kind === "empty_transcript" ? "inaudible" : "asr_failed");
   }
 
   const durationSeconds = asr.durationSeconds ?? limits.durationSeconds;
   const transcript = normalizeTranscript(asr.text);
+  if (isEffectivelyEmptyTranscript(transcript)) {
+    console.error("[voice] asr_failure category=empty_transcript stage=post_normalize");
+    return reject("inaudible");
+  }
   console.log(
     `[voice] asr_success chars=${transcript.length} duration_s=${durationSeconds} latency_ms=${Date.now() - startedAt}`,
   );
