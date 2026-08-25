@@ -18,7 +18,9 @@
  * returned. Audio bytes are held in memory only and never persisted.
  */
 
-export type VoiceEngineName = "lovable" | "xiaozhi";
+import { openAiAudioProvider, lovableAudioProvider, resolveAudioProviders, type AudioProvider } from "@/lib/ai/audio.server";
+
+export type VoiceEngineName = "openai" | "lovable" | "xiaozhi";
 
 export type TtsFailureKind =
   | "config"
@@ -62,7 +64,6 @@ export function isWhatsappCompatibleAudio(mimeType: string): boolean {
   return WHATSAPP_AUDIO_MIMES.has((mimeType || "").split(";")[0]!.trim().toLowerCase());
 }
 
-const LOVABLE_TTS_ENDPOINT = "https://ai.gateway.lovable.dev/v1/audio/speech";
 export const LOVABLE_TTS_MODEL = "openai/gpt-4o-mini-tts";
 export const DEFAULT_VOICE = "sage";
 
@@ -77,55 +78,68 @@ function classify(status: number): TtsFailureKind {
   return "provider";
 }
 
-export const lovableVoiceEngine: VoiceEngine = {
-  name: "lovable",
-  async synthesize({ text, voice, speed, instructions }) {
-    const apiKey = process.env["LOVABLE_API_KEY"];
-    if (!apiKey) {
-      console.error("[voice] tts_failed engine=lovable category=config");
-      return { ok: false, kind: "config", engine: "lovable" };
-    }
-    let res: Response;
-    try {
-      res = await fetch(LOVABLE_TTS_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: LOVABLE_TTS_MODEL,
-          input: text,
-          voice: voice ?? DEFAULT_VOICE,
-          ...(typeof speed === "number"
-            ? { speed: Math.min(4, Math.max(0.25, speed)) }
-            : {}),
-          // Complete OGG/Opus file — exactly what Meta accepts as a voice note.
-          response_format: "opus",
-          instructions: instructions ?? DEFAULT_VOICE_INSTRUCTIONS,
-        }),
-      });
-    } catch (error) {
-      console.error(
-        `[voice] tts_failed engine=lovable category=network name=${error instanceof Error ? error.name : "unknown"}`,
-      );
-      return { ok: false, kind: "provider", engine: "lovable" };
-    }
+/**
+ * One driver for every OpenAI-compatible speech endpoint. The provider (OpenAI
+ * Direct in production, the optional Lovable gateway as fallback) supplies the
+ * base URL, credentials and model id — this driver holds no vendor knowledge.
+ */
+function hostedSpeechEngine(
+  name: VoiceEngineName,
+  resolve: () => AudioProvider | null,
+): VoiceEngine {
+  return {
+    name,
+    async synthesize({ text, voice, speed, instructions }) {
+      const provider = resolve();
+      if (!provider) {
+        console.error(`[voice] tts_failed engine=${name} category=config`);
+        return { ok: false, kind: "config", engine: name };
+      }
+      let res: Response;
+      try {
+        res = await fetch(`${provider.baseUrl}/audio/speech`, {
+          method: "POST",
+          headers: { ...provider.headers(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: provider.speechModel,
+            input: text,
+            voice: voice ?? DEFAULT_VOICE,
+            ...(typeof speed === "number"
+              ? { speed: Math.min(4, Math.max(0.25, speed)) }
+              : {}),
+            // Complete OGG/Opus file — exactly what Meta accepts as a voice note.
+            response_format: "opus",
+            instructions: instructions ?? DEFAULT_VOICE_INSTRUCTIONS,
+          }),
+        });
+      } catch (error) {
+        console.error(
+          `[voice] tts_failed engine=${name} category=network name=${error instanceof Error ? error.name : "unknown"}`,
+        );
+        return { ok: false, kind: "provider", engine: name };
+      }
 
-    if (!res.ok) {
-      const kind = classify(res.status);
-      console.error(`[voice] tts_failed engine=lovable category=${kind} status=${res.status}`);
-      return { ok: false, kind, engine: "lovable" };
-    }
+      if (!res.ok) {
+        const kind = classify(res.status);
+        console.error(`[voice] tts_failed engine=${name} category=${kind} status=${res.status}`);
+        return { ok: false, kind, engine: name };
+      }
 
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength === 0) {
-      console.error("[voice] tts_failed engine=lovable category=empty_audio");
-      return { ok: false, kind: "provider", engine: "lovable" };
-    }
-    return { ok: true, bytes, mimeType: OUTBOUND_AUDIO_MIME, engine: "lovable" };
-  },
-};
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength === 0) {
+        console.error(`[voice] tts_failed engine=${name} category=empty_audio`);
+        return { ok: false, kind: "provider", engine: name };
+      }
+      return { ok: true, bytes, mimeType: OUTBOUND_AUDIO_MIME, engine: name };
+    },
+  };
+}
+
+/** Production provider: OpenAI Direct (server-side OPENAI_API_KEY only). */
+export const openAiVoiceEngine: VoiceEngine = hostedSpeechEngine("openai", openAiAudioProvider);
+
+/** OPTIONAL fallback: the Lovable AI Gateway, used only when configured. */
+export const lovableVoiceEngine: VoiceEngine = hostedSpeechEngine("lovable", lovableAudioProvider);
 
 /**
  * SELF-HOSTED XiaoZhi TTS driver.
@@ -203,25 +217,39 @@ export const xiaozhiVoiceEngine: VoiceEngine = {
 };
 
 export const VOICE_ENGINES: Record<VoiceEngineName, VoiceEngine> = {
+  openai: openAiVoiceEngine,
   lovable: lovableVoiceEngine,
   xiaozhi: xiaozhiVoiceEngine,
 };
 
-/** The proven provider every chain falls back to. */
+/** Legacy constant; the live fallback is resolved by `provenEngine()`. */
 export const FALLBACK_ENGINE_NAME: VoiceEngineName = "lovable";
 
-export function selectVoiceEngine(name?: string | null): VoiceEngine {
-  const requested = (name ?? process.env["VOICE_TTS_ENGINE"] ?? "lovable").trim().toLowerCase();
-  if (requested === "xiaozhi") return xiaozhiVoiceEngine;
+/**
+ * The proven provider every chain falls back to: OpenAI Direct in production,
+ * the Lovable gateway only when OpenAI is not configured.
+ */
+export function provenEngine(): VoiceEngine {
+  const chain = resolveAudioProviders();
+  const primary = chain[0];
+  if (primary?.id === "openai") return openAiVoiceEngine;
+  if (primary?.id === "lovable") return lovableVoiceEngine;
   return lovableVoiceEngine;
+}
+
+export function selectVoiceEngine(name?: string | null): VoiceEngine {
+  const requested = (name ?? process.env["VOICE_TTS_ENGINE"] ?? "").trim().toLowerCase();
+  if (requested === "xiaozhi") return xiaozhiVoiceEngine;
+  if (requested === "openai") return openAiVoiceEngine;
+  if (requested === "lovable") return lovableVoiceEngine;
+  return provenEngine();
 }
 
 /** Selected provider first, proven provider second (deduplicated). */
 export function selectVoiceProviderChain(name?: string | null): VoiceEngine[] {
   const primary = selectVoiceEngine(name);
-  return primary.name === FALLBACK_ENGINE_NAME
-    ? [primary]
-    : [primary, VOICE_ENGINES[FALLBACK_ENGINE_NAME]];
+  const fallback = provenEngine();
+  return primary.name === fallback.name ? [primary] : [primary, fallback];
 }
 
 export async function synthesizeSpeech(
