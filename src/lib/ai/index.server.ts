@@ -8,14 +8,24 @@
 
 export * from "./types";
 export * from "./routing";
-export { getAiConfig, getProviderApiKey, type AiConfig, type AiProviderId } from "./config.server";
+export {
+  getAiConfig,
+  getProviderApiKey,
+  describeAiConfig,
+  type AiConfig,
+  type AiConfigDiagnostic,
+  type AiProviderId,
+} from "./config.server";
 export {
   getProviderAdapter,
   isSupportedProvider,
   registerProviderAdapter,
+  listProviderIds,
+  resolveProviderId,
   type ProviderAdapter,
   type ProviderTransport,
 } from "./providers.server";
+
 export { createIntelligenceGateway, type GatewayAuditBinding } from "./gateway.server";
 export { buildContext, loadBusinessMemory, newCorrelationId } from "./context.server";
 export {
