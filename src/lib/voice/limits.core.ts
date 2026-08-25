@@ -85,9 +85,13 @@ export function checkAudioLimits(args: {
  * package references and Malay-English code switching are preserved verbatim:
  * the transcript IS the customer's message, never a rewrite or a summary.
  */
-export function normalizeTranscript(raw: string): string {
-  return raw.replace(/\s+/g, " ").trim();
+export function normalizeTranscript(raw: string | null | undefined): string {
+  if (typeof raw !== "string") return "";
+  // Zero-width / BOM characters some providers emit would otherwise survive the
+  // whitespace collapse and make a blank transcript look like content.
+  return raw.replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim();
 }
+
 
 /**
  * A transcript that carries no speech content: empty, whitespace, or only
