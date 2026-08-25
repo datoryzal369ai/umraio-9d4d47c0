@@ -26,6 +26,14 @@ export {
   type ProviderTransport,
 } from "./providers.server";
 
+export {
+  resolveAudioProviders,
+  describeAudioProviders,
+  openAiAudioProvider,
+  lovableAudioProvider,
+  type AudioProvider,
+  type AudioProviderId,
+} from "./audio.server";
 export { createIntelligenceGateway, type GatewayAuditBinding } from "./gateway.server";
 export { buildContext, loadBusinessMemory, newCorrelationId } from "./context.server";
 export {
