@@ -18,7 +18,6 @@ import {
 import {
   buildObjectionLifecycle,
   classifyHotelMention,
-  conversationOptedOut,
   detectBookingIntent,
   detectBudget,
   detectDepositIntent,
