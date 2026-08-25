@@ -100,6 +100,7 @@ describe("console outbound VOICE — container/filename truth", () => {
       reason: "unsupported_type",
     });
     expect(PREFERRED_RECORDING_MIME).not.toContain("audio/webm");
+    expect(PREFERRED_RECORDING_MIME.some((mime) => mime.startsWith("audio/mp4"))).toBe(false);
   });
 
   it("12. logs the Meta error body when a media upload fails", async () => {
