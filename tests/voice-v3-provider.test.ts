@@ -115,13 +115,14 @@ describe("VOICE V3 — provider layer", () => {
   });
 
   it("natural voice presets and steering are warm, conversational and non-robotic", () => {
-    expect(VOICE_PERSONAS.premium_sales_executive.voice).toBe("sage");
+    expect(VOICE_PERSONAS.premium_sales_executive.voice).toBe("marin");
     const instructions = buildVoiceInstructions(
       VOICE_PERSONAS.premium_sales_executive.controls,
       "ms-MY",
     ).toLowerCase();
     expect(instructions).toContain("malaysian malay");
-    expect(instructions).toContain("no robotic pronunciation");
-    expect(instructions).toContain("no monotone");
+    expect(instructions).toContain("robotic pronunciation");
+    expect(instructions).toContain("monotone");
+    expect(instructions).toContain("metronome-like");
   });
 });

@@ -28,8 +28,12 @@ export const MAX_SPEECH_CHARS = 700;
 /** Replies longer than this stay text-only: itineraries are read, not heard. */
 export const SPOKEN_REPLY_CHAR_LIMIT = 700;
 
-/** Comfortable spoken length for a normal sales answer (≈8–20s). */
-export const TARGET_SPEECH_CHARS = 420;
+/**
+ * Target spoken length for a normal sales answer: 10–18 seconds of Malay
+ * speech (~14 chars/second). Non-verbatim answers longer than this are
+ * condensed at sentence boundaries so a voice note never rambles.
+ */
+export const TARGET_SPEECH_CHARS = 250;
 
 /** Maximum outbound audio accepted for a WhatsApp voice reply. */
 export const MAX_OUTBOUND_AUDIO_BYTES = 8 * 1024 * 1024;
@@ -117,10 +121,16 @@ function shapeRhythm(text: string, pause: number): string {
   const shaped = sentences.map((sentence) => {
     let s = sentence;
     if (pause >= 45) {
-      // Clause boundaries a Malaysian speaker naturally breathes at.
+      // Clause boundaries a Malaysian speaker naturally breathes at. At most
+      // ONE per sentence: more turns the delivery into a metronome.
+      let inserted = false;
       s = s.replace(
         /\s+(tapi|jadi|kerana|sebab|kalau|untuk|lepas itu|selain itu)\s+/gi,
-        (_m, w) => `, ${String(w).toLowerCase()} `,
+        (m, w) => {
+          if (inserted) return m;
+          inserted = true;
+          return `, ${String(w).toLowerCase()} `;
+        },
       );
     }
     if (pause <= 25) s = s.replace(/,\s+/g, " ");
@@ -128,6 +138,30 @@ function shapeRhythm(text: string, pause: number): string {
     return s;
   });
   return shaped.join(" ").replace(/\s{2,}/g, " ").replace(/,\s*,/g, ",").trim();
+}
+
+/**
+ * Keep a voice note inside the 10–18s target by dropping trailing sentences
+ * (never mid-sentence), while preserving the closing question if there is one.
+ */
+function condenseToTarget(text: string, limit = TARGET_SPEECH_CHARS): string {
+  if (text.length <= limit) return text;
+  const sentences = (text.match(/[^.!?]+[.!?]*/g) ?? [text]).map((s) => s.trim()).filter(Boolean);
+  if (sentences.length <= 1) return text;
+  const closing = sentences[sentences.length - 1]!.endsWith("?")
+    ? sentences[sentences.length - 1]!
+    : null;
+  const body = closing ? sentences.slice(0, -1) : sentences;
+  const budget = closing ? limit - closing.length - 1 : limit;
+  const kept: string[] = [];
+  let used = 0;
+  for (const sentence of body) {
+    if (kept.length && used + sentence.length + 1 > budget) break;
+    kept.push(sentence);
+    used += sentence.length + 1;
+  }
+  const out = [...kept, ...(closing ? [closing] : [])].join(" ").trim();
+  return out || sentences[0]!;
 }
 
 /** Do not append a question to every reply; keep at most one closing ask. */
@@ -213,6 +247,7 @@ export function prepareSpokenResponse(input: VoicePresentationInput): VoicePrese
       }
     }
     text = trimForcedEngagement(text);
+    text = condenseToTarget(text);
     text = shapeRhythm(text, controls.pause);
     if (isMalay) text = normaliseMalaySpeech(text);
   } else if (isMalay) {
