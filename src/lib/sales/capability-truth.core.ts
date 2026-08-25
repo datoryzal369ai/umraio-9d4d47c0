@@ -37,12 +37,18 @@ function mentionsLiveCallUnavailable(text: string): boolean {
 const FALSE_VOICE_DENIAL_PATTERNS: RegExp[] = [
   /\btidak\s+(?:boleh|dapat)\b[^.!?]{0,60}\b(?:bercakap|bersuara|hantar\s+(?:nota\s+)?suara|voice\s*note|voice\s*message|audio)\b/i,
   /\btak\s+(?:boleh|dapat)\b[^.!?]{0,60}\b(?:bercakap|bersuara|hantar\s+(?:nota\s+)?suara|voice\s*note|voice\s*message|audio)\b/i,
-  /\bhanya\s+boleh\s+(?:balas|hantar|beri)\b[^.!?]{0,40}\b(?:teks|tulisan|mesej\s+tulisan|text)\b/i,
+  // "sistem ini memang tak ada fungsi voice note atau suara langsung"
+  /\b(?:tiada|tak\s+ada|tidak\s+ada|belum\s+ada|tak\s+wujud)\b[^.!?]{0,60}\b(?:voice\s*note|nota\s+suara|fungsi\s+suara|suara)\b/i,
+  /\b(?:voice\s*note|nota\s+suara)\b[^.!?]{0,40}\b(?:tiada|tak\s+ada|tidak\s+ada|tidak\s+tersedia|belum\s+tersedia|tak\s+tersedia)\b/i,
+  /\bhanya\s+boleh\s+(?:balas|hantar|beri|bantu|berkomunikasi|berhubung)\b[^.!?]{0,60}\b(?:teks|tulisan|bertulis|mesej\s+tulisan|mesej\s+bertulis|text)\b/i,
+  /\b(?:melalui|dengan|guna(?:kan)?)\s+mesej\s+(?:bertulis|tulisan|teks)\s+sahaja\b/i,
+  /\bmesej\s+(?:bertulis|tulisan|teks)\s+sahaja\b/i,
   /\bsaya\s+hanya\s+(?:sebuah\s+)?(?:sistem\s+)?ai\s+teks\b/i,
   /\b(?:i\s+)?(?:can(?:'|’)?t|cannot|am\s+not\s+able\s+to)\b[^.!?]{0,60}\b(?:speak|talk|send\s+(?:a\s+)?voice\s*(?:note|message)|send\s+audio)\b/i,
-  /\bi\s+can\s+only\s+(?:reply|respond|send)\b[^.!?]{0,30}\b(?:text|written)\b/i,
+  /\bi\s+can\s+only\s+(?:reply|respond|send|help)\b[^.!?]{0,40}\b(?:text|written)\b/i,
   /\bi\s*(?:'|’)?m\s+(?:only|just)\s+a\s+text[-\s]?(?:based\s+)?(?:ai|bot|assistant)\b/i,
 ];
+
 
 /** Unnecessary self-referential machine talk during normal sales conversation. */
 const SELF_REFERENTIAL_PATTERNS: RegExp[] = [
