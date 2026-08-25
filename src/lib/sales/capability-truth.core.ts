@@ -75,19 +75,32 @@ function splitSentences(text: string): string[] {
  */
 export function sanitizeCapabilityClaims(
   text: string,
-  options: CapabilityState & { customerAskedIdentity?: boolean },
+  options: CapabilityState & { customerAskedIdentity?: boolean; liveCallRequested?: boolean },
 ): string {
-  if (!text) return text;
+  const original = (text ?? "").trim();
   const drop: RegExp[] = [];
   if (options.voiceAvailable) drop.push(...FALSE_VOICE_DENIAL_PATTERNS);
   if (!options.customerAskedIdentity) drop.push(...SELF_REFERENTIAL_PATTERNS);
-  if (!drop.length) return text;
 
-  const kept = splitSentences(text).filter(
-    (sentence) => !drop.some((pattern) => pattern.test(sentence)),
-  );
-  const cleaned = kept.join(" ").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-  return cleaned || text.trim();
+  let cleaned = original;
+  if (drop.length && original) {
+    const kept = splitSentences(original).filter(
+      (sentence) => !drop.some((pattern) => pattern.test(sentence)),
+    );
+    cleaned = kept.join(" ").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  // A reply made up ONLY of forbidden denial text must never be shipped as-is.
+  if (!cleaned) {
+    cleaned = options.voiceAvailable && original ? VOICE_CAPABILITY_FALLBACK_MS : original;
+  }
+
+  // Runtime enforcement (not prompt-only): the customer asked for a phone call.
+  if (options.liveCallRequested && !mentionsLiveCallUnavailable(cleaned)) {
+    cleaned = cleaned ? `${LIVE_CALL_UNAVAILABLE_MS} ${cleaned}` : LIVE_CALL_UNAVAILABLE_MS;
+  }
+
+  return cleaned;
 }
 
 /** Prompt lines injected into the sales system prompt. */
