@@ -22,7 +22,7 @@ export function quotationLink(token: string) {
 }
 
 import { logConversionEvent } from "../conversion/events";
-import { recordLeadStageTransition } from "../conversion/producers";
+import { recordBookingStatusTransition, recordLeadStageTransition } from "../conversion/producers";
 
 export { logConversionEvent };
 
@@ -292,6 +292,32 @@ export async function transitionQuotation(
       actor: opts.actor ?? "human",
       reason: opts.reason ?? null,
     });
+  }
+
+  if (to === "booked") {
+    // B-2 (booking attribution) — the bookings row is the authoritative booking
+    // status source. Confirm it exactly once; the conditional update guarantees
+    // idempotency, so a replayed transition emits no duplicate conversion event.
+    const { data: confirmed } = await supabase
+      .from("bookings")
+      .update({ status: "confirmed" })
+      .eq("quotation_id", quotationId)
+      .eq("agency_id", agencyId)
+      .neq("status", "confirmed")
+      .select("id, lead_id, status");
+    for (const booking of (confirmed ?? []) as Array<Record<string, any>>) {
+      await recordBookingStatusTransition({
+        db: supabase,
+        agencyId,
+        bookingId: booking["id"] as string,
+        leadId: (booking["lead_id"] as string | null) ?? row.lead_id ?? null,
+        quotationId,
+        from: from as string,
+        to: "confirmed",
+        actor: opts.actor ?? "human",
+        reason: opts.reason ?? null,
+      });
+    }
   }
 
   return updated;
