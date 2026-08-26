@@ -309,8 +309,8 @@ export async function transitionQuotation(
       await recordBookingStatusTransition({
         db: supabase,
         agencyId,
-        bookingId: booking.id as string,
-        leadId: (booking.lead_id as string | null) ?? row.lead_id ?? null,
+        bookingId: booking["id"] as string,
+        leadId: (booking["lead_id"] as string | null) ?? row.lead_id ?? null,
         quotationId,
         from: from as string,
         to: "confirmed",
