@@ -153,7 +153,9 @@ function tableRows(table: string): Record<string, unknown>[] {
   return [];
 }
 
-type Filter = { op: string; col: string; value: unknown };
+type Filter =
+  | { op: string; col: string; value: unknown }
+  | { op: "or"; value: Filter[] };
 
 function makeQuery(table: string) {
   const filters: Filter[] = [];
@@ -161,24 +163,30 @@ function makeQuery(table: string) {
   let limitN = Infinity;
   let updatePatch: Record<string, unknown> | null = null;
 
-  const matches = (row: Record<string, unknown>) =>
-    filters.every((f) => {
-      const v = row[f.col];
-      switch (f.op) {
-        case "eq":
-          return v === f.value;
-        case "neq":
-          return v !== f.value;
-        case "notNull":
-          return v !== null && v !== undefined;
-        case "lte":
-          return String(v) <= String(f.value);
-        case "in":
-          return (f.value as unknown[]).includes(v);
-        default:
-          return true;
-      }
-    });
+  const evaluate = (row: Record<string, unknown>, f: Filter): boolean => {
+    if (f.op === "or") {
+      return (f.value as Filter[]).some((sub) => evaluate(row, sub));
+    }
+    const v = row[f.col];
+    switch (f.op) {
+      case "eq":
+        return v === f.value;
+      case "neq":
+        return v !== f.value;
+      case "notNull":
+        return v !== null && v !== undefined;
+      case "isNull":
+        return v === null || v === undefined;
+      case "lte":
+        return String(v) <= String(f.value);
+      case "in":
+        return (f.value as unknown[]).includes(v);
+      default:
+        return true;
+    }
+  };
+
+  const matches = (row: Record<string, unknown>) => filters.every((f) => evaluate(row, f));
 
   const rows = () => {
     let out = tableRows(table).filter(matches);
@@ -209,6 +217,21 @@ function makeQuery(table: string) {
     },
     not: (col: string, _op: string, _value: unknown) => {
       filters.push({ op: "notNull", col, value: null });
+      return api;
+    },
+    is: (col: string, value: unknown) => {
+      filters.push({ op: value === null ? "isNull" : "eq", col, value });
+      return api;
+    },
+    or: (expr: string) => {
+      // Minimal parser for the single form used here: "body.is.null,body.eq."
+      const subs: Filter[] = [];
+      for (const part of expr.split(",")) {
+        const [col, rawOp, rawVal] = part.split(".");
+        if (rawOp === "is" && rawVal === "null") subs.push({ op: "isNull", col, value: null });
+        else if (rawOp === "eq") subs.push({ op: "eq", col, value: rawVal === "" ? "" : rawVal });
+      }
+      filters.push({ op: "or", value: subs });
       return api;
     },
     lte: (col: string, value: unknown) => {
@@ -270,11 +293,43 @@ describe("follow-up dispatcher head-of-line blocking (P0-1)", () => {
     expect(result.sent).toBe(1);
   });
 
-  test("body-less jobs are never sent and stay pending for humans", async () => {
+  test("body-less pending jobs become terminal skipped/Left for human follow-up", async () => {
     await dispatchDueFollowups(fakeDb, AGENCY, 5);
     const blanks = jobs.filter((j) => j.id.startsWith("blank-"));
-    expect(blanks.every((j) => j.status === "pending")).toBe(true);
+    expect(
+      blanks.every(
+        (j) => j.status === "skipped" && j.skip_reason === "Left for human follow-up",
+      ),
+    ).toBe(true);
     expect(sent.some((m) => m.body === "" || m.body == null)).toBe(false);
+  });
+
+  test("body-bearing pending jobs remain dispatch-eligible and are sent", async () => {
+    const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    expect(result.sent).toBe(1);
+    const sendable = jobs.find((j) => j.id === "sendable-1")!;
+    expect(sendable.status).toBe("sent");
+    expect(sendable.dispatched_at).toBeTruthy();
+  });
+
+  test("body-bearing jobs skipped for business reasons keep their original reason", async () => {
+    jobs.push({
+      id: "no-lead-1",
+      agency_id: AGENCY,
+      lead_id: null,
+      conversation_id: null,
+      quotation_id: null,
+      title: "No lead",
+      body: "hello",
+      run_at: past(4),
+      channel: "whatsapp",
+      status: "pending",
+      created_at: past(50),
+    });
+    await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    const job = jobs.find((j) => j.id === "no-lead-1")!;
+    expect(job.status).toBe("skipped");
+    expect(job.skip_reason).toBe("No lead attached");
   });
 
   test("no cross-agency job is ever dispatched", async () => {

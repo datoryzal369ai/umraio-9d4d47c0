@@ -125,6 +125,34 @@ export async function dispatchDueFollowups(
     return result;
   }
 
+  // Terminal-skip body-less human-handover tasks so they do not accumulate
+  // forever in the pending queue. They are fetched separately to avoid
+  // occupying the sendable batch (head-of-line blocking).
+  const { data: bodyLessJobs } = await supabase
+    .from("followup_jobs")
+    .select("id")
+    .eq("agency_id", agencyId)
+    .eq("status", "pending")
+    .eq("channel", "whatsapp")
+    .or("body.is.null,body.eq.")
+    .lte("run_at", new Date().toISOString())
+    .order("run_at", { ascending: true })
+    .limit(limit * 4);
+
+  if (bodyLessJobs?.length) {
+    for (const bodyLessJob of bodyLessJobs) {
+      await markJob(supabase, bodyLessJob.id, "skipped", {
+        skip_reason: "Left for human follow-up",
+      });
+      result.skipped += 1;
+      result.details.push({
+        id: bodyLessJob.id,
+        outcome: "skipped",
+        reason: "Left for human follow-up",
+      });
+    }
+  }
+
   // Only actionable jobs enter the dispatch window. Body-less rows are internal
   // human-handover tasks: they stay pending for people, but must never occupy
   // the sendable batch (head-of-line blocking).
@@ -167,7 +195,15 @@ export async function dispatchDueFollowups(
     // 1. Only explicit customer-facing follow-ups are ever sent.
     const body = (job.body ?? "").trim();
     if (!body) {
-      result.details.push({ id: job.id, outcome: "left_for_human" });
+      await markJob(supabase, job.id, "skipped", {
+        skip_reason: "Left for human follow-up",
+      });
+      result.skipped += 1;
+      result.details.push({
+        id: job.id,
+        outcome: "skipped",
+        reason: "Left for human follow-up",
+      });
       continue;
     }
     if (!job.lead_id) {
