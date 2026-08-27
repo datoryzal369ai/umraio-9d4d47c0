@@ -182,6 +182,7 @@ function rm(value: number | null | undefined): string | null {
 export function existingQuotationCard(q: ExistingQuotationCard | null): string {
   const bullets: string[] = [];
   if (q?.packageName) bullets.push(`• *Pakej:* ${q.packageName}`);
+  if (q?.pax && q.pax > 0) bullets.push(`• *Jemaah:* ${q.pax} orang`);
   const total = rm(q?.totalMyr);
   if (total) bullets.push(`• *Jumlah:* ${total}`);
   const deposit = rm(q?.depositMyr);
@@ -242,6 +243,12 @@ export function existingQuotationDeliveryReply(input: {
   customerMessages: ReadonlyArray<string | null | undefined>;
   quotation: ExistingQuotationCard | null;
 }): string | null {
-  if (!input.quotation || !requestsExistingQuotationNow(input.customerMessages)) return null;
+  if (
+    !input.quotation?.link ||
+    !input.quotation.quotationNumber ||
+    !requestsExistingQuotationNow(input.customerMessages)
+  ) {
+    return null;
+  }
   return existingQuotationCard(input.quotation);
 }

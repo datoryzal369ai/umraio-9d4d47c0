@@ -176,7 +176,7 @@ describe("G — existing live quotation surfacing", () => {
     expect(out).toBe(existingQuotationCard(CARD));
     expect(out).toContain(CARD.link);
     expect(out).toMatch(/\*Pakej:\* Umrah VIP/);
-    expect(out).toMatch(/\*3 orang\*/);
+    expect(out).toMatch(/\*Jemaah:\* 3 orang/);
     expect(out).not.toMatch(/staf|staff|email/i);
   });
 
@@ -205,6 +205,15 @@ describe("G — existing live quotation surfacing", () => {
       existingQuotationDeliveryReply({
         customerMessages: ["Saya nak quotation"],
         quotation: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("E. incomplete quotation facts never fabricate a card or link", () => {
+    expect(
+      existingQuotationDeliveryReply({
+        customerMessages: ["Saya nak quotation untuk 3 orang"],
+        quotation: { packageName: "Umrah VIP", pax: 3 },
       }),
     ).toBeNull();
   });
