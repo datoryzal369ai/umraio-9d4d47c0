@@ -310,7 +310,12 @@ async function processInboundMessage(
             //
             // Repetition guard: back-to-back failures of the same kind within a
             // short window must not spam the customer with identical replies.
-            const dedupeSince = new Date(Date.now() - 120_000).toISOString();
+            const { shouldSuppressVoiceFallback, VOICE_FALLBACK_DEDUPE_WINDOW_MS } = await import(
+              "@/lib/whatsapp/duplicate-suppression.core"
+            );
+            const dedupeSince = new Date(
+              Date.now() - VOICE_FALLBACK_DEDUPE_WINDOW_MS,
+            ).toISOString();
             const { data: recentFallback } = await supabaseAdmin
               .from("activity_log")
               .select("id, meta, created_at")
@@ -323,10 +328,17 @@ async function processInboundMessage(
             const recentMeta = (recentFallback?.meta ?? null) as
               | { reason?: string; from?: string }
               | null;
-            const isDuplicateFallback =
-              Boolean(recentFallback) &&
-              recentMeta?.from === from &&
-              recentMeta?.reason === voice.reason;
+            const isDuplicateFallback = shouldSuppressVoiceFallback({
+              previous: recentFallback
+                ? {
+                    from: recentMeta?.from ?? null,
+                    reason: recentMeta?.reason ?? null,
+                    createdAt: (recentFallback.created_at as string | null) ?? null,
+                  }
+                : null,
+              from,
+              reason: voice.reason,
+            });
             if (isDuplicateFallback) {
               console.log(
                 `[voice] fallback_suppressed reason=${voice.reason} agency_id=${agencyId} window_s=120`,
