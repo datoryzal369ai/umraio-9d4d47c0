@@ -154,3 +154,57 @@ export function continueIntentInstruction(latestMessage: string | null | undefin
     "Do not restart qualification and do not repeat questions already answered.",
   ].join("\n");
 }
+
+/* ------------------------------------------------------------------ */
+/* G — existing live quotation surfacing (no staff fiction)             */
+/* ------------------------------------------------------------------ */
+
+export type ExistingQuotationCard = {
+  quotationNumber?: string | null;
+  packageName?: string | null;
+  totalMyr?: number | null;
+  depositMyr?: number | null;
+  pax?: number | null;
+  link?: string | null;
+};
+
+function rm(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return `RM${value.toLocaleString("en-MY", { maximumFractionDigits: 2 })}`;
+}
+
+/** Deterministic WhatsApp card for a quotation that already exists. */
+export function existingQuotationCard(q: ExistingQuotationCard | null): string {
+  const bullets: string[] = [];
+  if (q?.packageName) bullets.push(`• *Pakej:* ${q.packageName}`);
+  const total = rm(q?.totalMyr);
+  if (total) bullets.push(`• *Jumlah:* ${total}`);
+  const deposit = rm(q?.depositMyr);
+  if (deposit) bullets.push(`• *Deposit:* ${deposit}`);
+  if (q?.quotationNumber) bullets.push(`• *Rujukan:* ${q.quotationNumber}`);
+
+  const intro =
+    q?.pax && q.pax > 0
+      ? `Baik Dato'. Ini quotation untuk *${q.pax} orang*.`
+      : "Baik Dato'. Ini quotation yang sedia ada.";
+
+  const parts = ["*QUOTATION UMRAH*", "", intro];
+  if (bullets.length) parts.push("", ...bullets);
+  if (q?.link) parts.push("", "*Quotation:*", q.link);
+  parts.push("", "Jika Dato' setuju, balas *SETUJU*.");
+  return parts.join("\n");
+}
+
+/**
+ * Directive: a live quotation already exists — surface it, never invent a
+ * staff workflow to "prepare" it.
+ */
+export function existingQuotationInstruction(q: ExistingQuotationCard | null): string | null {
+  if (!q || (!q.quotationNumber && !q.link)) return null;
+  return [
+    "EXISTING LIVE QUOTATION — SURFACE IT DIRECTLY:",
+    "This lead already has a live quotation. Do NOT call create_quotation, do NOT say 'staff akan siapkan', 'staff akan hantarkan' or 'saya akan maklumkan staff', and do NOT claim a human was notified.",
+    "If the customer asks for a quotation, the document, the PDF or the link, reply with EXACTLY this block (you may keep the customer's language, but keep every figure, reference and URL unchanged):",
+    existingQuotationCard(q),
+  ].join("\n");
+}
