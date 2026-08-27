@@ -8,6 +8,7 @@ import {
   type DepositPolicy,
   type QuotationStatus,
 } from "./pricing.core";
+import { resolvePublicSiteUrl } from "./public-url.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
