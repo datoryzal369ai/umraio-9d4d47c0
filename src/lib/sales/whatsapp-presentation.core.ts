@@ -134,13 +134,18 @@ export function knownContextInstruction(facts: {
 
 const PDF_ASK = /\b(pdf|dokumen|document|fail|file|softcopy|soft\s*copy)\b/i;
 
-export function pdfCapabilityInstruction(latestMessage: string | null | undefined): string | null {
+export function pdfCapabilityInstruction(
+  latestMessage: string | null | undefined,
+  quotationLink?: string | null,
+): string | null {
   if (!latestMessage || !PDF_ASK.test(latestMessage)) return null;
   return [
     "PDF REQUEST DETECTED: this system does not generate or send a PDF quotation file.",
-    "If a quotation exists, share its customer link returned by create_quotation (the quotation page can be viewed and printed).",
+    quotationLink
+      ? `A quotation link already exists — send it and call it a quotation link (not a PDF): ${quotationLink}`
+      : "If a quotation exists, share its customer link returned by create_quotation (the quotation page can be viewed and printed).",
     "If no quotation exists yet, say so plainly and offer to prepare one now.",
-    "Never claim a PDF was sent and never claim staff has sent it.",
+    "Never claim a PDF was sent, never fabricate a PDF file, and never say staff will send it.",
   ].join("\n");
 }
 
