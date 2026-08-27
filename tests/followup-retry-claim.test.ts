@@ -90,7 +90,9 @@ function tableRows(table: string): Row[] {
   return [];
 }
 
-type Filter = { op: string; col: string; value: unknown };
+type Filter =
+  | { op: string; col: string; value: unknown }
+  | { op: "or"; value: Filter[] };
 
 function makeQuery(table: string) {
   const filters: Filter[] = [];
@@ -98,24 +100,30 @@ function makeQuery(table: string) {
   let limitN = Infinity;
   let updatePatch: Row | null = null;
 
-  const matches = (row: Row) =>
-    filters.every((f) => {
-      const v = row[f.col];
-      switch (f.op) {
-        case "eq":
-          return v === f.value;
-        case "neq":
-          return v !== f.value;
-        case "notNull":
-          return v !== null && v !== undefined;
-        case "lte":
-          return String(v) <= String(f.value);
-        case "in":
-          return (f.value as unknown[]).includes(v);
-        default:
-          return true;
-      }
-    });
+  const evaluate = (row: Row, f: Filter): boolean => {
+    if (f.op === "or") {
+      return (f.value as Filter[]).some((sub) => evaluate(row, sub));
+    }
+    const v = row[f.col];
+    switch (f.op) {
+      case "eq":
+        return v === f.value;
+      case "neq":
+        return v !== f.value;
+      case "notNull":
+        return v !== null && v !== undefined;
+      case "isNull":
+        return v === null || v === undefined;
+      case "lte":
+        return String(v) <= String(f.value);
+      case "in":
+        return (f.value as unknown[]).includes(v);
+      default:
+        return true;
+    }
+  };
+
+  const matches = (row: Row) => filters.every((f) => evaluate(row, f));
 
   const rows = () => {
     let out = tableRows(table).filter(matches);
@@ -146,6 +154,20 @@ function makeQuery(table: string) {
     },
     not: (col: string) => {
       filters.push({ op: "notNull", col, value: null });
+      return api;
+    },
+    is: (col: string, value: unknown) => {
+      filters.push({ op: value === null ? "isNull" : "eq", col, value });
+      return api;
+    },
+    or: (expr: string) => {
+      const subs: Filter[] = [];
+      for (const part of expr.split(",")) {
+        const [col, rawOp, rawVal] = part.split(".");
+        if (rawOp === "is" && rawVal === "null") subs.push({ op: "isNull", col, value: null });
+        else if (rawOp === "eq") subs.push({ op: "eq", col, value: rawVal === "" ? "" : rawVal });
+      }
+      filters.push({ op: "or", value: subs });
       return api;
     },
     lte: (col: string, value: unknown) => {
