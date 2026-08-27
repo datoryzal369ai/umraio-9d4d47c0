@@ -260,9 +260,9 @@ export function createIntelligenceGateway(audit?: GatewayAuditBinding): Intellig
             abortSignal: args.signal,
             maxRetries: 0,
           });
-          return (await result.text).trim();
+          return extractRunText(result);
         }
-        const { text } = await generateText({
+        const result = await generateText({
           model: languageModel,
           ...systemOption(request),
           ...promptOption,
@@ -271,7 +271,7 @@ export function createIntelligenceGateway(audit?: GatewayAuditBinding): Intellig
           abortSignal: args.signal,
           maxRetries: 0,
         });
-        return text.trim();
+        return extractRunText(result);
       });
     },
 
