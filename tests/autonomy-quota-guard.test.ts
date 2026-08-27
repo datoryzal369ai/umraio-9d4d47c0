@@ -74,6 +74,11 @@ function makeSupabase(opts: MockOptions) {
     }),
   };
 
+  const bookingsQuery = {
+    eq: () => bookingsQuery,
+    gte: () => Promise.resolve({ data: [], error: null }),
+  };
+
   const supabase = {
     from(table: string) {
       if (table === "usage_events") return { select: () => usageCountQuery };
@@ -81,6 +86,7 @@ function makeSupabase(opts: MockOptions) {
       if (table === "leads") return { select: () => leadsQuery };
       if (table === "ai_tasks") return aiTasksInsert;
       if (table === "notifications") return notifications;
+      if (table === "bookings") return { select: () => bookingsQuery };
       throw new Error(`unexpected table: ${table}`);
     },
   };
