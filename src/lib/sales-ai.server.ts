@@ -40,6 +40,17 @@ import {
   inferModalityFromBody,
   readContinuity,
 } from "@/lib/sales/context-continuity.core";
+import {
+  WHATSAPP_FORMAT_INSTRUCTION,
+  QUOTATION_AUTONOMY_INSTRUCTION,
+  HANDOVER_LANGUAGE_INSTRUCTION,
+  NEXT_BEST_ACTION_INSTRUCTION,
+  directPriceInstruction,
+  knownContextInstruction,
+  pdfCapabilityInstruction,
+  continueIntentInstruction,
+} from "@/lib/sales/whatsapp-presentation.core";
+
 
 import {
   buildConversationIntelligence,
