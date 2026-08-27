@@ -221,4 +221,14 @@ describe("G — existing live quotation surfacing", () => {
   it("does not reinterpret unrelated 'WhatsApp now' text without quotation context", () => {
     expect(requestsExistingQuotationNow(["Wassap sekarang!"])).toBe(false);
   });
+
+  it("F. cannot emit the observed staff-handover fiction for a live quotation request", () => {
+    const out = existingQuotationDeliveryReply({
+      customerMessages: ["Saya nak quotation untuk 3 orang."],
+      quotation: CARD,
+    });
+    expect(out).not.toMatch(
+      /maklumkan\s+(?:staf|staff)|(?:staf|staff).*(?:siapkan|hantar|whatsapp|email|emel)/i,
+    );
+  });
 });

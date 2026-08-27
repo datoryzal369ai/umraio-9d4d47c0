@@ -81,4 +81,15 @@ describe("AI Quotation Executive — in-chat acceptance", () => {
     );
     expect(salesAi).toContain('.in("status", ["ready", "sent", "viewed", "discussing"])');
   });
+
+  it("I. preserves agency and lead isolation on the live quotation lookup", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const salesAi = fs.readFileSync("src/lib/sales-ai.server.ts", "utf8");
+    const lookup = salesAi.slice(
+      salesAi.indexOf("// Step 3: the live quotation"),
+      salesAi.indexOf("return {", salesAi.indexOf("// Step 3: the live quotation")),
+    );
+    expect(lookup).toContain('.eq("agency_id", conversation.agency_id)');
+    expect(lookup).toContain('.eq("lead_id", conversation.lead_id)');
+  });
 });
