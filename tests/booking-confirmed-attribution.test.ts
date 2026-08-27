@@ -25,8 +25,10 @@ function makeDb(bookingStatus: string) {
           return chain;
         },
         update: (patch: Record<string, unknown>) => {
+          // Supabase applies the update only to rows matching the later
+          // eq/neq filters, so the mock must not mutate state here — the
+          // conditional write is applied in select() once neq() has run.
           mode = "update";
-          if (table === "bookings" && !neqConfirmed) state.bookingStatus = patch["status"] as string;
           filters["patch"] = patch;
           return chain;
         },
