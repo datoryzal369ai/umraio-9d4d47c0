@@ -254,6 +254,7 @@ export function createIntelligenceGateway(audit?: GatewayAuditBinding): Intellig
         if (args.transport === "reasoning") {
           // Reasoning workloads stream on the wire (bounded by the deadline)
           // so long generations are never a single silent round-trip.
+          let streamError: unknown = null;
           const result = streamText({
             model: languageModel,
             ...systemOption(request),
@@ -262,9 +263,21 @@ export function createIntelligenceGateway(audit?: GatewayAuditBinding): Intellig
             providerOptions,
             abortSignal: args.signal,
             maxRetries: 0,
+            onError: (event: unknown) => {
+              streamError = (event as { error?: unknown } | null)?.error ?? event;
+            },
           });
-          return extractRunText(result);
+          const streamed = await extractRunText(result);
+          // P0-4: a stream error that produced no assistant text must fail the
+          // run, not be reported as a successful empty completion.
+          if (!streamed && streamError) {
+            throw streamError instanceof Error
+              ? streamError
+              : new Error(String((streamError as { message?: string })?.message ?? streamError));
+          }
+          return streamed;
         }
+
         const result = await generateText({
           model: languageModel,
           ...systemOption(request),
