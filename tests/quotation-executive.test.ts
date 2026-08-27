@@ -25,7 +25,7 @@ describe("AI Quotation Executive — missing input", () => {
 
   it("emits a one-question directive when closing intent lacks inputs", () => {
     const instruction = missingQuotationInputInstruction({
-      latestMessage: "saya nak booking",
+      latestMessage: "saya nak tempah",
       packageInterest: null,
       pax: null,
     });
@@ -36,7 +36,7 @@ describe("AI Quotation Executive — missing input", () => {
   it("stays silent when everything needed is known", () => {
     expect(
       missingQuotationInputInstruction({
-        latestMessage: "saya nak booking",
+        latestMessage: "saya nak tempah",
         packageInterest: "Umrah Premium 12H",
         pax: 3,
       }),
