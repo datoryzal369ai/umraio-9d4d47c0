@@ -178,7 +178,13 @@ export async function applySafetyGate(args: {
       meta: { lead_id: leadId },
     });
 
-    return { blocked: true, reason: "human_requested", customerMessage: HUMAN_HANDOFF_ACK };
+    return {
+      blocked: true,
+      reason: "human_requested",
+      customerMessage: shouldSendSafetyAck({ currentState, targetState: "HUMAN_HANDOFF" })
+        ? HUMAN_HANDOFF_ACK
+        : null,
+    };
   }
 
   return { blocked: false, reason: null, customerMessage: null };
