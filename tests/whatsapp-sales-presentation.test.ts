@@ -10,6 +10,8 @@ import {
   knownContextInstruction,
   pdfCapabilityInstruction,
   continueIntentInstruction,
+  existingQuotationCard,
+  existingQuotationInstruction,
 } from "@/lib/sales/whatsapp-presentation.core";
 
 const PACKAGES = [
@@ -114,5 +116,53 @@ describe("F — next best action and continuation", () => {
     expect(out).toMatch(/execute the next available action/);
     expect(out).toMatch(/Do not restart qualification/);
     expect(continueIntentInstruction("Berapa harga?")).toBeNull();
+  });
+});
+
+describe("G — existing live quotation surfacing", () => {
+  const CARD = {
+    quotationNumber: "Q-2026-0002",
+    packageName: "Umrah VIP",
+    totalMyr: 20970,
+    depositMyr: 3000,
+    pax: 3,
+    link: "https://umraio.com/q/tok123",
+  };
+
+  it("renders a bolded, bulleted quotation card with the existing link", () => {
+    const out = existingQuotationCard(CARD);
+    expect(out).toMatch(/\*QUOTATION UMRAH\*/);
+    expect(out).toMatch(/\*3 orang\*/);
+    expect(out).toMatch(/• \*Pakej:\* Umrah VIP/);
+    expect(out).toMatch(/• \*Jumlah:\* RM20,970/);
+    expect(out).toMatch(/• \*Deposit:\* RM3,000/);
+    expect(out).toMatch(/• \*Rujukan:\* Q-2026-0002/);
+    expect(out).toContain("https://umraio.com/q/tok123");
+    expect(out).toMatch(/balas \*SETUJU\*/);
+    expect(out).not.toMatch(/staf|staff/i);
+  });
+
+  it("omits deposit when unavailable", () => {
+    expect(existingQuotationCard({ ...CARD, depositMyr: null })).not.toMatch(/Deposit/);
+  });
+
+  it("instructs the model to surface it and forbids staff fiction", () => {
+    const out = existingQuotationInstruction(CARD)!;
+    expect(out).toMatch(/EXISTING LIVE QUOTATION/);
+    expect(out).toMatch(/Do NOT call create_quotation/);
+    expect(out).toMatch(/staff akan siapkan/);
+    expect(out).toContain("Q-2026-0002");
+  });
+
+  it("stays silent when no quotation exists (new-quotation flow untouched)", () => {
+    expect(existingQuotationInstruction(null)).toBeNull();
+    expect(existingQuotationInstruction({ totalMyr: 100 })).toBeNull();
+  });
+
+  it("answers 'Mana PDF?' with the existing quotation link, never a staff promise", () => {
+    const out = pdfCapabilityInstruction("Mana PDF?", CARD.link)!;
+    expect(out).toMatch(/does not generate or send a PDF/);
+    expect(out).toContain(CARD.link);
+    expect(out).toMatch(/never say staff will send it/i);
   });
 });

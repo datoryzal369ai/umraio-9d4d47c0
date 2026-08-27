@@ -203,3 +203,32 @@ describe("P0-4 — gateway stream errors are not successful empty runs", () => {
     expect(result.data).toBe("");
   });
 });
+
+describe("I — live-quotation fallback surfaces the existing quotation", () => {
+  it("returns the quotation card with reference, total, deposit and link", () => {
+    const reply = emptyCompletionReply({
+      toolRecords: [
+        {
+          tool: "create_quotation",
+          status: "rejected",
+          reason: "This lead already has a live quotation. Discuss the existing quotation instead.",
+        },
+      ],
+      quotation: {
+        quotationNumber: "Q-2026-0002",
+        status: "sent",
+        totalMyr: 20970,
+        depositMyr: 3000,
+        packageName: "Umrah VIP",
+        pax: 3,
+        link: "https://umraio.com/q/tok123",
+      },
+    });
+    expect(reply).toMatch(/\*QUOTATION UMRAH\*/);
+    expect(reply).toContain("Q-2026-0002");
+    expect(reply).toContain("https://umraio.com/q/tok123");
+    expect(reply).not.toMatch(/staf|staff/i);
+    expect(reply).not.toMatch(/ulang sekali lagi/i);
+    expect(reply.trim().length).toBeGreaterThan(0);
+  });
+});
