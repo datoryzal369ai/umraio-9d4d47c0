@@ -1587,15 +1587,10 @@ export async function generateAgentReply(
   // P0-4 — an empty completion on a normal turn is NEVER an ASR failure. Explain
   // a blocking tool rejection truthfully, otherwise hold neutrally.
   const q = ctx.quotation as Record<string, unknown> | null;
+  const card = existingQuotationFacts(q);
   return emptyCompletionReply({
     toolRecords,
-    quotation: q
-      ? {
-          quotationNumber: (q["quotation_number"] as string | null) ?? null,
-          status: (q["status"] as string | null) ?? null,
-          totalMyr: q["total"] === null || q["total"] === undefined ? null : Number(q["total"]),
-        }
-      : null,
+    quotation: card ? { ...card, status: (q?.["status"] as string | null) ?? null } : null,
   });
 }
 
