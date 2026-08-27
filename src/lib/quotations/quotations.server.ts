@@ -49,14 +49,24 @@ export async function loadDepositPolicy(
   };
 }
 
-async function nextQuotationNumber(supabase: Db, agencyId: string) {
+async function nextQuotationNumber(supabase: Db, agencyId: string, attempt = 0) {
   const { count } = await supabase
     .from("quotations")
     .select("id", { count: "exact", head: true })
     .eq("agency_id", agencyId);
-  const seq = (count ?? 0) + 1;
+  // `count + 1` can collide under concurrency; the caller retries with a
+  // higher attempt offset until the insert succeeds.
+  const seq = (count ?? 0) + 1 + attempt;
   const year = new Date().getUTCFullYear();
   return `Q-${year}-${String(seq).padStart(4, "0")}`;
+}
+
+function isDuplicateNumber(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "23505" ||
+    /duplicate key|already exists|unique constraint/i.test(error.message ?? "")
+  );
 }
 
 export type CreateQuotationInput = {
