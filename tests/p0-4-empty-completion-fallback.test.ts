@@ -28,7 +28,7 @@ describe("P0-4 — empty AI completion never uses the ASR apology", () => {
     });
 
     expect(reply).not.toMatch(ASR_FALLBACK);
-    expect(reply).toMatch(/masih aktif/i);
+    expect(reply).toMatch(/\*QUOTATION UMRAH\*/);
     expect(reply).toMatch(/QT-0007/);
     expect(reply).not.toMatch(/quotation baharu telah|berjaya dikeluarkan/i);
   });
@@ -85,7 +85,7 @@ describe("P0-4 FINAL — sales-ai !result.ok branch", () => {
     });
     expect(reply.length).toBeGreaterThan(0); // outbound reply exists — never silent
     expect(reply).not.toMatch(ASR_FALLBACK);
-    expect(reply).toMatch(/masih aktif/i);
+    expect(reply).toMatch(/\*QUOTATION UMRAH\*/);
     expect(reply).toMatch(/QT-0042/);
     expect(reply).toMatch(/RM15,500/);
     // never claims a NEW quotation was created (the truthful "not issuing a new

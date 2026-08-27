@@ -81,7 +81,7 @@ describe("D — handover language + PDF truth", () => {
     const out = pdfCapabilityInstruction("Mana PDF?");
     expect(out).toMatch(/does not generate or send a PDF/);
     expect(out).toMatch(/customer link/);
-    expect(out).toMatch(/never claim staff has sent it/i);
+    expect(out).toMatch(/never say staff will send it/i);
     expect(pdfCapabilityInstruction("Harga berapa?")).toBeNull();
   });
 });
