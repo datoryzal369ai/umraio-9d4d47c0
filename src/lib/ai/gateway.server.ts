@@ -53,6 +53,36 @@ function resolveModelId(config: AiConfig, transport: ProviderTransport): string 
   return transport === "fast" ? config.fastModel : config.model;
 }
 
+/**
+ * P0-4: the final step of a tool-enabled run can be a tool step with no
+ * assistant text, so `result.text` (final step only) is empty even though an
+ * earlier assistant step produced the reply. Prefer the final text when
+ * present; otherwise recover assistant text from any step in the run.
+ */
+async function extractRunText(result: {
+  text: string | PromiseLike<string>;
+  steps?: unknown;
+}): Promise<string> {
+  const finalText = (await result.text).trim();
+  if (finalText) return finalText;
+  try {
+    const steps = await result.steps;
+    if (Array.isArray(steps)) {
+      const joined = steps
+        .map((step) => {
+          const text = (step as { text?: unknown } | null)?.text;
+          return typeof text === "string" ? text.trim() : "";
+        })
+        .filter((text) => text.length > 0)
+        .join("\n\n");
+      if (joined) return joined;
+    }
+  } catch {
+    // steps unavailable — fall through to the (empty) final text
+  }
+  return finalText;
+}
+
 function contextBlock(request: AiRequest): string {
   if (!request.context) return request.prompt;
   return [
@@ -233,9 +263,9 @@ export function createIntelligenceGateway(audit?: GatewayAuditBinding): Intellig
             abortSignal: args.signal,
             maxRetries: 0,
           });
-          return (await result.text).trim();
+          return extractRunText(result);
         }
-        const { text } = await generateText({
+        const result = await generateText({
           model: languageModel,
           ...systemOption(request),
           ...promptOption,
@@ -244,7 +274,7 @@ export function createIntelligenceGateway(audit?: GatewayAuditBinding): Intellig
           abortSignal: args.signal,
           maxRetries: 0,
         });
-        return text.trim();
+        return extractRunText(result);
       });
     },
 
