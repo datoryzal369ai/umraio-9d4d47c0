@@ -453,8 +453,39 @@ function systemPrompt(
       pax: (ctx.lead as Record<string, unknown> | null)?.["pax"] as number | null,
       latestMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
     }),
+    // WHATSAPP SALES UX — presentation + decision routing (pure, no business-rule change).
+    WHATSAPP_FORMAT_INSTRUCTION,
+    directPriceInstruction({
+      latestMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
+      packages: (ctx.packages as Array<Record<string, unknown>>).map((p) => ({
+        name: String(p["name"] ?? ""),
+        price_myr: (p["price_myr"] as number | null) ?? null,
+        nights: (p["nights"] as number | null) ?? null,
+      })),
+      pax: (ctx.lead as Record<string, unknown> | null)?.["pax"] as number | null,
+      packageInterest: (ctx.lead as Record<string, unknown> | null)?.["package_interest"] as
+        | string
+        | null,
+    }),
+    QUOTATION_AUTONOMY_INSTRUCTION,
+    HANDOVER_LANGUAGE_INSTRUCTION,
+    NEXT_BEST_ACTION_INSTRUCTION,
+    knownContextInstruction({
+      pax: (ctx.lead as Record<string, unknown> | null)?.["pax"] as number | null,
+      preferredMonth: (ctx.lead as Record<string, unknown> | null)?.["preferred_month"] as
+        | string
+        | null,
+      packageInterest: (ctx.lead as Record<string, unknown> | null)?.["package_interest"] as
+        | string
+        | null,
+      city: (ctx.lead as Record<string, unknown> | null)?.["city"] as string | null,
+      fullName: (ctx.lead as Record<string, unknown> | null)?.["full_name"] as string | null,
+    }),
+    pdfCapabilityInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
+    continueIntentInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
     // CONVERSATIONAL VALIDATION GUARD — understand first, confirm only when needed.
     continuityInstruction(continuity),
+
 
 
     conversationIntelligenceInstruction(intel),
