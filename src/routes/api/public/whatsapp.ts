@@ -328,10 +328,17 @@ async function processInboundMessage(
             const recentMeta = (recentFallback?.meta ?? null) as
               | { reason?: string; from?: string }
               | null;
-            const isDuplicateFallback =
-              Boolean(recentFallback) &&
-              recentMeta?.from === from &&
-              recentMeta?.reason === voice.reason;
+            const isDuplicateFallback = shouldSuppressVoiceFallback({
+              previous: recentFallback
+                ? {
+                    from: recentMeta?.from ?? null,
+                    reason: recentMeta?.reason ?? null,
+                    createdAt: (recentFallback.created_at as string | null) ?? null,
+                  }
+                : null,
+              from,
+              reason: voice.reason,
+            });
             if (isDuplicateFallback) {
               console.log(
                 `[voice] fallback_suppressed reason=${voice.reason} agency_id=${agencyId} window_s=120`,
