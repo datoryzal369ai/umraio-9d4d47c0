@@ -167,7 +167,15 @@ export async function dispatchDueFollowups(
     // 1. Only explicit customer-facing follow-ups are ever sent.
     const body = (job.body ?? "").trim();
     if (!body) {
-      result.details.push({ id: job.id, outcome: "left_for_human" });
+      await markJob(supabase, job.id, "skipped", {
+        skip_reason: "Left for human follow-up",
+      });
+      result.skipped += 1;
+      result.details.push({
+        id: job.id,
+        outcome: "skipped",
+        reason: "Left for human follow-up",
+      });
       continue;
     }
     if (!job.lead_id) {
