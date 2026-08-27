@@ -281,6 +281,34 @@ describe("follow-up dispatcher head-of-line blocking (P0-1)", () => {
     expect(sent.some((m) => m.body === "" || m.body == null)).toBe(false);
   });
 
+  test("body-bearing pending jobs remain dispatch-eligible and are sent", async () => {
+    const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    expect(result.sent).toBe(1);
+    const sendable = jobs.find((j) => j.id === "sendable-1")!;
+    expect(sendable.status).toBe("sent");
+    expect(sendable.dispatched_at).toBeTruthy();
+  });
+
+  test("body-bearing jobs skipped for business reasons keep their original reason", async () => {
+    jobs.push({
+      id: "no-lead-1",
+      agency_id: AGENCY,
+      lead_id: null,
+      conversation_id: null,
+      quotation_id: null,
+      title: "No lead",
+      body: "hello",
+      run_at: past(4),
+      channel: "whatsapp",
+      status: "pending",
+      created_at: past(50),
+    });
+    await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    const job = jobs.find((j) => j.id === "no-lead-1")!;
+    expect(job.status).toBe("skipped");
+    expect(job.skip_reason).toBe("No lead attached");
+  });
+
   test("no cross-agency job is ever dispatched", async () => {
     await dispatchDueFollowups(fakeDb, AGENCY, 5);
     const other = jobs.find((j) => j.id === "other-agency")!;
