@@ -438,6 +438,14 @@ function systemPrompt(
       redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
     ),
     conversionSignalInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
+    // AI QUOTATION EXECUTIVE™ — deterministic missing-input request.
+    missingQuotationInputInstruction({
+      packageInterest: (ctx.lead as Record<string, unknown> | null)?.["package_interest"] as
+        | string
+        | null,
+      pax: (ctx.lead as Record<string, unknown> | null)?.["pax"] as number | null,
+      latestMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
+    }),
     // CONVERSATIONAL VALIDATION GUARD — understand first, confirm only when needed.
     continuityInstruction(continuity),
 
