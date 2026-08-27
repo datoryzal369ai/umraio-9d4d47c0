@@ -125,9 +125,37 @@ export async function dispatchDueFollowups(
     return result;
   }
 
-  // Body-less rows are internal human-handover tasks; they are still fetched
-  // so they can be terminal-skipped rather than left pending forever, but the
-  // sendable batch is protected because they are skipped quickly without send.
+  // Terminal-skip body-less human-handover tasks so they do not accumulate
+  // forever in the pending queue. They are fetched separately to avoid
+  // occupying the sendable batch (head-of-line blocking).
+  const { data: bodyLessJobs } = await supabase
+    .from("followup_jobs")
+    .select("id")
+    .eq("agency_id", agencyId)
+    .eq("status", "pending")
+    .eq("channel", "whatsapp")
+    .or("body.is.null,body.eq.")
+    .lte("run_at", new Date().toISOString())
+    .order("run_at", { ascending: true })
+    .limit(limit * 4);
+
+  if (bodyLessJobs?.length) {
+    for (const bodyLessJob of bodyLessJobs) {
+      await markJob(supabase, bodyLessJob.id, "skipped", {
+        skip_reason: "Left for human follow-up",
+      });
+      result.skipped += 1;
+      result.details.push({
+        id: bodyLessJob.id,
+        outcome: "skipped",
+        reason: "Left for human follow-up",
+      });
+    }
+  }
+
+  // Only actionable jobs enter the dispatch window. Body-less rows are internal
+  // human-handover tasks: they stay pending for people, but must never occupy
+  // the sendable batch (head-of-line blocking).
   const { data: jobs } = await supabase
     .from("followup_jobs")
     .select(
@@ -138,6 +166,8 @@ export async function dispatchDueFollowups(
     // the atomic claim still refuses any row that is not stale.
     .in("status", ["pending", "processing"])
     .eq("channel", "whatsapp")
+    .not("body", "is", null)
+    .neq("body", "")
     .lte("run_at", new Date().toISOString())
     .order("run_at", { ascending: true })
     .limit(limit * 4);
