@@ -131,7 +131,13 @@ export async function applySafetyGate(args: {
       meta: { lead_id: leadId },
     });
 
-    return { blocked: true, reason: "opt_out", customerMessage: OPT_OUT_ACK };
+    return {
+      blocked: true,
+      reason: "opt_out",
+      customerMessage: shouldSendSafetyAck({ currentState, targetState: "DO_NOT_CONTACT" })
+        ? OPT_OUT_ACK
+        : null,
+    };
   }
 
   if (intel.humanRequested) {
