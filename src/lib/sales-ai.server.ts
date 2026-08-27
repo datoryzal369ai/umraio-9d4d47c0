@@ -123,15 +123,24 @@ export async function loadContext(supabase: Db, conversationId: string) {
           .eq("id", conversation.lead_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    // TENANT SCOPE: this runs on the service client, so the agency filter is
+    // the ONLY thing keeping another agency's catalogue out of the prompt.
+    // Without it the model can pick a foreign package_id and create_quotation
+    // rejects it with "That package does not belong to this agency."
     supabase
       .from("packages")
       .select(
         "id, name, hotel_makkah, hotel_madinah, star_rating, nights, departure_date, airline, price_myr, inclusions, halal_review_status",
       )
+      .eq("agency_id", conversation.agency_id)
       .eq("is_active", true)
       .order("price_myr", { ascending: true })
       .limit(30),
-    supabase.from("agencies").select("name, country, timezone").maybeSingle(),
+    supabase
+      .from("agencies")
+      .select("name, country, timezone")
+      .eq("id", conversation.agency_id)
+      .maybeSingle(),
     supabase
       .from("knowledge_articles")
       .select("id, title, category, summary, content, tags, file_name")
