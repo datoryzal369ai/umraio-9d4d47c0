@@ -74,9 +74,18 @@ describe("DNC current-turn rule", () => {
     const db = {
       from(table: string) {
         const api: Record<string, unknown> = {};
+        // The body-less cleanup query uses .or("body.is.null,body.eq.") while the
+        // dispatch query filters body via .not/.neq. Track which is which so the
+        // two queries do not return the same fixture and double-count skips.
+        let isBodyLessCleanup = false;
         const chain = new Proxy(api, {
           get(_t, prop) {
             if (prop === "then") return undefined;
+            if (prop === "or")
+              return (..._a: unknown[]) => {
+                isBodyLessCleanup = true;
+                return chain;
+              };
             if (prop === "update")
               return (patch: Record<string, unknown>) => {
                 if (table === "followup_jobs") updates.push(patch);
@@ -93,7 +102,11 @@ describe("DNC current-turn rule", () => {
               };
             if (prop === "limit")
               return async (..._a: unknown[]) => ({
-                data: [
+                // Cleanup query: fixture job has a body, so nothing body-less.
+                // Dispatch query: the single body-bearing fixture job.
+                data: isBodyLessCleanup
+                  ? []
+                  : [
                   {
                     id: "job-1",
                     lead_id: "lead-1",
