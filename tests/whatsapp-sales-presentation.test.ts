@@ -11,7 +11,9 @@ import {
   pdfCapabilityInstruction,
   continueIntentInstruction,
   existingQuotationCard,
+  existingQuotationDeliveryReply,
   existingQuotationInstruction,
+  requestsExistingQuotationNow,
 } from "@/lib/sales/whatsapp-presentation.core";
 
 const PACKAGES = [
@@ -164,5 +166,50 @@ describe("G — existing live quotation surfacing", () => {
     expect(out).toMatch(/does not generate or send a PDF/);
     expect(out).toContain(CARD.link);
     expect(out).toMatch(/never say staff will send it/i);
+  });
+
+  it("A. 'Saya nak quotation' deterministically returns the card and URL", () => {
+    const out = existingQuotationDeliveryReply({
+      customerMessages: ["Saya nak quotation"],
+      quotation: CARD,
+    });
+    expect(out).toBe(existingQuotationCard(CARD));
+    expect(out).toContain(CARD.link);
+    expect(out).toMatch(/\*Pakej:\* Umrah VIP/);
+    expect(out).toMatch(/\*3 orang\*/);
+    expect(out).not.toMatch(/staf|staff|email/i);
+  });
+
+  it("B. 'Wassap sekarang!' after quotation request returns the existing card", () => {
+    const out = existingQuotationDeliveryReply({
+      customerMessages: ["Saya nak quotation please", "Wassap sekarang!"],
+      quotation: CARD,
+    });
+    expect(out).toBe(existingQuotationCard(CARD));
+    expect(out).toContain(CARD.link);
+    expect(out).not.toMatch(/staf|staff|akan maklumkan/i);
+  });
+
+  it("C. an equivalent ASR transcript follows the same semantic branch", () => {
+    expect(requestsExistingQuotationNow(["saya nak quotation please"])).toBe(true);
+    const out = existingQuotationDeliveryReply({
+      customerMessages: ["saya nak quotation please"],
+      quotation: CARD,
+    });
+    expect(out).toContain(CARD.link);
+    expect(out).not.toMatch(/staf|staff/i);
+  });
+
+  it("D. no live quotation leaves the truthful missing-input/new quotation flow intact", () => {
+    expect(
+      existingQuotationDeliveryReply({
+        customerMessages: ["Saya nak quotation"],
+        quotation: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not reinterpret unrelated 'WhatsApp now' text without quotation context", () => {
+    expect(requestsExistingQuotationNow(["Wassap sekarang!"])).toBe(false);
   });
 });

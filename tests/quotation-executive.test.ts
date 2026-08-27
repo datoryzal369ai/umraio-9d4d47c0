@@ -62,4 +62,14 @@ describe("AI Quotation Executive — in-chat acceptance", () => {
       expect(detectQuotationAcceptance(text)).toBe(false);
     }
   });
+
+  it("E. preserves SETUJU acceptance after a quotation card", () => {
+    expect(detectQuotationAcceptance("SETUJU")).toBe(true);
+
+    const fs = require("node:fs") as typeof import("node:fs");
+    const webhook = fs.readFileSync("src/routes/api/public/whatsapp.ts", "utf8");
+    expect(webhook).toContain("detectQuotationAcceptance(latestBody)");
+    expect(webhook).toContain('.update({ status: "accepted", accepted_at: acceptedAt })');
+    expect(webhook).toContain('stage: "quotation_accepted"');
+  });
 });
