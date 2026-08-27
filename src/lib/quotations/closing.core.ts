@@ -101,3 +101,59 @@ export function detectQuotationAcceptance(text: string | null | undefined): bool
   if (REJECT_PATTERNS.some((re) => re.test(t))) return false;
   return ACCEPT_PATTERNS.some((re) => re.test(t));
 }
+
+/* ------------------------------------------------------------------ */
+/* P0-4 — empty AI completion fallbacks (never the ASR apology)        */
+/* ------------------------------------------------------------------ */
+
+/** Neutral holding reply for a genuinely empty AI completion (text turn). */
+export const EMPTY_COMPLETION_HOLDING_MESSAGE =
+  "Sekejap Dato', saya semak dan balas sebentar lagi.";
+
+export type ToolRejectionRecord = {
+  tool: string;
+  status: string;
+  reason?: string | null;
+};
+
+/** True when the last create_quotation attempt was blocked by a live quotation. */
+export function isLiveQuotationRejection(records: ToolRejectionRecord[]): boolean {
+  const last = [...records].reverse().find((r) => r.tool === "create_quotation");
+  if (!last || last.status === "executed") return false;
+  return /already has a live quotation/i.test(last.reason ?? "");
+}
+
+export type ExistingQuotationFacts = {
+  quotationNumber?: string | null;
+  status?: string | null;
+  totalMyr?: number | null;
+};
+
+/** Deterministic, honest reply: the existing quotation is still live. */
+export function existingQuotationReply(facts: ExistingQuotationFacts | null): string {
+  const details: string[] = [];
+  if (facts?.quotationNumber) details.push(`Quotation ${facts.quotationNumber}`);
+  if (typeof facts?.totalMyr === "number" && Number.isFinite(facts.totalMyr)) {
+    details.push(`jumlah RM${facts.totalMyr.toLocaleString("en-MY")}`);
+  }
+  const detailLine = details.length ? ` (${details.join(", ")})` : "";
+  return [
+    `Baik Dato'. Quotation sedia ada${detailLine} masih aktif, jadi saya tak keluarkan yang baharu.`,
+    "Saya boleh bantu semak semula butirannya atau teruskan ke langkah seterusnya.",
+    "Dato' nak saya semak dulu, atau terus ke langkah seterusnya?",
+  ].join(" ");
+}
+
+/**
+ * Chooses the reply for an EMPTY AI completion on a normal (non-ASR) turn.
+ * The voice/ASR apology is never produced here.
+ */
+export function emptyCompletionReply(input: {
+  toolRecords: ToolRejectionRecord[];
+  quotation?: ExistingQuotationFacts | null;
+}): string {
+  if (isLiveQuotationRejection(input.toolRecords)) {
+    return existingQuotationReply(input.quotation ?? null);
+  }
+  return EMPTY_COMPLETION_HOLDING_MESSAGE;
+}
