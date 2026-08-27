@@ -55,6 +55,73 @@ describe("P0-4 — empty AI completion never uses the ASR apology", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* P0-4 FINAL — the !result.ok branch in sales-ai.server.ts            */
+/*                                                                     */
+/* generateAgentReply cannot be imported in tests (deep server graph), */
+/* so these tests pin the branch contract two ways:                    */
+/*  1. behavioural — the exact decision the branch makes via the same  */
+/*     predicates/replies the branch calls;                            */
+/*  2. structural — the branch source contains the live-quotation      */
+/*     short-circuit before the AI_FAILURE throw.                      */
+/* ------------------------------------------------------------------ */
+
+describe("P0-4 FINAL — sales-ai !result.ok branch", () => {
+  it("F. live-quotation rejection + !result.ok → deterministic reply, NOT silent, NOT ASR", () => {
+    const resultOk = false; // gateway correctly failed the empty run
+    const toolRecords = [
+      {
+        tool: "create_quotation",
+        status: "rejected",
+        reason: "This lead already has a live quotation. Discuss the existing quotation instead of issuing a new one.",
+      },
+    ];
+    // Branch condition: do not throw.
+    expect(resultOk).toBe(false);
+    expect(isLiveQuotationRejection(toolRecords)).toBe(true);
+
+    const reply = emptyCompletionReply({
+      toolRecords,
+      quotation: { quotationNumber: "QT-0042", status: "sent", totalMyr: 15500 },
+    });
+    expect(reply.length).toBeGreaterThan(0); // outbound reply exists — never silent
+    expect(reply).not.toMatch(ASR_FALLBACK);
+    expect(reply).toMatch(/masih aktif/i);
+    expect(reply).toMatch(/QT-0042/);
+    expect(reply).toMatch(/RM15,500/);
+    expect(reply).not.toMatch(/baharu/); // never claims a new quotation was created
+  });
+
+  it("G. genuine gateway failure (no business-rule rejection) → throw path preserved", () => {
+    const resultOk = false;
+    const toolRecords = [
+      {
+        tool: "create_quotation",
+        status: "rejected",
+        reason: "upstream provider timeout", // NOT the live-quotation rule
+      },
+    ];
+    expect(resultOk).toBe(false);
+    // Branch condition false → AI_FAILURE throw path, no fabricated reply.
+    expect(isLiveQuotationRejection(toolRecords)).toBe(false);
+  });
+
+  it("H. branch source: live-quotation short-circuit sits inside !result.ok before the throw", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/lib/sales-ai.server.ts", "utf8");
+    const branchStart = src.indexOf("if (!result.ok) {");
+    expect(branchStart).toBeGreaterThan(-1);
+    const throwIdx = src.indexOf('throw new Error(result.error?.message ?? "AI provider unavailable")');
+    expect(throwIdx).toBeGreaterThan(branchStart);
+    const shortCircuit = src.slice(branchStart, throwIdx);
+    expect(shortCircuit).toContain("isLiveQuotationRejection(toolRecords)");
+    expect(shortCircuit).toContain("return reply;");
+    expect(shortCircuit).toContain("emptyCompletionReply({");
+    // The short-circuit must not fabricate: it uses the deterministic helper only.
+    expect(shortCircuit).not.toContain("streamText");
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* D/E — gateway stream-error handling                                 */
 /* ------------------------------------------------------------------ */
 
