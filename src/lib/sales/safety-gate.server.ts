@@ -55,6 +55,18 @@ export async function applySafetyGate(args: {
   const { supabase, agencyId, conversationId, leadId, intel } = args;
   const now = new Date().toISOString();
 
+  // P0-1 — the compliant acknowledgement belongs to the STATE TRANSITION, not
+  // to every muted turn. State is read from the existing conversations row.
+  const { shouldSendSafetyAck } = await import("../whatsapp/duplicate-suppression.core");
+  const { data: currentConversation } = await supabase
+    .from("conversations")
+    .select("conversation_state")
+    .eq("id", conversationId)
+    .maybeSingle();
+  const currentState =
+    (currentConversation as { conversation_state?: string | null } | null)?.conversation_state ??
+    null;
+
   if (intel.optOut) {
     await supabase
       .from("conversations")
