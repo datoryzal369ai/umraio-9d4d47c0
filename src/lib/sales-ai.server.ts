@@ -1274,7 +1274,7 @@ export async function generateAgentReply(
     system: systemPrompt(ctx, suppressedTopics, intel),
     prompt: "",
     messages: history.length ? history : [{ role: "user", content: "Assalamualaikum" }],
-    tools: createSdkTools({ registry, ctx: toolCtx }),
+    tools: observedTools,
     // Cost ceiling for customer-facing conversations (entitlement-aware).
     maxSteps: quota.plan.maxConversationSteps,
     context: {
