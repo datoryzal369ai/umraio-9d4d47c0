@@ -81,6 +81,7 @@ async function loadAgencyContext(supabase: Db, agencyId: string) {
         .select(
           "id, name, hotel_makkah, hotel_madinah, star_rating, nights, departure_date, airline, price_myr, inclusions",
         )
+        .eq("agency_id", agencyId)
         .eq("is_active", true)
         .order("price_myr", { ascending: true })
         .limit(20),
@@ -89,6 +90,7 @@ async function loadAgencyContext(supabase: Db, agencyId: string) {
         .select(
           "id, full_name, city, stage, temperature, score, pax, budget_myr, preferred_month, package_interest, source, last_contact_at, created_at",
         )
+        .eq("agency_id", agencyId)
         .order("created_at", { ascending: false })
         .limit(60),
     ]);

@@ -28,6 +28,7 @@ import {
   conversionSignalInstruction,
   intentAnchorInstruction,
 } from "./sales-intent.core";
+import { missingQuotationInputInstruction } from "./quotations/closing.core";
 import {
   continuityInstruction,
   inferModalityFromBody,
@@ -123,18 +124,28 @@ export async function loadContext(supabase: Db, conversationId: string) {
           .eq("id", conversation.lead_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    // TENANT SCOPE: this runs on the service client, so the agency filter is
+    // the ONLY thing keeping another agency's catalogue out of the prompt.
+    // Without it the model can pick a foreign package_id and create_quotation
+    // rejects it with "That package does not belong to this agency."
     supabase
       .from("packages")
       .select(
         "id, name, hotel_makkah, hotel_madinah, star_rating, nights, departure_date, airline, price_myr, inclusions, halal_review_status",
       )
+      .eq("agency_id", conversation.agency_id)
       .eq("is_active", true)
       .order("price_myr", { ascending: true })
       .limit(30),
-    supabase.from("agencies").select("name, country, timezone").maybeSingle(),
+    supabase
+      .from("agencies")
+      .select("name, country, timezone")
+      .eq("id", conversation.agency_id)
+      .maybeSingle(),
     supabase
       .from("knowledge_articles")
       .select("id, title, category, summary, content, tags, file_name")
+      .eq("agency_id", conversation.agency_id)
       .eq("is_active", true)
       .order("updated_at", { ascending: false })
       .limit(100),
@@ -428,6 +439,14 @@ function systemPrompt(
       redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
     ),
     conversionSignalInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
+    // AI QUOTATION EXECUTIVE™ — deterministic missing-input request.
+    missingQuotationInputInstruction({
+      packageInterest: (ctx.lead as Record<string, unknown> | null)?.["package_interest"] as
+        | string
+        | null,
+      pax: (ctx.lead as Record<string, unknown> | null)?.["pax"] as number | null,
+      latestMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
+    }),
     // CONVERSATIONAL VALIDATION GUARD — understand first, confirm only when needed.
     continuityInstruction(continuity),
 

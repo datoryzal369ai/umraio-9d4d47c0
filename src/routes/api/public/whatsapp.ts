@@ -679,6 +679,54 @@ async function processInboundMessage(
             }
             console.log(`[whatsapp] coalesced inbound count=${pending.length}`);
 
+            // AI QUOTATION EXECUTIVE™ — in-chat acceptance. A customer who
+            // says yes in WhatsApp must move the quotation forward even if
+            // they never open the public link.
+            try {
+              const latestBody =
+                [...(pending as ReadonlyArray<{ body?: string | null }>)]
+                  .reverse()
+                  .find((m) => (m.body ?? "").trim())?.body ?? null;
+              const { detectQuotationAcceptance } = await import("@/lib/quotations/closing.core");
+              if (detectQuotationAcceptance(latestBody)) {
+                const acceptedAt = new Date().toISOString();
+                const { data: accepted } = await supabaseAdmin
+                  .from("quotations")
+                  .update({ status: "accepted", accepted_at: acceptedAt })
+                  .eq("agency_id", agencyId)
+                  .eq("conversation_id", conversationId)
+                  .in("status", ["sent", "viewed"])
+                  .select("id, lead_id");
+                for (const q of accepted ?? []) {
+                  await supabaseAdmin.from("conversion_events").insert({
+                    agency_id: agencyId,
+                    stage: "quotation_accepted",
+                    actor: "customer",
+                    lead_id: q.lead_id,
+                    quotation_id: q.id,
+                    meta: { channel: "whatsapp", source: "in_chat_acceptance" },
+                  });
+                  await supabaseAdmin.from("activity_log").insert({
+                    agency_id: agencyId,
+                    actor: "ai",
+                    action: "Customer accepted the quotation in WhatsApp",
+                    entity: "quotation",
+                    entity_id: q.id,
+                    meta: { conversation_id: conversationId },
+                  });
+                }
+                if ((accepted ?? []).length) {
+                  console.log(
+                    `[whatsapp] quotation_in_chat_acceptance count=${(accepted ?? []).length}`,
+                  );
+                }
+              }
+            } catch (error) {
+              console.error(
+                `[whatsapp] quotation_acceptance_failed reason=${error instanceof Error ? error.name : "unknown"}`,
+              );
+            }
+
             const { generateAgentReply } = await salesAiModule;
 
             const prefetched = await prefetch;

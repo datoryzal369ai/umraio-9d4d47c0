@@ -49,14 +49,24 @@ export async function loadDepositPolicy(
   };
 }
 
-async function nextQuotationNumber(supabase: Db, agencyId: string) {
+async function nextQuotationNumber(supabase: Db, agencyId: string, attempt = 0) {
   const { count } = await supabase
     .from("quotations")
     .select("id", { count: "exact", head: true })
     .eq("agency_id", agencyId);
-  const seq = (count ?? 0) + 1;
+  // `count + 1` can collide under concurrency; the caller retries with a
+  // higher attempt offset until the insert succeeds.
+  const seq = (count ?? 0) + 1 + attempt;
   const year = new Date().getUTCFullYear();
   return `Q-${year}-${String(seq).padStart(4, "0")}`;
+}
+
+function isDuplicateNumber(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "23505" ||
+    /duplicate key|already exists|unique constraint/i.test(error.message ?? "")
+  );
 }
 
 export type CreateQuotationInput = {
@@ -95,48 +105,57 @@ export async function createQuotation(supabase: Db, agencyId: string, input: Cre
     deposit: policy,
   });
 
-  const quotationNumber = await nextQuotationNumber(supabase, agencyId);
   const validUntil = new Date(Date.now() + validityDays * 24 * 3600_000).toISOString();
 
-  const { data, error } = await supabase
-    .from("quotations")
-    .insert({
-      agency_id: agencyId,
-      lead_id: input.leadId ?? null,
-      conversation_id: input.conversationId ?? null,
-      package_id: pkg.id,
-      quotation_number: quotationNumber,
-      status: "ready",
-      customer_name: input.customerName ?? null,
-      customer_phone: input.customerPhone ?? null,
-      travel_month: input.travelMonth ?? null,
-      travel_date: input.travelDate ?? null,
-      number_of_pilgrims: pricing.quantity,
-      unit_price: pricing.unitPrice,
-      quantity: pricing.quantity,
-      subtotal: pricing.subtotal,
-      discount: pricing.discount,
-      total: pricing.total,
-      deposit_rule: pricing.depositRule,
-      deposit_amount: pricing.depositAmount,
-      balance_amount: pricing.balanceAmount,
-      valid_until: validUntil,
-      notes: input.notes ?? null,
-      created_by: input.createdBy ?? null,
-      package_snapshot: {
-        name: pkg.name,
-        hotel_makkah: pkg.hotel_makkah,
-        hotel_madinah: pkg.hotel_madinah,
-        star_rating: pkg.star_rating,
-        nights: pkg.nights,
-        departure_date: pkg.departure_date,
-        airline: pkg.airline,
-        inclusions: pkg.inclusions ?? [],
-        price_myr: pkg.price_myr,
-      },
-    })
-    .select("*")
-    .single();
+  let data: any = null;
+  let error: any = null;
+  let quotationNumber = "";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    quotationNumber = await nextQuotationNumber(supabase, agencyId, attempt);
+    const result = await supabase
+      .from("quotations")
+      .insert({
+        agency_id: agencyId,
+        lead_id: input.leadId ?? null,
+        conversation_id: input.conversationId ?? null,
+        package_id: pkg.id,
+        quotation_number: quotationNumber,
+        status: "ready",
+        customer_name: input.customerName ?? null,
+        customer_phone: input.customerPhone ?? null,
+        travel_month: input.travelMonth ?? null,
+        travel_date: input.travelDate ?? null,
+        number_of_pilgrims: pricing.quantity,
+        unit_price: pricing.unitPrice,
+        quantity: pricing.quantity,
+        subtotal: pricing.subtotal,
+        discount: pricing.discount,
+        total: pricing.total,
+        deposit_rule: pricing.depositRule,
+        deposit_amount: pricing.depositAmount,
+        balance_amount: pricing.balanceAmount,
+        valid_until: validUntil,
+        notes: input.notes ?? null,
+        created_by: input.createdBy ?? null,
+        package_snapshot: {
+          name: pkg.name,
+          hotel_makkah: pkg.hotel_makkah,
+          hotel_madinah: pkg.hotel_madinah,
+          star_rating: pkg.star_rating,
+          nights: pkg.nights,
+          departure_date: pkg.departure_date,
+          airline: pkg.airline,
+          inclusions: pkg.inclusions ?? [],
+          price_myr: pkg.price_myr,
+        },
+      })
+      .select("*")
+      .single();
+    data = result.data;
+    error = result.error;
+    if (!error) break;
+    if (!isDuplicateNumber(error)) break;
+  }
   if (error) throw new Error(error.message);
 
   await logConversionEvent(supabase, {
