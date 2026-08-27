@@ -31,6 +31,7 @@ import {
 import {
   missingQuotationInputInstruction,
   emptyCompletionReply,
+  isLiveQuotationRejection,
   type ToolRejectionRecord,
 } from "./quotations/closing.core";
 
@@ -1339,6 +1340,36 @@ export async function generateAgentReply(
   });
 
   if (!result.ok) {
+    // P0-4 FINAL — a live-quotation rejection is NOT a provider failure. The model
+    // produced zero text after the tool rejection, the gateway correctly surfaced
+    // the empty run as !result.ok, but the customer still deserves the truthful,
+    // deterministic existing-quotation reply instead of silence.
+    if (isLiveQuotationRejection(toolRecords)) {
+      const q = ctx.quotation as Record<string, unknown> | null;
+      const reply = emptyCompletionReply({
+        toolRecords,
+        quotation: q
+          ? {
+              quotationNumber: (q["quotation_number"] as string | null) ?? null,
+              status: (q["status"] as string | null) ?? null,
+              totalMyr: q["total"] === null || q["total"] === undefined ? null : Number(q["total"]),
+            }
+          : null,
+      });
+      await recordExperience(supabase, agencyId, {
+        interaction_id: correlationId,
+        task_type: "customer_reply",
+        model: result.usage?.model ?? null,
+        input_context_hash: hashContext({ facts: { conversation_id: ctx.conversation.id } }),
+        action_taken: "existing quotation explained",
+        outcome: "empty_reply_fallback",
+        success: true,
+        confidence: null,
+        evaluation_score: null,
+        failure_reason: null,
+      });
+      return reply;
+    }
     // Never fabricate a reply. The gateway already logged AI_FAILURE with the
     // correlation id; the caller keeps its existing failure/escalation path.
     await recordExperience(supabase, agencyId, {
