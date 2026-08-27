@@ -28,7 +28,12 @@ import {
   conversionSignalInstruction,
   intentAnchorInstruction,
 } from "./sales-intent.core";
-import { missingQuotationInputInstruction } from "./quotations/closing.core";
+import {
+  missingQuotationInputInstruction,
+  emptyCompletionReply,
+  type ToolRejectionRecord,
+} from "./quotations/closing.core";
+
 import {
   continuityInstruction,
   inferModalityFromBody,
