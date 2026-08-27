@@ -102,7 +102,11 @@ describe("DNC current-turn rule", () => {
               };
             if (prop === "limit")
               return async (..._a: unknown[]) => ({
-                data: [
+                // Cleanup query: fixture job has a body, so nothing body-less.
+                // Dispatch query: the single body-bearing fixture job.
+                data: isBodyLessCleanup
+                  ? []
+                  : [
                   {
                     id: "job-1",
                     lead_id: "lead-1",
