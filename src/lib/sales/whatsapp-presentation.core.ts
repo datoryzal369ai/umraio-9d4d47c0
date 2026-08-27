@@ -134,13 +134,18 @@ export function knownContextInstruction(facts: {
 
 const PDF_ASK = /\b(pdf|dokumen|document|fail|file|softcopy|soft\s*copy)\b/i;
 
-export function pdfCapabilityInstruction(latestMessage: string | null | undefined): string | null {
+export function pdfCapabilityInstruction(
+  latestMessage: string | null | undefined,
+  quotationLink?: string | null,
+): string | null {
   if (!latestMessage || !PDF_ASK.test(latestMessage)) return null;
   return [
     "PDF REQUEST DETECTED: this system does not generate or send a PDF quotation file.",
-    "If a quotation exists, share its customer link returned by create_quotation (the quotation page can be viewed and printed).",
+    quotationLink
+      ? `A quotation link already exists — send it and call it a quotation link (not a PDF): ${quotationLink}`
+      : "If a quotation exists, share its customer link returned by create_quotation (the quotation page can be viewed and printed).",
     "If no quotation exists yet, say so plainly and offer to prepare one now.",
-    "Never claim a PDF was sent and never claim staff has sent it.",
+    "Never claim a PDF was sent, never fabricate a PDF file, and never say staff will send it.",
   ].join("\n");
 }
 
@@ -152,5 +157,59 @@ export function continueIntentInstruction(latestMessage: string | null | undefin
   return [
     "CONTINUATION INTENT DETECTED ('teruskan'/'setuju'): execute the next available action immediately using what is already known.",
     "Do not restart qualification and do not repeat questions already answered.",
+  ].join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* G — existing live quotation surfacing (no staff fiction)             */
+/* ------------------------------------------------------------------ */
+
+export type ExistingQuotationCard = {
+  quotationNumber?: string | null;
+  packageName?: string | null;
+  totalMyr?: number | null;
+  depositMyr?: number | null;
+  pax?: number | null;
+  link?: string | null;
+};
+
+function rm(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return `RM${value.toLocaleString("en-MY", { maximumFractionDigits: 2 })}`;
+}
+
+/** Deterministic WhatsApp card for a quotation that already exists. */
+export function existingQuotationCard(q: ExistingQuotationCard | null): string {
+  const bullets: string[] = [];
+  if (q?.packageName) bullets.push(`• *Pakej:* ${q.packageName}`);
+  const total = rm(q?.totalMyr);
+  if (total) bullets.push(`• *Jumlah:* ${total}`);
+  const deposit = rm(q?.depositMyr);
+  if (deposit) bullets.push(`• *Deposit:* ${deposit}`);
+  if (q?.quotationNumber) bullets.push(`• *Rujukan:* ${q.quotationNumber}`);
+
+  const intro =
+    q?.pax && q.pax > 0
+      ? `Baik Dato'. Ini quotation untuk *${q.pax} orang*.`
+      : "Baik Dato'. Ini quotation yang sedia ada.";
+
+  const parts = ["*QUOTATION UMRAH*", "", intro];
+  if (bullets.length) parts.push("", ...bullets);
+  if (q?.link) parts.push("", "*Quotation:*", q.link);
+  parts.push("", "Jika Dato' setuju, balas *SETUJU*.");
+  return parts.join("\n");
+}
+
+/**
+ * Directive: a live quotation already exists — surface it, never invent a
+ * staff workflow to "prepare" it.
+ */
+export function existingQuotationInstruction(q: ExistingQuotationCard | null): string | null {
+  if (!q || (!q.quotationNumber && !q.link)) return null;
+  return [
+    "EXISTING LIVE QUOTATION — SURFACE IT DIRECTLY:",
+    "This lead already has a live quotation. Do NOT call create_quotation, do NOT say 'staff akan siapkan', 'staff akan hantarkan' or 'saya akan maklumkan staff', and do NOT claim a human was notified.",
+    "If the customer asks for a quotation, the document, the PDF or the link, reply with EXACTLY this block (you may keep the customer's language, but keep every figure, reference and URL unchanged):",
+    existingQuotationCard(q),
   ].join("\n");
 }

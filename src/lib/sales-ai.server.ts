@@ -49,7 +49,10 @@ import {
   knownContextInstruction,
   pdfCapabilityInstruction,
   continueIntentInstruction,
+  existingQuotationInstruction,
+  type ExistingQuotationCard,
 } from "@/lib/sales/whatsapp-presentation.core";
+import { quotationLink } from "@/lib/quotations/quotations.server";
 
 
 import {
@@ -179,7 +182,7 @@ export async function loadContext(supabase: Db, conversationId: string) {
   const { data: quotation } = conversation.lead_id
     ? await supabase
         .from("quotations")
-        .select("quotation_number, status, total, deposit_amount, created_at")
+        .select("quotation_number, status, total, deposit_amount, created_at, public_token, package_snapshot, number_of_pilgrims")
         .eq("agency_id", conversation.agency_id)
         .eq("lead_id", conversation.lead_id)
         .in("status", ["ready", "sent", "viewed", "discussing", "accepted"])
@@ -197,6 +200,28 @@ export async function loadContext(supabase: Db, conversationId: string) {
     agency,
     knowledge: (knowledge ?? []) as KnowledgeRow[],
     settings: (settings ?? null) as AgencyAiSettings | null,
+  };
+}
+
+/**
+ * Deterministic view of the live quotation for presentation only. It never
+ * changes the one-live-quotation business rule — it just lets the AI surface
+ * the quotation that already exists instead of inventing a staff workflow.
+ */
+export function existingQuotationFacts(
+  quotation: Record<string, unknown> | null | undefined,
+): ExistingQuotationCard | null {
+  if (!quotation) return null;
+  const snap = (quotation["package_snapshot"] ?? {}) as Record<string, unknown>;
+  const token = quotation["public_token"] as string | null | undefined;
+  const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  return {
+    quotationNumber: (quotation["quotation_number"] as string | null) ?? null,
+    packageName: (snap["name"] as string | null) ?? null,
+    totalMyr: num(quotation["total"]),
+    depositMyr: num(quotation["deposit_amount"]),
+    pax: num(quotation["number_of_pilgrims"]),
+    link: token ? quotationLink(token) : null,
   };
 }
 
@@ -479,6 +504,7 @@ function systemPrompt(
         | null,
     }),
     QUOTATION_AUTONOMY_INSTRUCTION,
+    existingQuotationInstruction(existingQuotationFacts(ctx.quotation as Record<string, unknown> | null)),
     HANDOVER_LANGUAGE_INSTRUCTION,
     NEXT_BEST_ACTION_INSTRUCTION,
     knownContextInstruction({
@@ -492,7 +518,10 @@ function systemPrompt(
       city: (ctx.lead as Record<string, unknown> | null)?.["city"] as string | null,
       fullName: (ctx.lead as Record<string, unknown> | null)?.["full_name"] as string | null,
     }),
-    pdfCapabilityInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
+    pdfCapabilityInstruction(
+      redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
+      existingQuotationFacts(ctx.quotation as Record<string, unknown> | null)?.link ?? null,
+    ),
     continueIntentInstruction(redactSuppressedTopics(lastCustomer?.body, suppressedTopics)),
     // CONVERSATIONAL VALIDATION GUARD — understand first, confirm only when needed.
     continuityInstruction(continuity),
@@ -1388,14 +1417,11 @@ export async function generateAgentReply(
     // deterministic existing-quotation reply instead of silence.
     if (isLiveQuotationRejection(toolRecords)) {
       const q = ctx.quotation as Record<string, unknown> | null;
+      const card = existingQuotationFacts(q);
       const reply = emptyCompletionReply({
         toolRecords,
-        quotation: q
-          ? {
-              quotationNumber: (q["quotation_number"] as string | null) ?? null,
-              status: (q["status"] as string | null) ?? null,
-              totalMyr: q["total"] === null || q["total"] === undefined ? null : Number(q["total"]),
-            }
+        quotation: card
+          ? { ...card, status: (q?.["status"] as string | null) ?? null }
           : null,
       });
       await recordExperience(supabase, agencyId, {
@@ -1561,15 +1587,10 @@ export async function generateAgentReply(
   // P0-4 — an empty completion on a normal turn is NEVER an ASR failure. Explain
   // a blocking tool rejection truthfully, otherwise hold neutrally.
   const q = ctx.quotation as Record<string, unknown> | null;
+  const card = existingQuotationFacts(q);
   return emptyCompletionReply({
     toolRecords,
-    quotation: q
-      ? {
-          quotationNumber: (q["quotation_number"] as string | null) ?? null,
-          status: (q["status"] as string | null) ?? null,
-          totalMyr: q["total"] === null || q["total"] === undefined ? null : Number(q["total"]),
-        }
-      : null,
+    quotation: card ? { ...card, status: (q?.["status"] as string | null) ?? null } : null,
   });
 }
 

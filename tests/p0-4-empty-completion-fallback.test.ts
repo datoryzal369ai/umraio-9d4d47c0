@@ -28,7 +28,7 @@ describe("P0-4 — empty AI completion never uses the ASR apology", () => {
     });
 
     expect(reply).not.toMatch(ASR_FALLBACK);
-    expect(reply).toMatch(/masih aktif/i);
+    expect(reply).toMatch(/\*QUOTATION UMRAH\*/);
     expect(reply).toMatch(/QT-0007/);
     expect(reply).not.toMatch(/quotation baharu telah|berjaya dikeluarkan/i);
   });
@@ -85,7 +85,7 @@ describe("P0-4 FINAL — sales-ai !result.ok branch", () => {
     });
     expect(reply.length).toBeGreaterThan(0); // outbound reply exists — never silent
     expect(reply).not.toMatch(ASR_FALLBACK);
-    expect(reply).toMatch(/masih aktif/i);
+    expect(reply).toMatch(/\*QUOTATION UMRAH\*/);
     expect(reply).toMatch(/QT-0042/);
     expect(reply).toMatch(/RM15,500/);
     // never claims a NEW quotation was created (the truthful "not issuing a new
@@ -201,5 +201,34 @@ describe("P0-4 — gateway stream errors are not successful empty runs", () => {
     const result = await createIntelligenceGateway().generate(baseRequest);
     expect(result.ok).toBe(true);
     expect(result.data).toBe("");
+  });
+});
+
+describe("I — live-quotation fallback surfaces the existing quotation", () => {
+  it("returns the quotation card with reference, total, deposit and link", () => {
+    const reply = emptyCompletionReply({
+      toolRecords: [
+        {
+          tool: "create_quotation",
+          status: "rejected",
+          reason: "This lead already has a live quotation. Discuss the existing quotation instead.",
+        },
+      ],
+      quotation: {
+        quotationNumber: "Q-2026-0002",
+        status: "sent",
+        totalMyr: 20970,
+        depositMyr: 3000,
+        packageName: "Umrah VIP",
+        pax: 3,
+        link: "https://umraio.com/q/tok123",
+      },
+    });
+    expect(reply).toMatch(/\*QUOTATION UMRAH\*/);
+    expect(reply).toContain("Q-2026-0002");
+    expect(reply).toContain("https://umraio.com/q/tok123");
+    expect(reply).not.toMatch(/staf|staff/i);
+    expect(reply).not.toMatch(/ulang sekali lagi/i);
+    expect(reply.trim().length).toBeGreaterThan(0);
   });
 });
