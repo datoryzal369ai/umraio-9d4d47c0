@@ -8,14 +8,12 @@ import {
   type DepositPolicy,
   type QuotationStatus,
 } from "./pricing.core";
+import { resolvePublicSiteUrl } from "./public-url.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
 
-export const PUBLIC_SITE_URL = (process.env["PUBLIC_SITE_URL"] ?? "https://umraio.com").replace(
-  /\/$/,
-  "",
-);
+export const PUBLIC_SITE_URL = resolvePublicSiteUrl(process.env["PUBLIC_SITE_URL"]);
 
 export function quotationLink(token: string) {
   return `${PUBLIC_SITE_URL}/q/${token}`;
