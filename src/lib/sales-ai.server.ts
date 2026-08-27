@@ -28,7 +28,12 @@ import {
   conversionSignalInstruction,
   intentAnchorInstruction,
 } from "./sales-intent.core";
-import { missingQuotationInputInstruction } from "./quotations/closing.core";
+import {
+  missingQuotationInputInstruction,
+  emptyCompletionReply,
+  type ToolRejectionRecord,
+} from "./quotations/closing.core";
+
 import {
   continuityInstruction,
   inferModalityFromBody,
@@ -1261,6 +1266,33 @@ export async function generateAgentReply(
     allowedTools,
   };
 
+  // P0-4 — observe tool outcomes so an EMPTY completion can be explained
+  // truthfully (e.g. create_quotation rejected because one is already live).
+  const toolRecords: ToolRejectionRecord[] = [];
+  const observedTools = Object.fromEntries(
+    Object.entries(createSdkTools({ registry, ctx: toolCtx })).map(([name, definition]) => {
+      const original = (definition as { execute?: (...args: any[]) => Promise<any> }).execute;
+      if (!original) return [name, definition];
+      return [
+        name,
+        {
+          ...definition,
+          execute: async (...args: any[]) => {
+            const outcome = await original(...args);
+            const o = outcome as { status?: string; reason?: string | null } | null;
+            toolRecords.push({
+              tool: name,
+              status: o?.status ?? "unknown",
+              reason: o?.reason ?? null,
+            });
+            return outcome;
+          },
+        },
+      ];
+    }),
+  );
+
+
   // Idempotency: a retry for the SAME inbound customer message reuses this key,
   // so a duplicated/retried request can never be counted twice.
   const lastMessageId = ctx.messages.length
@@ -1274,7 +1306,7 @@ export async function generateAgentReply(
     system: systemPrompt(ctx, suppressedTopics, intel),
     prompt: "",
     messages: history.length ? history : [{ role: "user", content: "Assalamualaikum" }],
-    tools: createSdkTools({ registry, ctx: toolCtx }),
+    tools: observedTools,
     // Cost ceiling for customer-facing conversations (entitlement-aware).
     maxSteps: quota.plan.maxConversationSteps,
     context: {
@@ -1451,8 +1483,23 @@ export async function generateAgentReply(
     console.warn("[islamic] escalation guarantee skipped", (error as Error).message);
   }
 
-  return text || "Maaf Datuk, saya tak dapat tangkap tadi. Boleh ulang sekali lagi?";
+  if (text) return text;
+
+  // P0-4 — an empty completion on a normal turn is NEVER an ASR failure. Explain
+  // a blocking tool rejection truthfully, otherwise hold neutrally.
+  const q = ctx.quotation as Record<string, unknown> | null;
+  return emptyCompletionReply({
+    toolRecords,
+    quotation: q
+      ? {
+          quotationNumber: (q["quotation_number"] as string | null) ?? null,
+          status: (q["status"] as string | null) ?? null,
+          totalMyr: q["total"] === null || q["total"] === undefined ? null : Number(q["total"]),
+        }
+      : null,
+  });
 }
+
 
 export type ConversationInsights = {
   summary: string;
