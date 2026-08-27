@@ -270,10 +270,14 @@ describe("follow-up dispatcher head-of-line blocking (P0-1)", () => {
     expect(result.sent).toBe(1);
   });
 
-  test("body-less jobs are never sent and stay pending for humans", async () => {
+  test("body-less pending jobs become terminal skipped/Left for human follow-up", async () => {
     await dispatchDueFollowups(fakeDb, AGENCY, 5);
     const blanks = jobs.filter((j) => j.id.startsWith("blank-"));
-    expect(blanks.every((j) => j.status === "pending")).toBe(true);
+    expect(
+      blanks.every(
+        (j) => j.status === "skipped" && j.skip_reason === "Left for human follow-up",
+      ),
+    ).toBe(true);
     expect(sent.some((m) => m.body === "" || m.body == null)).toBe(false);
   });
 
