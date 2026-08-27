@@ -310,7 +310,12 @@ async function processInboundMessage(
             //
             // Repetition guard: back-to-back failures of the same kind within a
             // short window must not spam the customer with identical replies.
-            const dedupeSince = new Date(Date.now() - 120_000).toISOString();
+            const { shouldSuppressVoiceFallback, VOICE_FALLBACK_DEDUPE_WINDOW_MS } = await import(
+              "@/lib/whatsapp/duplicate-suppression.core"
+            );
+            const dedupeSince = new Date(
+              Date.now() - VOICE_FALLBACK_DEDUPE_WINDOW_MS,
+            ).toISOString();
             const { data: recentFallback } = await supabaseAdmin
               .from("activity_log")
               .select("id, meta, created_at")
