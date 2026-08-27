@@ -36,6 +36,7 @@ vi.mock("../src/lib/ai/config.server", () => ({
     model: "gpt-test",
     fastModel: "gpt-test-fast",
     timeouts: { fast: 5000, reasoning: 30000, evaluation: 5000 },
+    maxRetries: 0,
   }),
 }));
 
@@ -74,7 +75,6 @@ describe("P0-4 gateway run-text extraction", () => {
     const gateway = createIntelligenceGateway();
     const result = await gateway.generate(baseRequest);
 
-    console.log("RESULT", JSON.stringify(result));
     expect(result.ok).toBe(true);
     expect(result.data).toBe("Baik Datuk, pakej ekonomi bermula dari RM6,900.");
   });
