@@ -10,6 +10,7 @@
  */
 
 import { detectBuyingSignals } from "../sales-intent.core";
+import { existingQuotationCard } from "../sales/whatsapp-presentation.core";
 
 export type MissingQuotationInput = "package" | "pax";
 
@@ -127,21 +128,26 @@ export type ExistingQuotationFacts = {
   quotationNumber?: string | null;
   status?: string | null;
   totalMyr?: number | null;
+  packageName?: string | null;
+  depositMyr?: number | null;
+  pax?: number | null;
+  link?: string | null;
 };
 
-/** Deterministic, honest reply: the existing quotation is still live. */
+/**
+ * Deterministic, honest reply: the existing quotation is still live, so we
+ * surface it (reference, package, total, deposit, link) instead of inventing a
+ * staff workflow to "prepare" a document that already exists.
+ */
 export function existingQuotationReply(facts: ExistingQuotationFacts | null): string {
-  const details: string[] = [];
-  if (facts?.quotationNumber) details.push(`Quotation ${facts.quotationNumber}`);
-  if (typeof facts?.totalMyr === "number" && Number.isFinite(facts.totalMyr)) {
-    details.push(`jumlah RM${facts.totalMyr.toLocaleString("en-MY")}`);
-  }
-  const detailLine = details.length ? ` (${details.join(", ")})` : "";
-  return [
-    `Baik Dato'. Quotation sedia ada${detailLine} masih aktif, jadi saya tak keluarkan yang baharu.`,
-    "Saya boleh bantu semak semula butirannya atau teruskan ke langkah seterusnya.",
-    "Dato' nak saya semak dulu, atau terus ke langkah seterusnya?",
-  ].join(" ");
+  return existingQuotationCard({
+    quotationNumber: facts?.quotationNumber ?? null,
+    packageName: facts?.packageName ?? null,
+    totalMyr: facts?.totalMyr ?? null,
+    depositMyr: facts?.depositMyr ?? null,
+    pax: facts?.pax ?? null,
+    link: facts?.link ?? null,
+  });
 }
 
 /**
