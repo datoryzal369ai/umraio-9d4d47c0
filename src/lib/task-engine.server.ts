@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { QuotaError, assertQuota, recordUsageEvent } from "./billing/usage.server";
+import { QuotaError, assertQuota, checkQuota, recordUsageEvent } from "./billing/usage.server";
 
 import {
   TASK_KINDS,
@@ -318,6 +318,17 @@ async function lastTaskAt(supabase: Db, agencyId: string, kind: string) {
 export async function observeAndQueue(supabase: Db, agencyId: string) {
   const now = Date.now();
   const queued: string[] = [];
+
+  // QUOTA STORM GUARD — autonomous cycles must not create tasks the agency
+  // cannot run. Non-throwing check; exhausted agencies are skipped silently
+  // (no tasks queued, no failed-task spam, no usage consumed).
+  try {
+    const quota = await checkQuota(supabase, agencyId, "ai_task");
+    if (!quota.allowed) return queued;
+  } catch {
+    // Metering unavailable — fail closed for autonomous work.
+    return queued;
+  }
 
   const { data: leads } = await supabase
     .from("leads")
