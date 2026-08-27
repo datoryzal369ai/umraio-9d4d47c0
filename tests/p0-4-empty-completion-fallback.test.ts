@@ -88,7 +88,9 @@ describe("P0-4 FINAL — sales-ai !result.ok branch", () => {
     expect(reply).toMatch(/masih aktif/i);
     expect(reply).toMatch(/QT-0042/);
     expect(reply).toMatch(/RM15,500/);
-    expect(reply).not.toMatch(/baharu/); // never claims a new quotation was created
+    // never claims a NEW quotation was created (the truthful "not issuing a new
+    // one" phrasing is allowed)
+    expect(reply).not.toMatch(/quotation baharu telah|berjaya dikeluarkan|baharu telah dikeluarkan/i);
   });
 
   it("G. genuine gateway failure (no business-rule rejection) → throw path preserved", () => {
