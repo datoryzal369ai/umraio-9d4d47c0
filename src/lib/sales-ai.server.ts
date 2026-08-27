@@ -1483,8 +1483,23 @@ export async function generateAgentReply(
     console.warn("[islamic] escalation guarantee skipped", (error as Error).message);
   }
 
-  return text || "Maaf Datuk, saya tak dapat tangkap tadi. Boleh ulang sekali lagi?";
+  if (text) return text;
+
+  // P0-4 — an empty completion on a normal turn is NEVER an ASR failure. Explain
+  // a blocking tool rejection truthfully, otherwise hold neutrally.
+  const q = ctx.quotation as Record<string, unknown> | null;
+  return emptyCompletionReply({
+    toolRecords,
+    quotation: q
+      ? {
+          quotationNumber: (q["quotation_number"] as string | null) ?? null,
+          status: (q["status"] as string | null) ?? null,
+          totalMyr: q["total"] === null || q["total"] === undefined ? null : Number(q["total"]),
+        }
+      : null,
+  });
 }
+
 
 export type ConversationInsights = {
   summary: string;
