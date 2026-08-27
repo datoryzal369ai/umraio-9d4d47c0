@@ -213,3 +213,35 @@ export function existingQuotationInstruction(q: ExistingQuotationCard | null): s
     existingQuotationCard(q),
   ].join("\n");
 }
+
+const QUOTATION_REQUEST =
+  /\b(quotation|quote|sebut\s*harga|quotation\s+please|hantar(?:kan)?\s+quotation|send\s+(?:me\s+)?(?:the\s+)?quotation)\b/i;
+const SEND_NOW_REQUEST =
+  /\b(?:whats?\s*app|wass?ap|wasap|hantar|send)\b[^.?!]{0,24}\b(?:sekarang|now)\b|\b(?:sekarang|now)\b[^.?!]{0,24}\b(?:whats?\s*app|wass?ap|wasap|hantar|send)\b/i;
+
+/**
+ * Application-level quotation delivery intent. A direct quotation request is
+ * sufficient; a terse "WhatsApp now" continuation is sufficient only when a
+ * recent customer turn established quotation context.
+ */
+export function requestsExistingQuotationNow(
+  customerMessages: ReadonlyArray<string | null | undefined>,
+): boolean {
+  const messages = customerMessages
+    .map((message) => message?.trim() ?? "")
+    .filter(Boolean);
+  const latest = messages.at(-1);
+  if (!latest) return false;
+  if (QUOTATION_REQUEST.test(latest)) return true;
+  if (!SEND_NOW_REQUEST.test(latest)) return false;
+  return messages.slice(-6, -1).some((message) => QUOTATION_REQUEST.test(message));
+}
+
+/** Deterministic application-level response; null leaves new-quotation flow intact. */
+export function existingQuotationDeliveryReply(input: {
+  customerMessages: ReadonlyArray<string | null | undefined>;
+  quotation: ExistingQuotationCard | null;
+}): string | null {
+  if (!input.quotation || !requestsExistingQuotationNow(input.customerMessages)) return null;
+  return existingQuotationCard(input.quotation);
+}

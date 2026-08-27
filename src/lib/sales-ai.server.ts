@@ -49,6 +49,7 @@ import {
   knownContextInstruction,
   pdfCapabilityInstruction,
   continueIntentInstruction,
+  existingQuotationDeliveryReply,
   existingQuotationInstruction,
   type ExistingQuotationCard,
 } from "@/lib/sales/whatsapp-presentation.core";
@@ -1289,6 +1290,23 @@ export async function generateAgentReply(
       terminal_outcome: "safety_gate_ack",
     });
     return gate.customerMessage ?? "";
+  }
+
+  // P0 — quotation delivery is deterministic application behaviour, not a
+  // prompt preference. A live quotation request must surface the existing
+  // card/link immediately, before the model can invent a staff workflow.
+  const quotationDeliveryReply = existingQuotationDeliveryReply({
+    customerMessages: ctx.messages
+      .filter((message) => message.sender === "customer")
+      .map((message) => message.body),
+    quotation: existingQuotationFacts(ctx.quotation as Record<string, unknown> | null),
+  });
+  if (quotationDeliveryReply) {
+    console.log("[sales-ai] deterministic quotation delivery", {
+      conversation: safeConversationRef(ctx.conversation.id as string),
+      terminal_outcome: "existing_quotation_card",
+    });
+    return quotationDeliveryReply;
   }
 
 
