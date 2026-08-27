@@ -186,7 +186,7 @@ export async function loadContext(supabase: Db, conversationId: string) {
         .select("quotation_number, status, total, deposit_amount, created_at, public_token, package_snapshot, number_of_pilgrims")
         .eq("agency_id", conversation.agency_id)
         .eq("lead_id", conversation.lead_id)
-        .in("status", ["ready", "sent", "viewed", "discussing", "accepted"])
+        .in("status", ["ready", "sent", "viewed", "discussing", "accepted", "deposit_pending"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle()
