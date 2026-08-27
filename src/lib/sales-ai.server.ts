@@ -144,6 +144,7 @@ export async function loadContext(supabase: Db, conversationId: string) {
     supabase
       .from("knowledge_articles")
       .select("id, title, category, summary, content, tags, file_name")
+      .eq("agency_id", conversation.agency_id)
       .eq("is_active", true)
       .order("updated_at", { ascending: false })
       .limit(100),
