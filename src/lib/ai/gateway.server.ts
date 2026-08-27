@@ -59,7 +59,10 @@ function resolveModelId(config: AiConfig, transport: ProviderTransport): string 
  * earlier assistant step produced the reply. Prefer the final text when
  * present; otherwise recover assistant text from any step in the run.
  */
-async function extractRunText(result: { text: Promise<string>; steps?: Promise<unknown> }): Promise<string> {
+async function extractRunText(result: {
+  text: string | PromiseLike<string>;
+  steps?: unknown;
+}): Promise<string> {
   const finalText = (await result.text).trim();
   if (finalText) return finalText;
   try {
