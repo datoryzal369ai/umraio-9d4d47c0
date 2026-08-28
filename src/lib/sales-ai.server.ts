@@ -88,6 +88,7 @@ import {
   type EliteRead,
 } from "./sales/elite/elite-sales.core";
 
+import { BUILD_IDENTITY } from "./build-identity";
 import {
   collectSuppressedTopics,
   countSuppressedOccurrences,
@@ -108,7 +109,8 @@ export type ChatMessageRow = {
 };
 
 /** Safe build/revision identifier for diagnostics (never a secret). */
-const BUILD_REVISION = process.env["BUILD_REVISION"] ?? "umraio-6.4a-fix";
+const BUILD_REVISION =
+  process.env["BUILD_REVISION"] ?? BUILD_IDENTITY.commit_short ?? "unknown";
 
 /** Non-reversible short reference for a conversation id (diagnostics only). */
 function safeConversationRef(id: string): string {

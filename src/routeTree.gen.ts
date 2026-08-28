@@ -47,6 +47,7 @@ import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_aut
 import { Route as ApiPublicMeetExecutiveRouteImport } from './routes/api/public/meet-executive'
 import { Route as ApiPublicMeetRequestRouteImport } from './routes/api/public/meet-request'
 import { Route as ApiPublicWhatsappRouteImport } from './routes/api/public/whatsapp'
+import { Route as ApiPublicHealthBuildRouteImport } from './routes/api/public/health/build'
 import { Route as ApiPublicHooksExecutiveAutonomyRouteImport } from './routes/api/public/hooks/executive-autonomy'
 import { Route as ApiPublicHooksTaskEngineRouteImport } from './routes/api/public/hooks/task-engine'
 import { Route as ApiPublicPaymentsStripeWebhookRouteImport } from './routes/api/public/payments/stripe-webhook'
@@ -258,6 +259,11 @@ const ApiPublicWhatsappRoute = ApiPublicWhatsappRouteImport.update({
   path: '/api/public/whatsapp',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHealthBuildRoute = ApiPublicHealthBuildRouteImport.update({
+  id: '/api/public/health/build',
+  path: '/api/public/health/build',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksExecutiveAutonomyRoute =
   ApiPublicHooksExecutiveAutonomyRouteImport.update({
     id: '/api/public/hooks/executive-autonomy',
@@ -321,6 +327,7 @@ export interface FileRoutesByFullPath {
   '/knowledge/': typeof AuthenticatedKnowledgeIndexRoute
   '/leads/': typeof AuthenticatedLeadsIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
@@ -363,6 +370,7 @@ export interface FileRoutesByTo {
   '/knowledge': typeof AuthenticatedKnowledgeIndexRoute
   '/leads': typeof AuthenticatedLeadsIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
@@ -408,6 +416,7 @@ export interface FileRoutesById {
   '/_authenticated/knowledge/': typeof AuthenticatedKnowledgeIndexRoute
   '/_authenticated/leads/': typeof AuthenticatedLeadsIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
@@ -453,6 +462,7 @@ export interface FileRouteTypes {
     | '/knowledge/'
     | '/leads/'
     | '/settings/'
+    | '/api/public/health/build'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
     | '/api/public/payments/stripe-webhook'
@@ -495,6 +505,7 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/leads'
     | '/settings'
+    | '/api/public/health/build'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
     | '/api/public/payments/stripe-webhook'
@@ -539,6 +550,7 @@ export interface FileRouteTypes {
     | '/_authenticated/knowledge/'
     | '/_authenticated/leads/'
     | '/_authenticated/settings/'
+    | '/api/public/health/build'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
     | '/api/public/payments/stripe-webhook'
@@ -559,6 +571,7 @@ export interface RootRouteChildren {
   ApiPublicMeetExecutiveRoute: typeof ApiPublicMeetExecutiveRoute
   ApiPublicMeetRequestRoute: typeof ApiPublicMeetRequestRoute
   ApiPublicWhatsappRoute: typeof ApiPublicWhatsappRoute
+  ApiPublicHealthBuildRoute: typeof ApiPublicHealthBuildRoute
   ApiPublicHooksExecutiveAutonomyRoute: typeof ApiPublicHooksExecutiveAutonomyRoute
   ApiPublicHooksTaskEngineRoute: typeof ApiPublicHooksTaskEngineRoute
   ApiPublicPaymentsStripeWebhookRoute: typeof ApiPublicPaymentsStripeWebhookRoute
@@ -833,6 +846,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/health/build': {
+      id: '/api/public/health/build'
+      path: '/api/public/health/build'
+      fullPath: '/api/public/health/build'
+      preLoaderRoute: typeof ApiPublicHealthBuildRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/executive-autonomy': {
       id: '/api/public/hooks/executive-autonomy'
       path: '/api/public/hooks/executive-autonomy'
@@ -952,6 +972,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicMeetExecutiveRoute: ApiPublicMeetExecutiveRoute,
   ApiPublicMeetRequestRoute: ApiPublicMeetRequestRoute,
   ApiPublicWhatsappRoute: ApiPublicWhatsappRoute,
+  ApiPublicHealthBuildRoute: ApiPublicHealthBuildRoute,
   ApiPublicHooksExecutiveAutonomyRoute: ApiPublicHooksExecutiveAutonomyRoute,
   ApiPublicHooksTaskEngineRoute: ApiPublicHooksTaskEngineRoute,
   ApiPublicPaymentsStripeWebhookRoute: ApiPublicPaymentsStripeWebhookRoute,
