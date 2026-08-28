@@ -163,3 +163,87 @@ export function emptyCompletionReply(input: {
   }
   return EMPTY_COMPLETION_HOLDING_MESSAGE;
 }
+
+/* ------------------------------------------------------------------ */
+/* RED-1 — acceptance candidate selection (pure)                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Statuses a customer may still accept in chat. Terminal/void states
+ * (cancelled, rejected, expired, booked, closed) are deliberately absent.
+ */
+export const ACCEPTABLE_QUOTATION_STATUSES = [
+  "ready",
+  "sent",
+  "viewed",
+  "discussing",
+  "deposit_pending",
+] as const;
+
+export type AcceptanceCandidate = {
+  id: string;
+  agency_id?: string | null;
+  lead_id?: string | null;
+  conversation_id?: string | null;
+  status?: string | null;
+  quotation_number?: string | null;
+  total?: number | string | null;
+  deposit_amount?: number | string | null;
+};
+
+export function isAcceptableQuotationStatus(status: string | null | undefined): boolean {
+  return (ACCEPTABLE_QUOTATION_STATUSES as readonly string[]).includes(status ?? "");
+}
+
+/**
+ * Picks the quotation an in-chat "SETUJU" refers to. The conversation match
+ * wins when present; otherwise the most recent quotation for the SAME tenant
+ * and lead is used, because many rows were created without a conversation_id.
+ * Rows from another agency or another lead are never eligible.
+ */
+export function selectAcceptanceCandidate(
+  rows: readonly AcceptanceCandidate[],
+  scope: { agencyId: string; leadId: string | null; conversationId: string | null },
+): AcceptanceCandidate | null {
+  const eligible = rows.filter((r) => {
+    if (!r?.id) return false;
+    if (r.agency_id && r.agency_id !== scope.agencyId) return false;
+    if (!isAcceptableQuotationStatus(r.status)) return false;
+    const sameConversation = Boolean(
+      scope.conversationId && r.conversation_id === scope.conversationId,
+    );
+    const sameLead = Boolean(scope.leadId && r.lead_id === scope.leadId);
+    return sameConversation || sameLead;
+  });
+  if (!eligible.length) return null;
+  const byConversation = eligible.filter(
+    (r) => scope.conversationId && r.conversation_id === scope.conversationId,
+  );
+  return (byConversation.length ? byConversation : eligible)[0] ?? null;
+}
+
+/** Truthful acceptance confirmation. No staff fiction, no invented facts. */
+export function quotationAcceptedReply(facts: {
+  quotationNumber?: string | null;
+  totalMyr?: number | null;
+  depositMyr?: number | null;
+}): string {
+  const money = (v: number) =>
+    `RM${v.toLocaleString("en-MY", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  const lines: string[] = ["*QUOTATION DITERIMA*", ""];
+  lines.push(
+    facts.quotationNumber
+      ? `Baik Dato'. Quotation *${facts.quotationNumber}* telah diterima.`
+      : "Baik Dato'. Quotation telah diterima.",
+  );
+  if (typeof facts.totalMyr === "number" && Number.isFinite(facts.totalMyr)) {
+    lines.push("", `*Jumlah:* ${money(facts.totalMyr)}`);
+  }
+  if (typeof facts.depositMyr === "number" && Number.isFinite(facts.depositMyr)) {
+    lines.push(`*Deposit:* ${money(facts.depositMyr)}`);
+    lines.push("", "Langkah seterusnya ialah pembayaran deposit mengikut tetapan agensi.");
+  } else {
+    lines.push("", "Deposit belum ditetapkan untuk pakej ini, jadi tiada amaun deposit rasmi buat masa ini.");
+  }
+  return lines.join("\n");
+}
