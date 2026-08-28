@@ -8,18 +8,25 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { ExistingQuotationCard } from "@/lib/sales/whatsapp-presentation.core";
+
 import {
   ACCEPTABLE_QUOTATION_STATUSES,
   selectAcceptanceCandidate,
   type AcceptanceCandidate,
 } from "./closing.core";
+import {
+  detectRequestedPackage,
+  packageIdentityMatches,
+  type PackageIdentity,
+} from "./package-identity.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
 
 export type AcceptQuotationResult = {
   accepted: boolean;
-  reason: "accepted" | "no_scope" | "no_candidate" | "already_accepted";
+  reason: "accepted" | "no_scope" | "no_candidate" | "already_accepted" | "package_mismatch";
   quotation?: {
     id: string;
     quotationNumber: string | null;
@@ -27,13 +34,23 @@ export type AcceptQuotationResult = {
     depositMyr: number | null;
     leadId: string | null;
   };
+  /** RED-3 — set only on `package_mismatch`, for the deterministic reply. */
+  mismatch?: { requested: PackageIdentity; card: ExistingQuotationCard };
 };
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
 export async function acceptQuotationInChat(
   supabase: Db,
-  scope: { agencyId: string; leadId: string | null; conversationId: string | null },
+  scope: {
+    agencyId: string;
+    leadId: string | null;
+    conversationId: string | null;
+    /** RED-3 — recent customer messages (oldest→newest) for identity detection. */
+    customerMessages?: ReadonlyArray<string | null | undefined>;
+    /** RED-3 — agency catalogue package names, so catalogue names win over tiers. */
+    catalogueNames?: ReadonlyArray<string | null | undefined>;
+  },
 ): Promise<AcceptQuotationResult> {
   if (!scope.leadId && !scope.conversationId) return { accepted: false, reason: "no_scope" };
 
@@ -43,7 +60,9 @@ export async function acceptQuotationInChat(
 
   const { data: rows } = await supabase
     .from("quotations")
-    .select("id, agency_id, lead_id, conversation_id, status, quotation_number, total, deposit_amount")
+    .select(
+      "id, agency_id, lead_id, conversation_id, status, quotation_number, total, deposit_amount, number_of_pilgrims, package_snapshot",
+    )
     .eq("agency_id", scope.agencyId)
     .in("status", ACCEPTABLE_QUOTATION_STATUSES as unknown as string[])
     .or(orParts.join(","))
@@ -52,6 +71,40 @@ export async function acceptQuotationInChat(
 
   const candidate = selectAcceptanceCandidate((rows ?? []) as AcceptanceCandidate[], scope);
   if (!candidate) return { accepted: false, reason: "no_candidate" };
+
+  // RED-3 — never accept package A when the customer explicitly asked for
+  // package B. Read-only comparison, reusing the RED-2 identity logic.
+  const requested = detectRequestedPackage(
+    scope.customerMessages ?? [],
+    scope.catalogueNames ?? [],
+  );
+  if (requested) {
+    const raw = candidate as AcceptanceCandidate & {
+      package_snapshot?: Record<string, unknown> | null;
+      number_of_pilgrims?: number | string | null;
+    };
+    const packageName =
+      typeof raw.package_snapshot?.["name"] === "string"
+        ? (raw.package_snapshot["name"] as string)
+        : null;
+    if (!packageIdentityMatches(requested, packageName)) {
+      return {
+        accepted: false,
+        reason: "package_mismatch",
+        mismatch: {
+          requested,
+          card: {
+            quotationNumber: candidate.quotation_number ?? null,
+            packageName,
+            totalMyr: num(candidate.total),
+            depositMyr: num(candidate.deposit_amount),
+            pax: num(raw.number_of_pilgrims),
+          },
+        },
+      };
+    }
+  }
+
 
   const acceptedAt = new Date().toISOString();
   // Conditional update = idempotency: a replayed SETUJU updates zero rows.
