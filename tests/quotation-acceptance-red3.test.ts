@@ -204,4 +204,24 @@ describe("RED-3 — package identity acceptance guard", () => {
     expect(out.reason).toBe("package_mismatch");
     expect(state[0]!["status"]).toBe("deposit_pending");
   });
+
+  it("H. VIP request + already-accepted Economy quotation + SETUJU → mismatch, never an acceptance confirmation", async () => {
+    const { db, inserts, state } = makeDb([economyRow({ status: "accepted" })]);
+    const out = await acceptQuotationInChat(db, {
+      ...scope,
+      customerMessages: ["Saya nak quotation VIP untuk 3 orang.", "SETUJU"],
+      catalogueNames: ["Umrah Ekonomi 12 Hari", "Umrah VIP 14 Hari"],
+    });
+
+    expect(out.accepted).toBe(false);
+    expect(out.reason).toBe("package_mismatch");
+    expect(state[0]!["status"]).toBe("accepted");
+    expect(inserts).toHaveLength(0);
+
+    const reply = packageMismatchReply(out.mismatch!.card, out.mismatch!.requested);
+    expect(reply).toContain("*QUOTATION CHECK*");
+    expect(reply).not.toMatch(/penerimaan telah direkodkan/i);
+    expect(reply).not.toMatch(/telah diterima/i);
+    expect(reply).not.toMatch(/QUOTATION DITERIMA/i);
+  });
 });
