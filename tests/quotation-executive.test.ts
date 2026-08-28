@@ -69,8 +69,10 @@ describe("AI Quotation Executive — in-chat acceptance", () => {
     const fs = require("node:fs") as typeof import("node:fs");
     const webhook = fs.readFileSync("src/routes/api/public/whatsapp.ts", "utf8");
     expect(webhook).toContain("detectQuotationAcceptance(latestBody)");
-    expect(webhook).toContain('.update({ status: "accepted", accepted_at: acceptedAt })');
-    expect(webhook).toContain('stage: "quotation_accepted"');
+    expect(webhook).toContain("acceptQuotationInChat");
+    const acceptance = fs.readFileSync("src/lib/quotations/acceptance.server.ts", "utf8");
+    expect(acceptance).toContain('.update({ status: "accepted", accepted_at: acceptedAt })');
+    expect(acceptance).toContain('stage: "quotation_accepted"');
   });
 
   it("keeps deposit-pending quotations visible without changing the one-live rule", () => {
