@@ -1295,19 +1295,35 @@ export async function generateAgentReply(
   // P0 — quotation delivery is deterministic application behaviour, not a
   // prompt preference. A live quotation request must surface the existing
   // card/link immediately, before the model can invent a staff workflow.
+  const customerMessageBodies = ctx.messages
+    .filter((message) => message.sender === "customer")
+    .map((message) => message.body);
+  const liveQuotationCard = existingQuotationFacts(ctx.quotation as Record<string, unknown> | null);
+  // P0 RED-2 — never present package A as though it satisfies an explicit
+  // request for package B. Read-only comparison; no quotation is mutated.
+  const requestedPackage = detectRequestedPackage(
+    customerMessageBodies,
+    (ctx.packages as Array<Record<string, unknown>>).map((p) => String(p["name"] ?? "")),
+  );
   const quotationDeliveryReply = existingQuotationDeliveryReply({
-    customerMessages: ctx.messages
-      .filter((message) => message.sender === "customer")
-      .map((message) => message.body),
-    quotation: existingQuotationFacts(ctx.quotation as Record<string, unknown> | null),
+    customerMessages: customerMessageBodies,
+    quotation: liveQuotationCard,
   });
   if (quotationDeliveryReply) {
+    if (liveQuotationCard && !packageIdentityMatches(requestedPackage, liveQuotationCard.packageName)) {
+      console.log("[sales-ai] deterministic quotation delivery", {
+        conversation: safeConversationRef(ctx.conversation.id as string),
+        terminal_outcome: "package_identity_mismatch",
+      });
+      return packageMismatchReply(liveQuotationCard, requestedPackage!);
+    }
     console.log("[sales-ai] deterministic quotation delivery", {
       conversation: safeConversationRef(ctx.conversation.id as string),
       terminal_outcome: "existing_quotation_card",
     });
     return quotationDeliveryReply;
   }
+
 
 
   // COMMERCIAL SAFETY — checked BEFORE any model call, from the server-side
