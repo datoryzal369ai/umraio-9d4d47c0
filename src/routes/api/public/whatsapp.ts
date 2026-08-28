@@ -696,14 +696,73 @@ async function processInboundMessage(
                 const { acceptQuotationInChat } = await import(
                   "@/lib/quotations/acceptance.server"
                 );
+                // RED-3 — read-only context for package identity: recent
+                // customer messages (sticky preference) + agency catalogue.
+                const [{ data: recentCustomer }, { data: catalogue }] = await Promise.all([
+                  supabaseAdmin
+                    .from("messages")
+                    .select("body, created_at")
+                    .eq("agency_id", agencyId)
+                    .eq("conversation_id", conversationId)
+                    .eq("sender", "customer")
+                    .order("created_at", { ascending: false })
+                    .limit(12),
+                  supabaseAdmin
+                    .from("packages")
+                    .select("name")
+                    .eq("agency_id", agencyId)
+                    .limit(50),
+                ]);
+                const customerMessages = [
+                  ...((recentCustomer ?? []) as Array<{ body?: string | null }>),
+                ]
+                  .reverse()
+                  .map((m) => m.body ?? "");
                 const outcome = await acceptQuotationInChat(supabaseAdmin as never, {
                   agencyId,
                   leadId,
                   conversationId,
+                  customerMessages,
+                  catalogueNames: ((catalogue ?? []) as Array<{ name?: string | null }>).map(
+                    (p) => p.name ?? "",
+                  ),
                 });
                 console.log(
                   `[whatsapp] quotation_in_chat_acceptance result=${outcome.reason} quotation=${outcome.quotation?.id ?? "none"}`,
                 );
+                if (outcome.reason === "package_mismatch" && outcome.mismatch) {
+                  const { packageMismatchReply } = await import(
+                    "@/lib/quotations/package-identity.core"
+                  );
+                  const mismatchReply = packageMismatchReply(
+                    outcome.mismatch.card,
+                    outcome.mismatch.requested,
+                  );
+                  const mismatchSent = await sendWhatsappText(
+                    phoneNumberId,
+                    config.access_token,
+                    from,
+                    mismatchReply,
+                  );
+                  await supabaseAdmin.from("messages").insert({
+                    agency_id: agencyId,
+                    conversation_id: conversationId,
+                    sender: "ai",
+                    body: mismatchReply,
+                    modality: "text",
+                    delivery_status: mismatchSent ? "sent" : "send_failed",
+                  });
+                  await supabaseAdmin
+                    .from("conversations")
+                    .update({ last_message_at: new Date().toISOString() })
+                    .eq("id", conversationId);
+                  console.log(
+                    `[whatsapp] conversation_terminal_outcome=${mismatchSent ? "acceptance_package_identity_mismatch" : "no_reply_send_failed"}`,
+                  );
+                  // outer finally releases the conversation claim
+                  return "ok";
+                }
+
                 if (outcome.accepted && outcome.quotation) {
                   const ack = quotationAcceptedReply({
                     quotationNumber: outcome.quotation.quotationNumber,
