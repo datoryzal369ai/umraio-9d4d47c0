@@ -41,10 +41,7 @@ function makeDb(tables: Record<string, Row[]>) {
       },
       order: () => api,
       limit: () => run(),
-      maybeSingle: () => {
-        const res = run();
-        return Promise.resolve({ data: (res as any).data?.[0] ?? null, error: null });
-      },
+      maybeSingle: () => run().then((res: any) => ({ data: res.data?.[0] ?? null, error: null })),
       single: () => api.maybeSingle(),
       insert: (data: Row) => {
         op = "insert";
