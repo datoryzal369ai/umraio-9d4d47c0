@@ -25,6 +25,31 @@ export const Route = createFileRoute("/api/public/payments/stripe-webhook")({
         }
 
         try {
+          // Y-2 — verified deposit payment (one-off, `mode: payment`). Handled
+          // before subscription normalization; unrelated sessions fall through.
+          if (envelope["type"] === "checkout.session.completed") {
+            const { resolveDepositPayment } = await import("@/lib/bookings/deposit.core");
+            const session = (envelope["data"] as { object?: unknown } | undefined)?.object ?? {};
+            const deposit = resolveDepositPayment(session as never);
+            if (deposit.ok) {
+              const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+              const { markDepositPaid } = await import("@/lib/bookings/booking.server");
+              const applied = await markDepositPaid(supabaseAdmin as never, {
+                agencyId: deposit.agencyId,
+                bookingId: deposit.bookingId,
+                quotationId: deposit.quotationId,
+                paymentRef: deposit.paymentRef,
+                amountMyr: deposit.amountMyr,
+              });
+              console.log(
+                `[stripe] event=checkout.session.completed label=${
+                  applied.applied ? "deposit_paid" : "deposit_duplicate_ignored"
+                } agency=${deposit.agencyId} booking=${deposit.bookingId}`,
+              );
+              return Response.json({ received: true });
+            }
+          }
+
           const { normalizeStripeEvent, applyVerifiedStripeEvent } = await import(
             "@/lib/billing/stripe-billing.server"
           );
