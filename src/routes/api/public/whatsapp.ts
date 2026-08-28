@@ -687,38 +687,55 @@ async function processInboundMessage(
                 [...(pending as ReadonlyArray<{ body?: string | null }>)]
                   .reverse()
                   .find((m) => (m.body ?? "").trim())?.body ?? null;
-              const { detectQuotationAcceptance } = await import("@/lib/quotations/closing.core");
+              const { detectQuotationAcceptance, quotationAcceptedReply } = await import(
+                "@/lib/quotations/closing.core"
+              );
               if (detectQuotationAcceptance(latestBody)) {
-                const acceptedAt = new Date().toISOString();
-                const { data: accepted } = await supabaseAdmin
-                  .from("quotations")
-                  .update({ status: "accepted", accepted_at: acceptedAt })
-                  .eq("agency_id", agencyId)
-                  .eq("conversation_id", conversationId)
-                  .in("status", ["sent", "viewed"])
-                  .select("id, lead_id");
-                for (const q of accepted ?? []) {
-                  await supabaseAdmin.from("conversion_events").insert({
-                    agency_id: agencyId,
-                    stage: "quotation_accepted",
-                    actor: "customer",
-                    lead_id: q.lead_id,
-                    quotation_id: q.id,
-                    meta: { channel: "whatsapp", source: "in_chat_acceptance" },
+                // RED-1 — scope by tenant + lead (conversation_id optional) and
+                // include every still-live status, including deposit_pending.
+                const { acceptQuotationInChat } = await import(
+                  "@/lib/quotations/acceptance.server"
+                );
+                const outcome = await acceptQuotationInChat(supabaseAdmin as never, {
+                  agencyId,
+                  leadId,
+                  conversationId,
+                });
+                console.log(
+                  `[whatsapp] quotation_in_chat_acceptance result=${outcome.reason} quotation=${outcome.quotation?.id ?? "none"}`,
+                );
+                if (outcome.accepted && outcome.quotation) {
+                  const ack = quotationAcceptedReply({
+                    quotationNumber: outcome.quotation.quotationNumber,
+                    totalMyr: outcome.quotation.totalMyr,
+                    depositMyr: outcome.quotation.depositMyr,
                   });
-                  await supabaseAdmin.from("activity_log").insert({
-                    agency_id: agencyId,
-                    actor: "ai",
-                    action: "Customer accepted the quotation in WhatsApp",
-                    entity: "quotation",
-                    entity_id: q.id,
-                    meta: { conversation_id: conversationId },
-                  });
-                }
-                if ((accepted ?? []).length) {
-                  console.log(
-                    `[whatsapp] quotation_in_chat_acceptance count=${(accepted ?? []).length}`,
+                  const ackSent = await sendWhatsappText(
+                    phoneNumberId,
+                    config.access_token,
+                    from,
+                    ack,
                   );
+                  await supabaseAdmin.from("messages").insert({
+                    agency_id: agencyId,
+                    conversation_id: conversationId,
+                    sender: "ai",
+                    body: ack,
+                    modality: "text",
+                    delivery_status: ackSent ? "sent" : "send_failed",
+                  });
+                  await supabaseAdmin
+                    .from("conversations")
+                    .update({ last_message_at: new Date().toISOString() })
+                    .eq("id", conversationId);
+                  console.log(
+                    `[whatsapp] conversation_terminal_outcome=${ackSent ? "quotation_accepted_ack" : "no_reply_send_failed"}`,
+                  );
+                  await releaseConversationClaim(supabaseAdmin as never, {
+                    agencyId,
+                    conversationId,
+                  });
+                  return "ok";
                 }
               }
             } catch (error) {
