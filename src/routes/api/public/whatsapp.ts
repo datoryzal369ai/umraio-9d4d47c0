@@ -764,11 +764,65 @@ async function processInboundMessage(
                 }
 
                 if (outcome.accepted && outcome.quotation) {
-                  const ack = quotationAcceptedReply({
+                  let ack = quotationAcceptedReply({
                     quotationNumber: outcome.quotation.quotationNumber,
                     totalMyr: outcome.quotation.totalMyr,
                     depositMyr: outcome.quotation.depositMyr,
                   });
+
+                  // Y-1 / Y-2 — accepted quotation creates exactly one booking
+                  // shell (deposit_pending) and, when a deposit is owed and
+                  // Stripe is configured, a real deposit checkout link. Nothing
+                  // here marks anything paid.
+                  try {
+                    const { ensureBookingForAcceptedQuotation } = await import(
+                      "@/lib/bookings/booking.server"
+                    );
+                    const booking = await ensureBookingForAcceptedQuotation(
+                      supabaseAdmin as never,
+                      { agencyId, quotationId: outcome.quotation.id, actor: "customer" },
+                    );
+                    if (booking.ok && booking.depositMyr && booking.depositMyr > 0) {
+                      const { data: qRow } = await supabaseAdmin
+                        .from("quotations")
+                        .select("public_token")
+                        .eq("id", outcome.quotation.id)
+                        .eq("agency_id", agencyId)
+                        .maybeSingle();
+                      const { createDepositCheckoutSession } = await import(
+                        "@/lib/billing/deposit-checkout.server"
+                      );
+                      const checkout = await createDepositCheckoutSession({
+                        scope: {
+                          agencyId,
+                          quotationId: outcome.quotation.id,
+                          bookingId: booking.booking.id,
+                          leadId: outcome.quotation.leadId,
+                        },
+                        depositMyr: booking.depositMyr,
+                        quotationNumber: outcome.quotation.quotationNumber,
+                        publicToken: (qRow as { public_token?: string | null } | null)
+                          ?.public_token ?? null,
+                      });
+                      console.log(
+                        `[whatsapp] deposit_checkout status=${checkout.status} booking=${booking.booking.id} created=${booking.created}`,
+                      );
+                      if (checkout.status === "ready") {
+                        const { depositCheckoutReply } = await import(
+                          "@/lib/bookings/deposit.core"
+                        );
+                        ack = `${ack}\n\n${depositCheckoutReply({
+                          quotationNumber: outcome.quotation.quotationNumber,
+                          depositMyr: booking.depositMyr,
+                          url: checkout.url,
+                        })}`;
+                      }
+                    }
+                  } catch (error) {
+                    console.error(
+                      `[whatsapp] booking_or_deposit_failed reason=${error instanceof Error ? error.name : "unknown"}`,
+                    );
+                  }
                   const ackSent = await sendWhatsappText(
                     phoneNumberId,
                     config.access_token,
