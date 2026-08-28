@@ -731,10 +731,7 @@ async function processInboundMessage(
                   console.log(
                     `[whatsapp] conversation_terminal_outcome=${ackSent ? "quotation_accepted_ack" : "no_reply_send_failed"}`,
                   );
-                  await releaseConversationClaim(supabaseAdmin as never, {
-                    agencyId,
-                    conversationId,
-                  });
+                  // outer finally releases the conversation claim
                   return "ok";
                 }
               }
