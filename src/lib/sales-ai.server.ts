@@ -88,8 +88,8 @@ import {
   type EliteRead,
 } from "./sales/elite/elite-sales.core";
 
+import { BUILD_IDENTITY } from "./build-identity";
 import {
-import { BUILD_IDENTITY } from "@/lib/build-identity";
   collectSuppressedTopics,
   countSuppressedOccurrences,
   redactSuppressedTopics,
