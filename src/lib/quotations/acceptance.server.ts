@@ -64,13 +64,12 @@ export async function acceptQuotationInChat(
       "id, agency_id, lead_id, conversation_id, status, quotation_number, total, deposit_amount, number_of_pilgrims, package_snapshot",
     )
     .eq("agency_id", scope.agencyId)
-    .in("status", ACCEPTABLE_QUOTATION_STATUSES as unknown as string[])
     .or(orParts.join(","))
     .order("created_at", { ascending: false })
     .limit(10);
 
-  const candidate = selectAcceptanceCandidate((rows ?? []) as AcceptanceCandidate[], scope);
-  if (!candidate) return { accepted: false, reason: "no_candidate" };
+  const allRows = (rows ?? []) as AcceptanceCandidate[];
+  const candidate = selectAcceptanceCandidate(allRows, scope);
 
   // RED-3 — never accept package A when the customer explicitly asked for
   // package B. Read-only comparison, reusing the RED-2 identity logic.
@@ -78,8 +77,10 @@ export async function acceptQuotationInChat(
     scope.customerMessages ?? [],
     scope.catalogueNames ?? [],
   );
-  if (requested) {
-    const raw = candidate as AcceptanceCandidate & {
+
+  const mismatchFor = (row: AcceptanceCandidate): AcceptQuotationResult | null => {
+    if (!requested) return null;
+    const raw = row as AcceptanceCandidate & {
       package_snapshot?: Record<string, unknown> | null;
       number_of_pilgrims?: number | string | null;
     };
@@ -87,23 +88,47 @@ export async function acceptQuotationInChat(
       typeof raw.package_snapshot?.["name"] === "string"
         ? (raw.package_snapshot["name"] as string)
         : null;
-    if (!packageIdentityMatches(requested, packageName)) {
-      return {
-        accepted: false,
-        reason: "package_mismatch",
-        mismatch: {
-          requested,
-          card: {
-            quotationNumber: candidate.quotation_number ?? null,
-            packageName,
-            totalMyr: num(candidate.total),
-            depositMyr: num(candidate.deposit_amount),
-            pax: num(raw.number_of_pilgrims),
-          },
+    if (packageIdentityMatches(requested, packageName)) return null;
+    return {
+      accepted: false,
+      reason: "package_mismatch",
+      mismatch: {
+        requested,
+        card: {
+          quotationNumber: row.quotation_number ?? null,
+          packageName,
+          totalMyr: num(row.total),
+          depositMyr: num(row.deposit_amount),
+          pax: num(raw.number_of_pilgrims),
         },
-      };
+      },
+    };
+  };
+
+  if (!candidate) {
+    // No live candidate (e.g. the only quotation is already `accepted`).
+    // A sticky explicit package preference must still never be answered with
+    // an acceptance confirmation — reuse the deterministic mismatch reply.
+    const scoped = allRows.filter((r) => {
+      if (!r?.id) return false;
+      if (r.agency_id && r.agency_id !== scope.agencyId) return false;
+      const sameConversation = Boolean(
+        scope.conversationId && r.conversation_id === scope.conversationId,
+      );
+      const sameLead = Boolean(scope.leadId && r.lead_id === scope.leadId);
+      return sameConversation || sameLead;
+    });
+    for (const row of scoped) {
+      const mismatch = mismatchFor(row);
+      if (mismatch) return mismatch;
+      break;
     }
+    return { accepted: false, reason: "no_candidate" };
   }
+
+  const liveMismatch = mismatchFor(candidate);
+  if (liveMismatch) return liveMismatch;
+
 
 
   const acceptedAt = new Date().toISOString();
