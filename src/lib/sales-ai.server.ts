@@ -54,6 +54,12 @@ import {
   type ExistingQuotationCard,
 } from "@/lib/sales/whatsapp-presentation.core";
 import { quotationLink } from "@/lib/quotations/quotations.server";
+import {
+  detectRequestedPackage,
+  packageIdentityMatches,
+  packageMismatchInstruction,
+  packageMismatchReply,
+} from "@/lib/quotations/package-identity.core";
 
 
 import {
@@ -506,6 +512,14 @@ function systemPrompt(
     }),
     QUOTATION_AUTONOMY_INSTRUCTION,
     existingQuotationInstruction(existingQuotationFacts(ctx.quotation as Record<string, unknown> | null)),
+    // P0 RED-2 — explicit package request vs live quotation identity.
+    packageMismatchInstruction(
+      existingQuotationFacts(ctx.quotation as Record<string, unknown> | null),
+      detectRequestedPackage(
+        ctx.messages.filter((m) => m.sender === "customer").map((m) => m.body),
+        (ctx.packages as Array<Record<string, unknown>>).map((p) => String(p["name"] ?? "")),
+      ),
+    ),
     HANDOVER_LANGUAGE_INSTRUCTION,
     NEXT_BEST_ACTION_INSTRUCTION,
     knownContextInstruction({
