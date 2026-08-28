@@ -288,3 +288,35 @@ describe("Y-2 verified webhook → deposit paid", () => {
     expect(tables["bookings"]![0]!["deposit_paid"]).toBe(false);
   });
 });
+
+describe("Y-1/Y-2 hardening", () => {
+  it("derives booking money only from server-side quotation data", async () => {
+    const { db, tables } = makeDb({ quotations: [{ ...QUOTATION }], bookings: [], conversion_events: [] });
+    await ensureBookingForAcceptedQuotation(db, { agencyId: "A", quotationId: "q1" });
+    const booking = tables["bookings"]![0]!;
+    expect(booking["amount_myr"]).toBe(QUOTATION.total);
+    expect(booking["deposit_amount_myr"]).toBe(QUOTATION.deposit_amount);
+    expect(booking["balance_myr"]).toBe(QUOTATION.balance_amount);
+    expect(booking["pax"]).toBe(QUOTATION.number_of_pilgrims);
+    expect(booking["deposit_paid"]).toBe(false);
+  });
+
+  it("charges the quotation deposit in MYR minor units, rounded, never negative", () => {
+    expect(depositMinorUnits(1500)).toBe(150_000);
+    expect(depositMinorUnits(1500.005)).toBe(150_001);
+    expect(depositMinorUnits(0)).toBe(0);
+  });
+
+  it("a webhook naming another quotation cannot mark this booking paid", async () => {
+    const { db, tables } = paidDb();
+    const result = await markDepositPaid(db, {
+      agencyId: "A",
+      bookingId: "b1",
+      quotationId: "q-other",
+      paymentRef: "pi_x",
+    });
+    expect(result.applied).toBe(false);
+    expect(tables["bookings"]![0]!["deposit_paid"]).toBe(false);
+    expect(tables["quotations"]![0]!["status"]).toBe("deposit_pending");
+  });
+});
