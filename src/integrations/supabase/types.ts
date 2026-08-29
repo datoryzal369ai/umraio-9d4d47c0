@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           action: string
           actor: string
+          actor_user_id: string | null
           agency_id: string
           created_at: string
           entity: string | null
@@ -28,6 +29,7 @@ export type Database = {
         Insert: {
           action: string
           actor?: string
+          actor_user_id?: string | null
           agency_id: string
           created_at?: string
           entity?: string | null
@@ -38,6 +40,7 @@ export type Database = {
         Update: {
           action?: string
           actor?: string
+          actor_user_id?: string | null
           agency_id?: string
           created_at?: string
           entity?: string | null
@@ -1299,6 +1302,44 @@ export type Database = {
           },
         ]
       }
+      login_events: {
+        Row: {
+          agency_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          occurred_at: string
+          session_key: string | null
+          user_id: string
+        }
+        Insert: {
+          agency_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          occurred_at?: string
+          session_key?: string | null
+          user_id: string
+        }
+        Update: {
+          agency_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          session_key?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "login_events_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           agency_id: string
@@ -1568,6 +1609,7 @@ export type Database = {
           full_name: string
           id: string
           job_title: string | null
+          last_seen_at: string | null
           phone: string | null
           updated_at: string
         }
@@ -1579,6 +1621,7 @@ export type Database = {
           full_name?: string
           id: string
           job_title?: string | null
+          last_seen_at?: string | null
           phone?: string | null
           updated_at?: string
         }
@@ -1590,6 +1633,7 @@ export type Database = {
           full_name?: string
           id?: string
           job_title?: string | null
+          last_seen_at?: string | null
           phone?: string | null
           updated_at?: string
         }
@@ -1938,6 +1982,7 @@ export type Database = {
         Args: { p_agency_id: string; p_job_id: string; p_stale_after?: string }
         Returns: boolean
       }
+      touch_presence: { Args: never; Returns: string }
       verify_cron_secret: { Args: { token: string }; Returns: boolean }
     }
     Enums: {
@@ -1954,7 +1999,12 @@ export type Database = {
         | "processing"
         | "completed"
         | "waiting_approval"
-      app_role: "owner" | "admin" | "agent" | "islamic_approver"
+      app_role:
+        | "owner"
+        | "admin"
+        | "agent"
+        | "islamic_approver"
+        | "platform_owner"
       channel: "whatsapp" | "web" | "manual"
       followup_status: "pending" | "sent" | "skipped" | "failed" | "processing"
       kb_category:
@@ -2118,7 +2168,13 @@ export const Constants = {
         "completed",
         "waiting_approval",
       ],
-      app_role: ["owner", "admin", "agent", "islamic_approver"],
+      app_role: [
+        "owner",
+        "admin",
+        "agent",
+        "islamic_approver",
+        "platform_owner",
+      ],
       channel: ["whatsapp", "web", "manual"],
       followup_status: ["pending", "sent", "skipped", "failed", "processing"],
       kb_category: [

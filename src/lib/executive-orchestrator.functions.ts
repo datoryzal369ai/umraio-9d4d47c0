@@ -49,6 +49,7 @@ export const setAutonomyMode = createServerFn({ method: "POST" })
     await supabase.from("activity_log").insert({
       agency_id: agencyId,
       actor: "human",
+      actor_user_id: userId,
       action: `AI autonomy mode set to ${data.mode.toUpperCase()}`,
       entity: "agency_settings",
       entity_id: null,

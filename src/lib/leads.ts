@@ -273,9 +273,11 @@ async function logActivity(
   leadId: string,
   detail?: string,
 ): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
   await supabase.from("activity_log").insert({
     agency_id: agencyId,
     actor: "human",
+    actor_user_id: auth?.user?.id ?? null,
     action,
     entity: "lead",
     entity_id: leadId,
