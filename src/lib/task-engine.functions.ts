@@ -153,6 +153,7 @@ export const decideTask = createServerFn({ method: "POST" })
     await supabase.from("activity_log").insert({
       agency_id: task.agency_id,
       actor: "human",
+      actor_user_id: context.userId,
       action: `${approved ? "Approved" : "Rejected"} AI task: ${task.title}`,
       entity: "ai_task",
       entity_id: task.id,
@@ -198,6 +199,7 @@ export const cancelTask = createServerFn({ method: "POST" })
     await supabase.from("activity_log").insert({
       agency_id: task.agency_id,
       actor: "human",
+      actor_user_id: context.userId,
       action: `Cancelled AI task: ${task.title}`,
       entity: "ai_task",
       entity_id: task.id,

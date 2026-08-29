@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "@/hooks/useAuth";
 import { LocaleProvider } from "@/lib/i18n/locale";
+import { useIdentitySignals } from "@/hooks/useIdentitySignals";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -235,6 +236,7 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function AuthSync() {
   const router = useRouter();
+  useIdentitySignals();
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event) => {
