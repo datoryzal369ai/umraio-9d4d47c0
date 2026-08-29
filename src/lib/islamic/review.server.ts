@@ -51,6 +51,7 @@ async function auditIslamic(
     event: string;
     reviewId: string | null;
     actor?: string;
+    actorUserId?: string | null;
     meta?: Record<string, unknown>;
   },
 ): Promise<void> {
@@ -58,6 +59,8 @@ async function auditIslamic(
     await supabase.from("activity_log").insert({
       agency_id: args.agencyId,
       actor: args.actor ?? "system",
+      // Y-6B: human decisions carry the acting user; ai/system stay null.
+      actor_user_id: args.actor === "human" ? (args.actorUserId ?? null) : null,
       action: args.event,
       entity: "islamic_review",
       entity_id: args.reviewId,
@@ -426,6 +429,7 @@ export async function applyIslamicDecision(
   await auditIslamic(supabase, {
     agencyId: args.agencyId,
     actor: "human",
+    actorUserId: args.reviewerId,
     event:
       nextStatus === "APPROVED"
         ? ISLAMIC_AUDIT_EVENTS.approved
