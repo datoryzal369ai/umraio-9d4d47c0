@@ -239,7 +239,6 @@ export const xiaozhiVoiceEngine: VoiceEngine = {
       language: "ms-MY",
     });
 
-    let lastFailure: XiaozhiFailure | null = null;
     for (let attempt = 1; attempt <= XIAOZHI_TTS_MAX_ATTEMPTS; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), XIAOZHI_TTS_TIMEOUT_MS);
