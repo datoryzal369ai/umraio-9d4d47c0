@@ -1,0 +1,1 @@
+GRANT SELECT ON public.login_events TO authenticated;
