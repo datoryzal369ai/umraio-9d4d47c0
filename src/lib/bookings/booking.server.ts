@@ -10,6 +10,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logConversionEvent } from "@/lib/conversion/events";
+import { resolveDepositMyr } from "@/lib/bookings/deposit.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -113,7 +114,7 @@ export async function ensureBookingForAcceptedQuotation(
       quotation_id: scope.quotationId,
       pax: quotation.number_of_pilgrims ?? 1,
       amount_myr: quotation.total ?? 0,
-      deposit_amount_myr: quotation.deposit_amount ?? null,
+      deposit_amount_myr: depositMyr,
       balance_myr: quotation.balance_amount ?? null,
       deposit_paid: false,
       status: "deposit_pending",
