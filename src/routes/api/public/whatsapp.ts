@@ -763,12 +763,28 @@ async function processInboundMessage(
                   return "ok";
                 }
 
-                if (outcome.accepted && outcome.quotation) {
-                  let ack = quotationAcceptedReply({
-                    quotationNumber: outcome.quotation.quotationNumber,
-                    totalMyr: outcome.quotation.totalMyr,
-                    depositMyr: outcome.quotation.depositMyr,
-                  });
+                // Y-2 FIX — a SETUJU on a quotation that is ALREADY accepted /
+                // deposit_pending must still produce the deposit payment link
+                // instead of falling through to a generic model reply.
+                const acceptedQuotation = outcome.accepted && outcome.quotation
+                  ? outcome.quotation
+                  : outcome.reason === "no_candidate" || outcome.reason === "already_accepted"
+                    ? await (async () => {
+                        const { findResumableAcceptedQuotation } = await import(
+                          "@/lib/quotations/acceptance.server"
+                        );
+                        return findResumableAcceptedQuotation(supabaseAdmin as never, {
+                          agencyId,
+                          leadId,
+                          conversationId,
+                        });
+                      })()
+                    : null;
+
+                if (acceptedQuotation) {
+                  let depositLinkSent = false;
+                  let ack = "";
+
 
                   // Y-1 / Y-2 — accepted quotation creates exactly one booking
                   // shell (deposit_pending) and, when a deposit is owed and
