@@ -167,6 +167,46 @@ export const lovableVoiceEngine: VoiceEngine = hostedSpeechEngine("lovable", lov
  * (OGG/Opus preferred). Device-framed Opus (XiaoZhi's `p3` stream) is NOT a
  * playable file and is rejected rather than uploaded to Meta.
  */
+/**
+ * XIAOZHI TTS HARDENING — bounded latency + bounded retry.
+ *
+ * A hung self-hosted gateway must never stall the WhatsApp turn: every
+ * request (headers AND body) is bounded by an 8s AbortController, and only
+ * TRANSIENT failures (timeout, network, 429, 5xx) get exactly one retry.
+ * Permanent failures — configuration, 401/403, 400/404, invalid or
+ * incompatible audio — return immediately so the provider chain fails over
+ * to OpenAI without burning another 8 seconds.
+ *
+ * SECURITY: the API key and Authorization header are never logged; only
+ * failure category and HTTP status are emitted.
+ */
+export const XIAOZHI_TTS_TIMEOUT_MS = 8_000;
+/** 1 initial attempt + at most ONE retry. */
+export const XIAOZHI_TTS_MAX_ATTEMPTS = 2;
+
+type XiaozhiFailure = {
+  ok: false;
+  kind: TtsFailureKind;
+  /** Category used in logs — never carries credentials. */
+  category: string;
+  retryable: boolean;
+  status?: number;
+};
+
+function classifyXiaozhiHttp(status: number): XiaozhiFailure {
+  if (status === 401 || status === 403) {
+    return { ok: false, kind: "unauthorized", category: "unauthorized", retryable: false, status };
+  }
+  if (status === 429) {
+    return { ok: false, kind: "rate_limited", category: "rate_limited", retryable: true, status };
+  }
+  if (status === 400 || status === 404) {
+    return { ok: false, kind: "invalid_request", category: "invalid_request", retryable: false, status };
+  }
+  // 5xx and everything else: transient provider condition — one retry.
+  return { ok: false, kind: "provider", category: "provider", retryable: true, status };
+}
+
 export const xiaozhiVoiceEngine: VoiceEngine = {
   name: "xiaozhi",
   async synthesize({ text, voice, speed, instructions }) {
@@ -175,56 +215,109 @@ export const xiaozhiVoiceEngine: VoiceEngine = {
       console.error("[voice] tts_failed engine=xiaozhi category=unsupported_engine");
       return { ok: false, kind: "unsupported_engine", engine: "xiaozhi" };
     }
+    let parsed: URL;
+    try {
+      parsed = new URL(endpoint);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("scheme");
+    } catch {
+      console.error("[voice] tts_failed engine=xiaozhi category=config reason=invalid_url");
+      return { ok: false, kind: "config", engine: "xiaozhi" };
+    }
     const apiKey = (process.env["XIAOZHI_TTS_API_KEY"] ?? "").trim();
     // Which TTS backend the self-hosted XiaoZhi gateway should select
     // (edge / doubao / minimax / cosyvoice / fishaudio ...). XiaoZhi is the
     // orchestration layer; naturalness comes from this provider.
     const provider = (process.env["XIAOZHI_TTS_PROVIDER"] ?? "").trim();
     const format = (process.env["XIAOZHI_TTS_FORMAT"] ?? "ogg_opus").trim();
-    let res: Response;
-    try {
-      res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          text,
-          voice: voice ?? process.env["XIAOZHI_TTS_VOICE"] ?? undefined,
-          ...(provider ? { provider } : {}),
-          ...(typeof speed === "number" ? { speed } : {}),
-          ...(instructions ? { instructions } : {}),
-          format,
-          language: "ms-MY",
-        }),
-      });
+    const body = JSON.stringify({
+      text,
+      voice: voice ?? process.env["XIAOZHI_TTS_VOICE"] ?? undefined,
+      ...(provider ? { provider } : {}),
+      ...(typeof speed === "number" ? { speed } : {}),
+      ...(instructions ? { instructions } : {}),
+      format,
+      language: "ms-MY",
+    });
 
-    } catch (error) {
-      console.error(
-        `[voice] tts_failed engine=xiaozhi category=network name=${error instanceof Error ? error.name : "unknown"}`,
-      );
-      return { ok: false, kind: "provider", engine: "xiaozhi" };
+    let lastFailure: XiaozhiFailure | null = null;
+    for (let attempt = 1; attempt <= XIAOZHI_TTS_MAX_ATTEMPTS; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), XIAOZHI_TTS_TIMEOUT_MS);
+      let res: Response;
+      try {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        clearTimeout(timer);
+        const isTimeout = error instanceof Error && error.name === "AbortError";
+        const failure: XiaozhiFailure = isTimeout
+          ? { ok: false, kind: "timeout", category: "timeout", retryable: true }
+          : { ok: false, kind: "provider", category: "network", retryable: true };
+        console.error(
+          `[voice] tts_failed engine=xiaozhi category=${failure.category} attempt=${attempt}`,
+        );
+        if (failure.retryable && attempt < XIAOZHI_TTS_MAX_ATTEMPTS) continue;
+        return { ok: false, kind: failure.kind, engine: "xiaozhi" };
+      }
+
+      if (!res.ok) {
+        clearTimeout(timer);
+        const failure = classifyXiaozhiHttp(res.status);
+        console.error(
+          `[voice] tts_failed engine=xiaozhi category=${failure.category} status=${res.status} attempt=${attempt}`,
+        );
+        if (failure.retryable && attempt < XIAOZHI_TTS_MAX_ATTEMPTS) continue;
+        return { ok: false, kind: failure.kind, engine: "xiaozhi" };
+      }
+
+      // Success status — the 8s budget still bounds the body download.
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await res.arrayBuffer());
+      } catch (error) {
+        clearTimeout(timer);
+        const isTimeout = error instanceof Error && error.name === "AbortError";
+        const failure: XiaozhiFailure = isTimeout
+          ? { ok: false, kind: "timeout", category: "timeout", retryable: true }
+          : { ok: false, kind: "provider", category: "network", retryable: true };
+        console.error(
+          `[voice] tts_failed engine=xiaozhi category=${failure.category} attempt=${attempt}`,
+        );
+        if (failure.retryable && attempt < XIAOZHI_TTS_MAX_ATTEMPTS) continue;
+        return { ok: false, kind: failure.kind, engine: "xiaozhi" };
+      }
+      clearTimeout(timer);
+
+      const mimeType = (res.headers.get("content-type") ?? OUTBOUND_AUDIO_MIME)
+        .split(";")[0]!
+        .trim()
+        .toLowerCase();
+      // MIME validation is permanent: the endpoint returned 200 with bytes
+      // WhatsApp cannot play (empty file, p3/device-framed Opus, octet-stream).
+      // Retrying cannot fix it — fail over immediately.
+      if (bytes.byteLength === 0 || !isWhatsappCompatibleAudio(mimeType)) {
+        lastFailure = {
+          ok: false,
+          kind: "invalid_audio",
+          category: bytes.byteLength === 0 ? "invalid_audio" : "invalid_audio",
+          retryable: false,
+        };
+        console.error(
+          `[voice] tts_failed engine=xiaozhi category=invalid_audio mime=${bytes.byteLength === 0 ? "empty" : mimeType}`,
+        );
+        return { ok: false, kind: "invalid_audio", engine: "xiaozhi" };
+      }
+      return { ok: true, bytes, mimeType, engine: "xiaozhi" };
     }
-    if (!res.ok) {
-      const kind = classify(res.status);
-      console.error(`[voice] tts_failed engine=xiaozhi category=${kind} status=${res.status}`);
-      return { ok: false, kind, engine: "xiaozhi" };
-    }
-    const mimeType = (res.headers.get("content-type") ?? OUTBOUND_AUDIO_MIME)
-      .split(";")[0]!
-      .trim()
-      .toLowerCase();
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength === 0) {
-      console.error("[voice] tts_failed engine=xiaozhi category=empty_audio");
-      return { ok: false, kind: "provider", engine: "xiaozhi" };
-    }
-    if (!isWhatsappCompatibleAudio(mimeType)) {
-      console.error(`[voice] tts_failed engine=xiaozhi category=incompatible_audio_format`);
-      return { ok: false, kind: "invalid_request", engine: "xiaozhi" };
-    }
-    return { ok: true, bytes, mimeType, engine: "xiaozhi" };
+    // Unreachable in practice; kept for exhaustiveness.
+    return { ok: false, kind: lastFailure?.kind ?? "provider", engine: "xiaozhi" };
   },
 };
 
