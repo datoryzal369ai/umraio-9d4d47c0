@@ -783,8 +783,8 @@ async function processInboundMessage(
 
                 if (acceptedQuotation) {
                   let depositLinkSent = false;
-                  let ack = "";
-
+                  let depositBlock = "";
+                  let depositMyrForAck = acceptedQuotation.depositMyr;
 
                   // Y-1 / Y-2 — accepted quotation creates exactly one booking
                   // shell (deposit_pending) and, when a deposit is owed and
@@ -796,13 +796,14 @@ async function processInboundMessage(
                     );
                     const booking = await ensureBookingForAcceptedQuotation(
                       supabaseAdmin as never,
-                      { agencyId, quotationId: outcome.quotation.id, actor: "customer" },
+                      { agencyId, quotationId: acceptedQuotation.id, actor: "customer" },
                     );
                     if (booking.ok && booking.depositMyr && booking.depositMyr > 0) {
+                      depositMyrForAck = booking.depositMyr;
                       const { data: qRow } = await supabaseAdmin
                         .from("quotations")
                         .select("public_token")
-                        .eq("id", outcome.quotation.id)
+                        .eq("id", acceptedQuotation.id)
                         .eq("agency_id", agencyId)
                         .maybeSingle();
                       const { createDepositCheckoutSession } = await import(
@@ -811,12 +812,12 @@ async function processInboundMessage(
                       const checkout = await createDepositCheckoutSession({
                         scope: {
                           agencyId,
-                          quotationId: outcome.quotation.id,
+                          quotationId: acceptedQuotation.id,
                           bookingId: booking.booking.id,
-                          leadId: outcome.quotation.leadId,
+                          leadId: acceptedQuotation.leadId,
                         },
                         depositMyr: booking.depositMyr,
-                        quotationNumber: outcome.quotation.quotationNumber,
+                        quotationNumber: acceptedQuotation.quotationNumber,
                         publicToken: (qRow as { public_token?: string | null } | null)
                           ?.public_token ?? null,
                       });
@@ -827,11 +828,12 @@ async function processInboundMessage(
                         const { depositCheckoutReply } = await import(
                           "@/lib/bookings/deposit.core"
                         );
-                        ack = `${ack}\n\n${depositCheckoutReply({
-                          quotationNumber: outcome.quotation.quotationNumber,
+                        depositBlock = depositCheckoutReply({
+                          quotationNumber: acceptedQuotation.quotationNumber,
                           depositMyr: booking.depositMyr,
                           url: checkout.url,
-                        })}`;
+                        });
+                        depositLinkSent = true;
                       }
                     }
                   } catch (error) {
