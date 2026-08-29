@@ -302,12 +302,6 @@ export const xiaozhiVoiceEngine: VoiceEngine = {
       // WhatsApp cannot play (empty file, p3/device-framed Opus, octet-stream).
       // Retrying cannot fix it — fail over immediately.
       if (bytes.byteLength === 0 || !isWhatsappCompatibleAudio(mimeType)) {
-        lastFailure = {
-          ok: false,
-          kind: "invalid_audio",
-          category: bytes.byteLength === 0 ? "invalid_audio" : "invalid_audio",
-          retryable: false,
-        };
         console.error(
           `[voice] tts_failed engine=xiaozhi category=invalid_audio mime=${bytes.byteLength === 0 ? "empty" : mimeType}`,
         );
@@ -315,8 +309,8 @@ export const xiaozhiVoiceEngine: VoiceEngine = {
       }
       return { ok: true, bytes, mimeType, engine: "xiaozhi" };
     }
-    // Unreachable in practice; kept for exhaustiveness.
-    return { ok: false, kind: lastFailure?.kind ?? "provider", engine: "xiaozhi" };
+    // Unreachable: every loop path returns or retries.
+    return { ok: false, kind: "provider", engine: "xiaozhi" };
   },
 };
 
