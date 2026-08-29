@@ -12,10 +12,12 @@ import {
   shouldSendHeartbeat,
 } from "@/lib/identity/identity.core";
 
-const migration = readFileSync(
-  new URL("../supabase/migrations", import.meta.url).pathname + "/" + "",
-  { encoding: "utf8" },
-).toString?.() as unknown as string;
+import { readdirSync } from "node:fs";
+
+const migration = readdirSync("supabase/migrations")
+  .map((f) => readFileSync(`supabase/migrations/${f}`, "utf8"))
+  .filter((sql) => sql.includes("public.login_events"))
+  .join("\n");
 
 describe("Y-6B login events", () => {
   it("C — only login/logout/refresh are allowed event types", () => {
@@ -106,4 +108,32 @@ describe("Y-6B actor attribution", () => {
   });
 });
 
-void migration;
+describe("Y-6B RLS / tenant isolation proof (migration SQL)", () => {
+  it("A — login events are agency-isolated and platform-owner readable", () => {
+    expect(migration).toContain("ALTER TABLE public.login_events ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("agency_id = private.current_agency_id()");
+    expect(migration).toContain("private.is_platform_owner(auth.uid())");
+  });
+
+  it("B — authenticated users cannot write login events", () => {
+    expect(migration).toContain("GRANT SELECT ON public.login_events TO authenticated;");
+    expect(migration).not.toMatch(/GRANT[^;]*INSERT[^;]*login_events[^;]*authenticated/);
+  });
+
+  it("K/L — platform owner read-only cross-agency policies exist for FOR SELECT only", () => {
+    for (const table of ["agencies", "profiles", "user_roles", "activity_log"]) {
+      expect(migration).toContain(`ON public.${table} FOR SELECT TO authenticated`);
+    }
+    expect(migration).not.toMatch(/platform owner[^"]*"\s*\n?\s*ON public\.\w+ FOR (INSERT|UPDATE|DELETE|ALL)/);
+  });
+
+  it("E — the presence function is self-scoped to auth.uid()", () => {
+    expect(migration).toContain("v_uid uuid := auth.uid()");
+    expect(migration).toContain("UPDATE public.profiles SET last_seen_at = now() WHERE id = v_uid");
+    expect(migration).toContain("interval '55 seconds'");
+  });
+
+  it("M — no token/password/secret column is introduced", () => {
+    expect(migration).not.toMatch(/access_token|refresh_token|password|secret/i);
+  });
+});
