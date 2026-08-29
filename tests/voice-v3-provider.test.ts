@@ -72,7 +72,9 @@ describe("VOICE V3 — provider layer", () => {
       expect(result.engine).toBe("lovable");
       expect(result.mimeType).toBe("audio/ogg");
     }
-    expect(calls).toHaveLength(2);
+    // 503 is transient: XiaoZhi gets exactly ONE retry, then failover.
+    expect(calls).toHaveLength(3);
+    expect(calls.filter((u) => u.includes("xiaozhi"))).toHaveLength(2);
   });
 
   it("a configured XiaoZhi endpoint is used first when it returns WhatsApp-compatible audio", async () => {
@@ -96,7 +98,7 @@ describe("VOICE V3 — provider layer", () => {
       }),
     ) as unknown as typeof fetch;
     const result = await xiaozhiVoiceEngine.synthesize({ text: "Salam" });
-    expect(result).toEqual({ ok: false, kind: "invalid_request", engine: "xiaozhi" });
+    expect(result).toEqual({ ok: false, kind: "invalid_audio", engine: "xiaozhi" });
     expect(isWhatsappCompatibleAudio("audio/ogg")).toBe(true);
     expect(isWhatsappCompatibleAudio("audio/wav")).toBe(false);
   });
