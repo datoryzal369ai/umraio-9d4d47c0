@@ -40,6 +40,55 @@ export type AcceptQuotationResult = {
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
+/** Statuses that are already accepted but still owe a deposit payment. */
+const RESUMABLE_STATUSES = ["accepted", "deposit_pending"] as const;
+
+/**
+ * Y-2 FIX — a repeated "SETUJU" on a quotation that is already `accepted`
+ * (or `deposit_pending`) is not a dead end: the customer still needs the
+ * payment link. Read-only, tenant + lead/conversation scoped, no writes.
+ */
+export async function findResumableAcceptedQuotation(
+  supabase: Db,
+  scope: { agencyId: string; leadId: string | null; conversationId: string | null },
+): Promise<AcceptQuotationResult["quotation"] | null> {
+  if (!scope.leadId && !scope.conversationId) return null;
+  const orParts: string[] = [];
+  if (scope.leadId) orParts.push(`lead_id.eq.${scope.leadId}`);
+  if (scope.conversationId) orParts.push(`conversation_id.eq.${scope.conversationId}`);
+
+  const { data: rows } = await supabase
+    .from("quotations")
+    .select("id, agency_id, lead_id, conversation_id, status, quotation_number, total, deposit_amount")
+    .eq("agency_id", scope.agencyId)
+    .or(orParts.join(","))
+    .in("status", RESUMABLE_STATUSES as unknown as string[])
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const eligible = ((rows ?? []) as AcceptanceCandidate[]).filter((r) => {
+    if (!r?.id) return false;
+    if (r.agency_id && r.agency_id !== scope.agencyId) return false;
+    const sameConversation = Boolean(
+      scope.conversationId && r.conversation_id === scope.conversationId,
+    );
+    const sameLead = Boolean(scope.leadId && r.lead_id === scope.leadId);
+    return sameConversation || sameLead;
+  });
+  const byConversation = eligible.filter(
+    (r) => scope.conversationId && r.conversation_id === scope.conversationId,
+  );
+  const row = (byConversation.length ? byConversation : eligible)[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    quotationNumber: row.quotation_number ?? null,
+    totalMyr: num(row.total),
+    depositMyr: num(row.deposit_amount),
+    leadId: row.lead_id ?? null,
+  };
+}
+
 export async function acceptQuotationInChat(
   supabase: Db,
   scope: {

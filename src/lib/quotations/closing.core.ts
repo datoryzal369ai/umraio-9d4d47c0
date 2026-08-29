@@ -227,6 +227,8 @@ export function quotationAcceptedReply(facts: {
   quotationNumber?: string | null;
   totalMyr?: number | null;
   depositMyr?: number | null;
+  /** True when a real payment link is appended right after this block. */
+  depositLinkFollows?: boolean;
 }): string {
   const money = (v: number) =>
     `RM${v.toLocaleString("en-MY", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -241,7 +243,9 @@ export function quotationAcceptedReply(facts: {
   }
   if (typeof facts.depositMyr === "number" && Number.isFinite(facts.depositMyr)) {
     lines.push(`*Deposit:* ${money(facts.depositMyr)}`);
-    lines.push("", "Langkah seterusnya ialah pembayaran deposit mengikut tetapan agensi.");
+    if (!facts.depositLinkFollows) {
+      lines.push("", "Langkah seterusnya ialah pembayaran deposit mengikut tetapan agensi.");
+    }
   } else {
     lines.push("", "Deposit belum ditetapkan untuk pakej ini, jadi tiada amaun deposit rasmi buat masa ini.");
   }

@@ -763,12 +763,28 @@ async function processInboundMessage(
                   return "ok";
                 }
 
-                if (outcome.accepted && outcome.quotation) {
-                  let ack = quotationAcceptedReply({
-                    quotationNumber: outcome.quotation.quotationNumber,
-                    totalMyr: outcome.quotation.totalMyr,
-                    depositMyr: outcome.quotation.depositMyr,
-                  });
+                // Y-2 FIX — a SETUJU on a quotation that is ALREADY accepted /
+                // deposit_pending must still produce the deposit payment link
+                // instead of falling through to a generic model reply.
+                const acceptedQuotation = outcome.accepted && outcome.quotation
+                  ? outcome.quotation
+                  : outcome.reason === "no_candidate" || outcome.reason === "already_accepted"
+                    ? await (async () => {
+                        const { findResumableAcceptedQuotation } = await import(
+                          "@/lib/quotations/acceptance.server"
+                        );
+                        return findResumableAcceptedQuotation(supabaseAdmin as never, {
+                          agencyId,
+                          leadId,
+                          conversationId,
+                        });
+                      })()
+                    : null;
+
+                if (acceptedQuotation) {
+                  let depositLinkSent = false;
+                  let depositBlock = "";
+                  let depositMyrForAck = acceptedQuotation.depositMyr;
 
                   // Y-1 / Y-2 — accepted quotation creates exactly one booking
                   // shell (deposit_pending) and, when a deposit is owed and
@@ -780,13 +796,14 @@ async function processInboundMessage(
                     );
                     const booking = await ensureBookingForAcceptedQuotation(
                       supabaseAdmin as never,
-                      { agencyId, quotationId: outcome.quotation.id, actor: "customer" },
+                      { agencyId, quotationId: acceptedQuotation.id, actor: "customer" },
                     );
                     if (booking.ok && booking.depositMyr && booking.depositMyr > 0) {
+                      depositMyrForAck = booking.depositMyr;
                       const { data: qRow } = await supabaseAdmin
                         .from("quotations")
                         .select("public_token")
-                        .eq("id", outcome.quotation.id)
+                        .eq("id", acceptedQuotation.id)
                         .eq("agency_id", agencyId)
                         .maybeSingle();
                       const { createDepositCheckoutSession } = await import(
@@ -795,12 +812,12 @@ async function processInboundMessage(
                       const checkout = await createDepositCheckoutSession({
                         scope: {
                           agencyId,
-                          quotationId: outcome.quotation.id,
+                          quotationId: acceptedQuotation.id,
                           bookingId: booking.booking.id,
-                          leadId: outcome.quotation.leadId,
+                          leadId: acceptedQuotation.leadId,
                         },
                         depositMyr: booking.depositMyr,
-                        quotationNumber: outcome.quotation.quotationNumber,
+                        quotationNumber: acceptedQuotation.quotationNumber,
                         publicToken: (qRow as { public_token?: string | null } | null)
                           ?.public_token ?? null,
                       });
@@ -811,11 +828,12 @@ async function processInboundMessage(
                         const { depositCheckoutReply } = await import(
                           "@/lib/bookings/deposit.core"
                         );
-                        ack = `${ack}\n\n${depositCheckoutReply({
-                          quotationNumber: outcome.quotation.quotationNumber,
+                        depositBlock = depositCheckoutReply({
+                          quotationNumber: acceptedQuotation.quotationNumber,
                           depositMyr: booking.depositMyr,
                           url: checkout.url,
-                        })}`;
+                        });
+                        depositLinkSent = true;
                       }
                     }
                   } catch (error) {
@@ -823,6 +841,21 @@ async function processInboundMessage(
                       `[whatsapp] booking_or_deposit_failed reason=${error instanceof Error ? error.name : "unknown"}`,
                     );
                   }
+
+                  // The acceptance confirmation never tells the customer to
+                  // wait for the agency when a real Stripe link is available.
+                  const ack = [
+                    quotationAcceptedReply({
+                      quotationNumber: acceptedQuotation.quotationNumber,
+                      totalMyr: acceptedQuotation.totalMyr,
+                      depositMyr: depositMyrForAck,
+                      depositLinkFollows: depositLinkSent,
+                    }),
+                    depositBlock,
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n");
+
                   const ackSent = await sendWhatsappText(
                     phoneNumberId,
                     config.access_token,

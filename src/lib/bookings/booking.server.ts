@@ -10,6 +10,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logConversionEvent } from "@/lib/conversion/events";
+import { resolveDepositMyr } from "@/lib/bookings/deposit.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -57,7 +58,38 @@ export async function ensureBookingForAcceptedQuotation(
     return { ok: false, reason: "not_accepted" };
   }
 
-  const depositMyr = num(quotation.deposit_amount);
+  // Y-2 FIX — the deposit owed is ALWAYS derived on the server. When the
+  // quotation row has no deposit yet (legacy rows, or an agency that never
+  // configured a deposit rule) it is computed from the agency policy, with the
+  // documented platform default as the last resort, then persisted once so the
+  // amount charged and the amount shown can never diverge.
+  let depositMyr = num(quotation.deposit_amount);
+  if (!(depositMyr && depositMyr > 0)) {
+    const { data: settings } = await supabase
+      .from("agency_settings")
+      .select("deposit_rule, deposit_fixed_myr, deposit_percent")
+      .eq("agency_id", scope.agencyId)
+      .maybeSingle();
+    const resolved = resolveDepositMyr({
+      totalMyr: num(quotation.total),
+      rule: (settings?.deposit_rule ?? null) as string | null,
+      fixedMyr: num(settings?.deposit_fixed_myr),
+      percent: num(settings?.deposit_percent),
+    });
+    if (resolved && resolved > 0) {
+      depositMyr = resolved;
+      const total = num(quotation.total);
+      await supabase
+        .from("quotations")
+        .update({
+          deposit_amount: resolved,
+          ...(total !== null ? { balance_amount: Math.round((total - resolved) * 100) / 100 } : {}),
+        })
+        .eq("id", quotation.id)
+        .eq("agency_id", scope.agencyId)
+        .is("deposit_amount", null);
+    }
+  }
 
   // Idempotency: one booking per quotation, scoped to the tenant.
   const { data: existingRows } = await supabase
@@ -82,7 +114,7 @@ export async function ensureBookingForAcceptedQuotation(
       quotation_id: scope.quotationId,
       pax: quotation.number_of_pilgrims ?? 1,
       amount_myr: quotation.total ?? 0,
-      deposit_amount_myr: quotation.deposit_amount ?? null,
+      deposit_amount_myr: depositMyr,
       balance_myr: quotation.balance_amount ?? null,
       deposit_paid: false,
       status: "deposit_pending",
