@@ -30,9 +30,12 @@ export type VoiceEngineName = "openai" | "lovable" | "xiaozhi";
 export type TtsFailureKind =
   | "config"
   | "unsupported_engine"
+  | "timeout"
+  | "unauthorized"
   | "rate_limited"
   | "entitlement"
   | "invalid_request"
+  | "invalid_audio"
   | "provider";
 
 export type TtsResult =
