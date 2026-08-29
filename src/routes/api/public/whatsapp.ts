@@ -841,6 +841,21 @@ async function processInboundMessage(
                       `[whatsapp] booking_or_deposit_failed reason=${error instanceof Error ? error.name : "unknown"}`,
                     );
                   }
+
+                  // The acceptance confirmation never tells the customer to
+                  // wait for the agency when a real Stripe link is available.
+                  const ack = [
+                    quotationAcceptedReply({
+                      quotationNumber: acceptedQuotation.quotationNumber,
+                      totalMyr: acceptedQuotation.totalMyr,
+                      depositMyr: depositMyrForAck,
+                      depositLinkFollows: depositLinkSent,
+                    }),
+                    depositBlock,
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n");
+
                   const ackSent = await sendWhatsappText(
                     phoneNumberId,
                     config.access_token,
