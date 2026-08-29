@@ -9,6 +9,41 @@
 
 export const DEPOSIT_CHECKOUT_KIND = "umraio_deposit";
 
+/**
+ * Platform default used ONLY when an agency has never configured a deposit
+ * rule. It keeps the accepted-quotation → deposit → payment flow complete
+ * instead of dead-ending; an agency rule always wins over it.
+ */
+export const PLATFORM_DEFAULT_DEPOSIT_PERCENT = 20;
+
+const money = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Server-side deposit derivation. Pure: the amount can never come from a
+ * client, a chat message or the model.
+ */
+export function resolveDepositMyr(input: {
+  totalMyr: number | null;
+  rule?: string | null;
+  fixedMyr?: number | null;
+  percent?: number | null;
+}): number | null {
+  const total = input.totalMyr;
+  if (!(typeof total === "number" && Number.isFinite(total) && total > 0)) return null;
+
+  if (input.rule === "fixed") {
+    const fixed = money(Math.max(0, Number(input.fixedMyr) || 0));
+    return fixed > 0 ? Math.min(fixed, total) : null;
+  }
+  if (input.rule === "percent") {
+    const pct = Math.min(Math.max(Number(input.percent) || 0, 0), 100);
+    return pct > 0 ? money((total * pct) / 100) : null;
+  }
+  // "none" / unset — fall back to the platform default so an accepted
+  // quotation always has a payable deposit.
+  return money((total * PLATFORM_DEFAULT_DEPOSIT_PERCENT) / 100);
+}
+
 export type DepositCheckoutScope = {
   agencyId: string;
   quotationId: string;
