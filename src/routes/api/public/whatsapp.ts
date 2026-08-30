@@ -514,6 +514,24 @@ async function processInboundMessage(
               console.log(
                 `[whatsapp] dnc_reengaged conversation=${conversationId} reason=customer_initiated_inbound`,
               );
+              // AUDIT: durable record of the DNC → ACTIVE transition. The
+              // historical do-not-contact flags on the lead are intentionally
+              // left untouched — consent history is never overwritten.
+              await supabaseAdmin.from("activity_log").insert({
+                agency_id: agencyId,
+                actor: "customer",
+                actor_user_id: null,
+                action: "Customer re-initiated contact — do-not-contact conversation reopened",
+                entity: "conversation",
+                entity_id: conversationId,
+                meta: {
+                  lead_id: leadId,
+                  modality: inbound.modality,
+                  previous_state: "DO_NOT_CONTACT",
+                  new_state: "ACTIVE",
+                  reason: "customer_initiated_inbound",
+                },
+              });
             }
           }
           await supabaseAdmin
