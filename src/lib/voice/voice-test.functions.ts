@@ -38,7 +38,7 @@ export const synthesizeVoiceTest = createServerFn({ method: "POST" })
 
     const { synthesizeSpeech } = await import("./tts.server");
     const started = Date.now();
-    const result = await synthesizeSpeech({ text: data.text, engine: undefined, provider: data.engine });
+    const result = await synthesizeSpeech({ text: data.text, provider: data.engine });
     const latencyMs = Date.now() - started;
 
     if (!result.ok) {
