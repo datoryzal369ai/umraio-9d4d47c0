@@ -144,4 +144,84 @@ describe("DNC current-turn rule", () => {
       Intl.DateTimeFormat = realDtf;
     }
   });
+
+  it("historical DNC + current-turn STOP keeps do-not-contact and blocks the reply", () => {
+    // TEST 2 — the customer came back, then explicitly opted out again.
+    const read = intel([
+      { sender: "customer", body: "jangan whatsapp saya lagi" },
+      { sender: "ai", body: "Baik, saya hentikan mesej automatik." },
+      { sender: "customer", body: "Assalamualaikum" },
+      { sender: "customer", body: "STOP" },
+    ]);
+    expect(read.optOut).toBe(true);
+    expect(read.state).toBe("DO_NOT_CONTACT");
+    expect(read.buyingSignals).toEqual([]);
+  });
+
+  it("proactive voice/audio follow-up to a do-not-contact lead stays blocked", async () => {
+    // TEST 6 — channel/body flavour does not matter: the lead flag blocks ALL
+    // proactive outbound, including voice-note style nudges.
+    const db = {
+      from(table: string) {
+        const api: Record<string, unknown> = {};
+        let isBodyLessCleanup = false;
+        const chain = new Proxy(api, {
+          get(_t, prop) {
+            if (prop === "then") return undefined;
+            if (prop === "or")
+              return (..._a: unknown[]) => {
+                isBodyLessCleanup = true;
+                return chain;
+              };
+            if (prop === "maybeSingle")
+              return async () => {
+                if (table === "agencies") return { data: { timezone: "Asia/Kuala_Lumpur" } };
+                if (table === "leads")
+                  return { data: { id: "lead-v", phone: "60124", stage: "new", do_not_contact: true } };
+                if (table === "whatsapp_configs")
+                  return { data: { phone_number_id: "p", access_token: "t", is_connected: true } };
+                return { data: null };
+              };
+            if (prop === "limit")
+              return async () => ({
+                data: isBodyLessCleanup
+                  ? []
+                  : [
+                      {
+                        id: "job-voice",
+                        lead_id: "lead-v",
+                        conversation_id: null,
+                        quotation_id: null,
+                        title: "Voice nudge",
+                        body: "[voice-followup]",
+                        run_at: new Date().toISOString(),
+                        channel: "whatsapp",
+                        created_at: new Date().toISOString(),
+                        attempts: 0,
+                        context: { modality: "audio" },
+                      },
+                    ],
+              });
+            return () => chain;
+          },
+        });
+        return chain;
+      },
+      rpc: async () => ({ data: true, error: null }),
+    } as never;
+
+    const realDtf = Intl.DateTimeFormat;
+    // @ts-expect-error test stub
+    Intl.DateTimeFormat = function () {
+      return { format: () => "12" };
+    };
+    try {
+      const result = await dispatchDueFollowups(db, "agency-1", 5);
+      expect(result.sent).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(result.details[0]?.reason).toMatch(/no further contact/i);
+    } finally {
+      Intl.DateTimeFormat = realDtf;
+    }
+  });
 });

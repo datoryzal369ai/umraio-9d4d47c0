@@ -98,6 +98,11 @@ const CONTACT_VERBS =
   "whatsapp|wasap|wassap|wsap|mesej|message|msg|sms|contact|hubungi|call|telefon|tepon|hantar|kirim|ganggu|kacau|spam|promo|promosi|iklan|follow\\s?up|followup";
 
 const OPT_OUT_PATTERNS: RegExp[] = [
+  // Bare STOP/BERHENTI as the ENTIRE message is an unambiguous carrier-keyword
+  // opt-out (same semantics as Meta/Twilio STOP). Anchored to the full
+  // normalized message so it can never match inside a longer sentence like
+  // "jangan stop dulu, saya nak tanya lagi".
+  /^(stop|berhenti)[.! ]*$/,
   /\b(saya\s+)?(tak|tidak)\s+(ber)?minat\b/,
   /\bnot\s+interested\b/,
   new RegExp(`\\bjangan\\s+(${CONTACT_VERBS})\\b`),
