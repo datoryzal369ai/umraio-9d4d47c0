@@ -92,4 +92,64 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(hexToBytes("zz").byteLength).toBe(0);
     expect(Array.from(hexToBytes("00ff"))).toEqual([0, 255]);
   });
+
+  it("classifies insufficient balance (1008) as entitlement, not a credential fault", async () => {
+    process.env["MINIMAX_API_KEY"] = "mm-secret";
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls += 1;
+      return new Response(
+        JSON.stringify({ base_resp: { status_code: 1008, status_msg: "insufficient balance" } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    expect(await minimaxVoiceEngine.synthesize({ text: "Assalamualaikum" })).toEqual({
+      ok: false,
+      kind: "entitlement",
+      engine: "minimax",
+    });
+    // Terminal: a balance state is never retried.
+    expect(calls).toBe(1);
+  });
+
+  it("classifies an invalid api key (2049) as terminal unauthorized", async () => {
+    process.env["MINIMAX_API_KEY"] = "mm-secret";
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ base_resp: { status_code: 2049 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as unknown as typeof fetch;
+    expect(await minimaxVoiceEngine.synthesize({ text: "a" })).toEqual({
+      ok: false,
+      kind: "unauthorized",
+      engine: "minimax",
+    });
+  });
+
+  it("treats an empty audio payload as invalid audio", async () => {
+    process.env["MINIMAX_API_KEY"] = "mm-secret";
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { audio: "" }, base_resp: { status_code: 0 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as unknown as typeof fetch;
+    expect(await minimaxVoiceEngine.synthesize({ text: "a" })).toEqual({
+      ok: false,
+      kind: "invalid_audio",
+      engine: "minimax",
+    });
+  });
+
+  it("never exposes the key through the non-secret diagnostic", async () => {
+    process.env["MINIMAX_API_KEY"] = "mm-secret";
+    const { describeMinimax } = await import("@/lib/voice/minimax.server");
+    const diagnostic = describeMinimax();
+    expect(diagnostic.configured).toBe(true);
+    expect(JSON.stringify(diagnostic)).not.toContain("mm-secret");
+  });
 });
