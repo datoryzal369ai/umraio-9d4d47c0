@@ -138,7 +138,7 @@ type MinimaxResponse = {
  */
 export const minimaxVoiceEngine: VoiceEngine = {
   name: "minimax",
-  async synthesize({ text, voice, speed }): Promise<TtsResult> {
+  async synthesize({ text, voice, speed, language }): Promise<TtsResult> {
     const config = resolveMinimaxConfig();
     if (!config) {
       console.error("[voice] tts_failed engine=minimax category=config");
