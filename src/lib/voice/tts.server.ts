@@ -25,7 +25,7 @@
 
 import { openAiAudioProvider, lovableAudioProvider, resolveAudioProviders, type AudioProvider } from "@/lib/ai/audio.server";
 
-export type VoiceEngineName = "openai" | "lovable" | "xiaozhi";
+export type VoiceEngineName = "openai" | "lovable" | "xiaozhi" | "minimax";
 
 export type TtsFailureKind =
   | "config"
@@ -318,6 +318,24 @@ export const VOICE_ENGINES: Record<VoiceEngineName, VoiceEngine> = {
   openai: openAiVoiceEngine,
   lovable: lovableVoiceEngine,
   xiaozhi: xiaozhiVoiceEngine,
+  // POC ONLY — reachable exclusively through an explicit request. Loaded
+  // lazily so the driver module never sits in any implicit path.
+  get minimax(): VoiceEngine {
+    return lazyMinimaxEngine;
+  },
+};
+
+/**
+ * MiniMax Speech 2.8 HD — POC driver, opt-in only. The real implementation
+ * lives in ./minimax.server; it is imported inside the handler so this module
+ * keeps no static dependency on the POC.
+ */
+export const lazyMinimaxEngine: VoiceEngine = {
+  name: "minimax",
+  async synthesize(input) {
+    const { minimaxVoiceEngine } = await import("./minimax.server");
+    return minimaxVoiceEngine.synthesize(input);
+  },
 };
 
 /**
@@ -345,6 +363,8 @@ export function provenEngine(): VoiceEngine {
 export function selectVoiceEngine(name?: string | null): VoiceEngine {
   const requested = (name ?? process.env["VOICE_TTS_ENGINE"] ?? "").trim().toLowerCase();
   if (requested === "xiaozhi") return xiaozhiVoiceEngine;
+  // POC: never selected implicitly — only by explicit name.
+  if (requested === "minimax") return lazyMinimaxEngine;
   if (requested === "openai") return openAiVoiceEngine;
   if (requested === "lovable") return lovableVoiceEngine;
   return provenEngine();
