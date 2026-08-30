@@ -49,6 +49,12 @@ export type VoiceSynthesisRequest = {
   speed?: number;
   /** Natural-language steering for engines that accept it. */
   instructions?: string;
+  /**
+   * Current conversation voice language (e.g. "ms-MY"). Engines that support
+   * per-language steering (MiniMax `language_boost`) map this; others ignore
+   * it. Missing/unknown → the engine's default (Malay).
+   */
+  language?: string;
 };
 
 export type VoiceEngine = {
@@ -400,6 +406,7 @@ export async function synthesizeSpeech(
       ...(input.voice ? { voice: input.voice } : {}),
       ...(typeof input.speed === "number" ? { speed: input.speed } : {}),
       ...(input.instructions ? { instructions: input.instructions } : {}),
+      ...(input.language ? { language: input.language } : {}),
     });
     const latency = Date.now() - started;
     if (result.ok) {
