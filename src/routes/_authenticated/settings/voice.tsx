@@ -27,6 +27,10 @@ import {
   type VoiceControlKey,
   type VoicePersonaKey,
 } from "@/lib/voice/persona.core";
+import {
+  getVoiceTestStatus,
+  synthesizeVoiceTest,
+} from "@/lib/voice/voice-test.functions";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/settings/voice")({
@@ -96,6 +100,92 @@ const SUPPORT_BADGE: Record<string, { label: string; tone: string }> = {
 
 const SAMPLE =
   "Baik Datuk. Untuk pakej Umrah Disember, terdapat beberapa pilihan. Harga bermula daripada RM5,990 seorang. Tarikh berlepas 23/12/2026. Adakah Datuk mahu saya membantu Datuk dengan pakej tersebut?";
+
+const VOICE_TEST_SENTENCE =
+  "Assalamualaikum, saya UMRAIO. Saya boleh membantu pihak tuan mengurus pertanyaan jemaah, membuat susulan pelanggan dan membantu pasukan jualan bekerja dengan lebih pantas.";
+
+/** Owner-only internal Voice Test. Generates audio; changes no settings. */
+function VoiceTestCard() {
+  const { data: status } = useQuery({ queryKey: ["voice-test-status"], queryFn: () => getVoiceTestStatus() });
+  const [text, setText] = useState(VOICE_TEST_SENTENCE);
+  const [engine, setEngine] = useState("minimax");
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const run = useMutation({
+    mutationFn: () => synthesizeVoiceTest({ data: { text, engine } }),
+    onSuccess: (result) => {
+      if (!result.ok) {
+        setAudioUrl(null);
+        setInfo(`Failed on ${result.engine} (${result.failure}) after ${result.latencyMs}ms.`);
+        toast.error(`Voice test failed: ${result.failure}`);
+        return;
+      }
+      const bytes = Uint8Array.from(atob(result.audioBase64), (c) => c.charCodeAt(0));
+      setAudioUrl(URL.createObjectURL(new Blob([bytes], { type: result.mimeType })));
+      setInfo(
+        `${result.engine} · ${result.mimeType} · ${result.bytes} bytes · ${result.latencyMs}ms`,
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  if (!status?.canManage) return null;
+
+  return (
+    <section className="panel space-y-3 p-5">
+      <header className="flex items-start gap-3">
+        <div className="rounded-xl border border-border/60 bg-surface p-2.5">
+          <AudioLines className="size-4 text-primary" />
+        </div>
+        <div>
+          <h2 className="font-display text-base font-semibold tracking-tight">
+            Voice Test (internal)
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Owner-only. Generates audio directly from a chosen engine. Nothing is sent to
+            customers and no setting is changed. MiniMax Speech 2.8 HD is a proof of concept:{" "}
+            {status.minimax.configured
+              ? `configured (${status.minimax.model})`
+              : "not configured on this runtime"}
+            .
+          </p>
+        </div>
+      </header>
+      <div className="flex flex-wrap gap-2">
+        {["minimax", "openai"].map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => setEngine(option)}
+            className={cn(
+              "rounded-lg border px-3 py-1.5 text-xs transition-colors",
+              engine === option
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border bg-surface hover:border-primary/40",
+            )}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        rows={3}
+        aria-label="Voice test text"
+        className="w-full rounded-lg border border-border bg-surface p-3 text-sm outline-none focus:border-primary/50"
+      />
+      <div className="flex items-center gap-3">
+        <Button onClick={() => run.mutate()} disabled={run.isPending}>
+          {run.isPending ? "Generating…" : "Generate audio"}
+        </Button>
+        {info ? <span className="text-xs text-muted-foreground">{info}</span> : null}
+      </div>
+      {audioUrl ? <audio controls src={audioUrl} className="w-full" /> : null}
+    </section>
+  );
+}
 
 function VoiceSettingsPage() {
   const queryClient = useQueryClient();
@@ -356,6 +446,8 @@ function VoiceSettingsPage() {
           {preview.speed}× · voice {preview.voice}
         </p>
       </section>
+
+      <VoiceTestCard />
     </div>
   );
 }
