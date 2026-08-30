@@ -6,8 +6,8 @@
  *
  * ACTIVATION: strictly opt-in. The driver is only reachable when it is asked
  * for explicitly (VOICE_TTS_ENGINE=minimax or an explicit engine argument) AND
- * MINIMAX_API_KEY is configured. Production users keep the proven OpenAI Direct
- * pipeline untouched until this POC is validated.
+ * MINIMAX_TTS_API_KEY (or the legacy MINIMAX_API_KEY) is configured. Production
+ * users keep the proven OpenAI Direct pipeline untouched until this POC is validated.
  *
  * SECURITY: MINIMAX_TTS_API_KEY (preferred), MINIMAX_API_KEY (legacy) and
  * MINIMAX_GROUP_ID are read at call time inside the handler, stay server-side,
