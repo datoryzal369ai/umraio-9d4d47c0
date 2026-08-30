@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hexToBytes, minimaxVoiceEngine, resolveMinimaxConfig } from "@/lib/voice/minimax.server";
+import {
+  hexToBytes,
+  languageBoostFor,
+  minimaxVoiceEngine,
+  resolveMinimaxConfig,
+} from "@/lib/voice/minimax.server";
 import { selectVoiceEngine, synthesizeSpeech } from "@/lib/voice/tts.server";
 
 const realFetch = globalThis.fetch;
