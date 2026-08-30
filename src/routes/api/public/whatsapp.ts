@@ -520,7 +520,6 @@ async function processInboundMessage(
               await supabaseAdmin.from("activity_log").insert({
                 agency_id: agencyId,
                 actor: "customer",
-                actor_user_id: null,
                 action: "Customer re-initiated contact — do-not-contact conversation reopened",
                 entity: "conversation",
                 entity_id: conversationId,

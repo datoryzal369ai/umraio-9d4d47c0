@@ -202,15 +202,8 @@ async function transcribeWith(
 
     lastStatus = res.status;
     if (res.status === 400 || res.status === 404) {
-      // Try the equivalent container alias exactly once before giving up: some
-      // stacks reject `.ogg` naming for an otherwise valid Opus payload.
-      if (res.status === 400 && extIndex < candidates.length - 1 && attempt < ASR_MAX_ATTEMPTS) {
-        extIndex += 1;
-        console.error(
-          `[voice] asr_retry provider=${provider.id} category=format status=400 next_ext=${candidates[extIndex]}`,
-        );
-        continue;
-      }
+      // Terminal: the payload itself is undecodable. Trying another filename
+      // alias or another provider would fail identically and only burn quota.
       console.error(
         `[voice] asr_failure provider=${provider.id} category=invalid_audio status=${res.status} ext=${ext}`,
       );
