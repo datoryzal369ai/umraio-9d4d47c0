@@ -120,6 +120,17 @@ export const minimaxVoiceEngine: VoiceEngine = {
       ? `${config.baseUrl}/t2a_v2?GroupId=${encodeURIComponent(config.groupId)}`
       : `${config.baseUrl}/t2a_v2`;
 
+    /**
+     * Voice resolution order:
+     * 1. MINIMAX_TTS_VOICE_ID env override (custom / voice-designed MiniMax voice).
+     * 2. An explicit caller voice — but ONLY if it is a real MiniMax voice ID.
+     *    Persona voices (alloy, coral, ...) are OpenAI system voices and must
+     *    never be sent to MiniMax; sending them silently falls back to a
+     *    robotic provider default.
+     * 3. MINIMAX_DEFAULT_VOICE_ID ("Indonesian_CaringMan").
+     */
+    const callerVoice = voice && !isSupportedTtsVoice(voice) ? voice : undefined;
+
     const body = JSON.stringify({
       model: config.model,
       text,
@@ -127,7 +138,7 @@ export const minimaxVoiceEngine: VoiceEngine = {
       language_boost: "Malay",
       output_format: "hex",
       voice_setting: {
-        voice_id: voice ?? config.voiceId,
+        voice_id: callerVoice ?? config.voiceId,
         speed: typeof speed === "number" ? Math.min(2, Math.max(0.5, speed)) : 1,
         vol: 1,
         pitch: 0,
