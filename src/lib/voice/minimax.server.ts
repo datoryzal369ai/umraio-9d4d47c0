@@ -9,9 +9,9 @@
  * MINIMAX_API_KEY is configured. Production users keep the proven OpenAI Direct
  * pipeline untouched until this POC is validated.
  *
- * SECURITY: MINIMAX_API_KEY and MINIMAX_GROUP_ID are read at call time inside
- * the handler, stay server-side, are never logged, never returned and never
- * embedded in an error message.
+ * SECURITY: MINIMAX_TTS_API_KEY (preferred), MINIMAX_API_KEY (legacy) and
+ * MINIMAX_GROUP_ID are read at call time inside the handler, stay server-side,
+ * are never logged, never returned and never embedded in an error message.
  */
 
 import type { TtsFailureKind, TtsResult, VoiceEngine } from "./tts.server";
@@ -43,7 +43,7 @@ export type MinimaxConfig = {
 
 /** Null when the POC is not configured — the caller then fails over cleanly. */
 export function resolveMinimaxConfig(): MinimaxConfig | null {
-  const apiKey = env("MINIMAX_API_KEY");
+  const apiKey = env("MINIMAX_TTS_API_KEY") ?? env("MINIMAX_API_KEY");
   if (!apiKey) return null;
   return {
     baseUrl: (env("MINIMAX_BASE_URL") ?? MINIMAX_DEFAULT_BASE_URL).replace(/\/+$/, ""),

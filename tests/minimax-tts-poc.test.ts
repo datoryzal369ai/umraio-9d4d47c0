@@ -8,6 +8,7 @@ const saved = { ...process.env };
 
 beforeEach(() => {
   for (const key of [
+    "MINIMAX_TTS_API_KEY",
     "MINIMAX_API_KEY",
     "MINIMAX_TTS_MODEL",
     "MINIMAX_TTS_VOICE_ID",
@@ -151,5 +152,21 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     const diagnostic = describeMinimax();
     expect(diagnostic.configured).toBe(true);
     expect(JSON.stringify(diagnostic)).not.toContain("mm-secret");
+  });
+
+  it("prefers MINIMAX_TTS_API_KEY when present and does not expose it", async () => {
+    process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+    process.env["MINIMAX_API_KEY"] = "mm-legacy-secret";
+    const { describeMinimax, resolveMinimaxConfig } = await import("@/lib/voice/minimax.server");
+
+    const config = resolveMinimaxConfig();
+    expect(config).not.toBeNull();
+    expect(config?.apiKey).toBe("mm-tts-secret");
+
+    const diagnostic = describeMinimax();
+    expect(diagnostic.configured).toBe(true);
+    const json = JSON.stringify(diagnostic);
+    expect(json).not.toContain("mm-tts-secret");
+    expect(json).not.toContain("mm-legacy-secret");
   });
 });
