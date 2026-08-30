@@ -186,12 +186,17 @@ export const minimaxVoiceEngine: VoiceEngine = {
           `[voice] tts_failed engine=minimax category=provider code=${statusCode} attempt=${attempt}`,
         );
         if (retryable && attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
+        // 1008 = insufficient balance: a billing/entitlement state, NOT a bad
+        // credential. Keeping it distinct stops a topped-up-but-wrong-account
+        // situation from being misread as a broken key.
         const kind: TtsFailureKind =
-          statusCode === 1004 || statusCode === 1008
-            ? "unauthorized"
-            : statusCode === 1002
-              ? "rate_limited"
-              : "provider";
+          statusCode === 1008
+            ? "entitlement"
+            : statusCode === 1004 || statusCode === 2049
+              ? "unauthorized"
+              : statusCode === 1002
+                ? "rate_limited"
+                : "provider";
         return { ok: false, kind, engine: "minimax" };
       }
 
