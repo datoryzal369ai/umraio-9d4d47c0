@@ -164,7 +164,7 @@ export const minimaxVoiceEngine: VoiceEngine = {
       model: config.model,
       text,
       stream: false,
-      language_boost: "Malay",
+      language_boost: languageBoostFor(language),
       output_format: "hex",
       voice_setting: {
         voice_id: callerVoice ?? config.voiceId,
