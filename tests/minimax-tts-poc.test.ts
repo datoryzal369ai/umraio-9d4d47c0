@@ -41,7 +41,7 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
   it("calls t2a_v2 with speech-2.8-hd and returns playable audio without leaking the key", async () => {
     process.env["MINIMAX_API_KEY"] = "mm-secret";
     process.env["MINIMAX_TTS_MODEL"] = "speech-2.8-hd";
-    process.env["MINIMAX_TTS_VOICE_ID"] = "Malaysian_Male_1";
+    process.env["MINIMAX_TTS_VOICE_ID"] = "Indonesian_CaringMan";
     let url = "";
     let body = "";
     globalThis.fetch = vi.fn(async (u: unknown, init: unknown) => {
@@ -58,8 +58,41 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(result.ok && result.mimeType).toBe("audio/mpeg");
     expect(url).toBe("https://api.minimax.io/v1/t2a_v2");
     expect(body).toContain('"model":"speech-2.8-hd"');
-    expect(body).toContain('"voice_id":"Malaysian_Male_1"');
+    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+    expect(body).toContain('"language_boost":"Malay"');
     expect(body).not.toContain("mm-secret");
+  });
+
+  it("defaults to Indonesian_CaringMan with Malay language_boost and speech-2.8-hd", async () => {
+    process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+    let body = "";
+    globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
+      body = String((init as RequestInit).body);
+      return new Response(
+        JSON.stringify({ data: { audio: "494433" }, base_resp: { status_code: 0 } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const config = resolveMinimaxConfig();
+    expect(config?.model).toBe("speech-2.8-hd");
+    expect(config?.voiceId).toBe("Indonesian_CaringMan");
+
+    const result = await minimaxVoiceEngine.synthesize({ text: "Assalamualaikum" });
+    expect(result.ok).toBe(true);
+    expect(body).toContain('"model":"speech-2.8-hd"');
+    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+    expect(body).toContain('"language_boost":"Malay"');
+    expect(body).toContain('"speed":1');
+    expect(body).toContain('"vol":1');
+    expect(body).toContain('"pitch":0');
+    expect(body).not.toContain("mm-tts-secret");
+  });
+
+  it("MINIMAX_TTS_VOICE_ID env override still takes precedence", () => {
+    process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+    process.env["MINIMAX_TTS_VOICE_ID"] = "English_Graceful_Lady";
+    expect(resolveMinimaxConfig()?.voiceId).toBe("English_Graceful_Lady");
   });
 
   it("retries a 429 once and classifies auth failures as terminal", async () => {
