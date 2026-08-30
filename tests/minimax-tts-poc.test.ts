@@ -41,7 +41,7 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
   it("calls t2a_v2 with speech-2.8-hd and returns playable audio without leaking the key", async () => {
     process.env["MINIMAX_API_KEY"] = "mm-secret";
     process.env["MINIMAX_TTS_MODEL"] = "speech-2.8-hd";
-    process.env["MINIMAX_TTS_VOICE_ID"] = "Indonesian_CaringMan";
+    process.env["MINIMAX_TTS_VOICE_ID"] = "Malay_male_1_v1";
     let url = "";
     let body = "";
     globalThis.fetch = vi.fn(async (u: unknown, init: unknown) => {
@@ -58,12 +58,12 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(result.ok && result.mimeType).toBe("audio/mpeg");
     expect(url).toBe("https://api.minimax.io/v1/t2a_v2");
     expect(body).toContain('"model":"speech-2.8-hd"');
-    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+    expect(body).toContain('"voice_id":"Malay_male_1_v1"');
     expect(body).toContain('"language_boost":"Malay"');
     expect(body).not.toContain("mm-secret");
   });
 
-  it("defaults to Indonesian_CaringMan with Malay language_boost and speech-2.8-hd", async () => {
+  it("defaults to Malay_male_1_v1 with Malay language_boost and speech-2.8-hd", async () => {
     process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
     let body = "";
     globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
@@ -76,12 +76,12 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
 
     const config = resolveMinimaxConfig();
     expect(config?.model).toBe("speech-2.8-hd");
-    expect(config?.voiceId).toBe("Indonesian_CaringMan");
+    expect(config?.voiceId).toBe("Malay_male_1_v1");
 
     const result = await minimaxVoiceEngine.synthesize({ text: "Assalamualaikum" });
     expect(result.ok).toBe(true);
     expect(body).toContain('"model":"speech-2.8-hd"');
-    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+    expect(body).toContain('"voice_id":"Malay_male_1_v1"');
     expect(body).toContain('"language_boost":"Malay"');
     expect(body).toContain('"speed":1');
     expect(body).toContain('"vol":1');
@@ -95,7 +95,7 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(resolveMinimaxConfig()?.voiceId).toBe("English_Graceful_Lady");
   });
 
-  it("never sends an OpenAI persona voice to MiniMax — falls back to Indonesian_CaringMan", async () => {
+  it("never sends an OpenAI persona voice to MiniMax — falls back to Malay_male_1_v1", async () => {
     process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
     let body = "";
     globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
@@ -108,7 +108,7 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
 
     const result = await minimaxVoiceEngine.synthesize({ text: "Salam", voice: "coral" });
     expect(result.ok).toBe(true);
-    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+    expect(body).toContain('"voice_id":"Malay_male_1_v1"');
     expect(body).not.toContain("coral");
   });
 
@@ -143,10 +143,10 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
 
     const result = await minimaxVoiceEngine.synthesize({
       text: "Salam",
-      voice: "Indonesian_CaringMan",
+      voice: "Malay_male_1_v1",
     });
     expect(result.ok).toBe(true);
-    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+    expect(body).toContain('"voice_id":"Malay_male_1_v1"');
   });
 
   it("retries a 429 once and classifies auth failures as terminal", async () => {
