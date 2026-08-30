@@ -181,6 +181,80 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(calls).toBe(1);
   });
 
+  describe("multilingual language_boost routing (voice identity preserved)", () => {
+    const cases: Array<[string, string]> = [
+      ["ms-MY", "Malay"],
+      ["en-US", "English"],
+      ["ar-SA", "Arabic"],
+      ["zh-CN", "Chinese"],
+      ["id-ID", "Indonesian"],
+      ["ta-IN", "Tamil"],
+      ["ur-PK", "Urdu"],
+      ["bn-BD", "Bengali"],
+    ];
+
+    it.each(cases)("%s → language_boost=%s with voice_id=Malay_male_1_v1", async (lang, boost) => {
+      process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+      let body = "";
+      globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
+        body = String((init as RequestInit).body);
+        return new Response(
+          JSON.stringify({ data: { audio: "494433" }, base_resp: { status_code: 0 } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch;
+
+      const result = await minimaxVoiceEngine.synthesize({ text: "test", language: lang });
+      expect(result.ok).toBe(true);
+      expect(body).toContain(`"language_boost":"${boost}"`);
+      expect(body).toContain('"voice_id":"Malay_male_1_v1"');
+      expect(body).toContain('"model":"speech-2.8-hd"');
+      expect(body).not.toContain("mm-tts-secret");
+    });
+
+    it("missing/unknown/auto language falls back to Malay — never guessed from voice ID", () => {
+      expect(languageBoostFor(undefined)).toBe("Malay");
+      expect(languageBoostFor(null)).toBe("Malay");
+      expect(languageBoostFor("")).toBe("Malay");
+      expect(languageBoostFor("auto")).toBe("Malay");
+      expect(languageBoostFor("fr-FR")).toBe("Malay");
+    });
+
+    it("synthesizeSpeech forwards the conversation language to the engine", async () => {
+      process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+      let body = "";
+      globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
+        body = String((init as RequestInit).body);
+        return new Response(
+          JSON.stringify({ data: { audio: "494433" }, base_resp: { status_code: 0 } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch;
+
+      const result = await synthesizeSpeech({
+        text: "Hello",
+        language: "en-US",
+        voice: "coral", // OpenAI persona voice — must NOT reach MiniMax
+        provider: "minimax",
+      });
+      expect(result.ok).toBe(true);
+      expect(body).toContain('"language_boost":"English"');
+      expect(body).toContain('"voice_id":"Malay_male_1_v1"');
+      expect(body).not.toContain("coral");
+    });
+
+    it("language_boost changes per language while the MiniMax voice identity stays fixed", () => {
+      expect(languageBoostFor("ms-MY")).toBe("Malay");
+      expect(languageBoostFor("en-US")).toBe("English");
+      expect(languageBoostFor("ar-SA")).toBe("Arabic");
+      expect(languageBoostFor("zh-CN")).toBe("Chinese");
+      expect(languageBoostFor("id-ID")).toBe("Indonesian");
+      expect(languageBoostFor("ta-IN")).toBe("Tamil");
+      expect(languageBoostFor("ur-PK")).toBe("Urdu");
+      expect(languageBoostFor("bn-BD")).toBe("Bengali");
+    });
+  });
+
   it("rejects a malformed hex payload as invalid audio", () => {
     expect(hexToBytes("zz").byteLength).toBe(0);
     expect(Array.from(hexToBytes("00ff"))).toEqual([0, 255]);
