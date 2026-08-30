@@ -101,7 +101,7 @@ describe("ASR — failure taxonomy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("retries a 400 once with the equivalent container alias before giving up", async () => {
+  it("treats a 400 as terminal invalid_audio with exactly one provider attempt", async () => {
     const names: string[] = [];
     globalThis.fetch = vi.fn(async (_url: unknown, init: unknown) => {
       const form = (init as { body: FormData }).body;
@@ -110,7 +110,8 @@ describe("ASR — failure taxonomy", () => {
       return new Response("bad format", { status: 400 });
     }) as never;
     const result = await transcribeAudio(audio);
-    expect(names).toEqual(["voice-note.ogg", "voice-note.oga"]);
+    // Undecodable audio fails identically on every alias/provider — no retry.
+    expect(names).toEqual(["voice-note.ogg"]);
     expect(result).toEqual({ ok: false, kind: "invalid_audio", status: 400 });
   });
 
