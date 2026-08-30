@@ -95,6 +95,60 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(resolveMinimaxConfig()?.voiceId).toBe("English_Graceful_Lady");
   });
 
+  it("never sends an OpenAI persona voice to MiniMax — falls back to Indonesian_CaringMan", async () => {
+    process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+    let body = "";
+    globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
+      body = String((init as RequestInit).body);
+      return new Response(
+        JSON.stringify({ data: { audio: "494433" }, base_resp: { status_code: 0 } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await minimaxVoiceEngine.synthesize({ text: "Salam", voice: "coral" });
+    expect(result.ok).toBe(true);
+    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+    expect(body).not.toContain("coral");
+  });
+
+  it("a custom MiniMax voice ID in MINIMAX_TTS_VOICE_ID wins over the persona voice", async () => {
+    process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+    process.env["MINIMAX_TTS_VOICE_ID"] = "Custom_Designed_Voice_001";
+    let body = "";
+    globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
+      body = String((init as RequestInit).body);
+      return new Response(
+        JSON.stringify({ data: { audio: "494433" }, base_resp: { status_code: 0 } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await minimaxVoiceEngine.synthesize({ text: "Salam", voice: "coral" });
+    expect(result.ok).toBe(true);
+    expect(body).toContain('"voice_id":"Custom_Designed_Voice_001"');
+    expect(body).not.toContain("coral");
+  });
+
+  it("an explicit non-OpenAI MiniMax voice argument is honored", async () => {
+    process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
+    let body = "";
+    globalThis.fetch = vi.fn(async (_u: unknown, init: unknown) => {
+      body = String((init as RequestInit).body);
+      return new Response(
+        JSON.stringify({ data: { audio: "494433" }, base_resp: { status_code: 0 } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await minimaxVoiceEngine.synthesize({
+      text: "Salam",
+      voice: "Indonesian_CaringMan",
+    });
+    expect(result.ok).toBe(true);
+    expect(body).toContain('"voice_id":"Indonesian_CaringMan"');
+  });
+
   it("retries a 429 once and classifies auth failures as terminal", async () => {
     process.env["MINIMAX_API_KEY"] = "mm-secret";
     let calls = 0;
