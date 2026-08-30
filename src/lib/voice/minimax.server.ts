@@ -71,6 +71,7 @@ export function describeMinimax(): {
 }
 
 function classifyHttp(status: number): { kind: TtsFailureKind; retryable: boolean } {
+  if (status === 402) return { kind: "entitlement", retryable: false };
   if (status === 401 || status === 403) return { kind: "unauthorized", retryable: false };
   if (status === 429) return { kind: "rate_limited", retryable: true };
   if (status === 400 || status === 404) return { kind: "invalid_request", retryable: false };
