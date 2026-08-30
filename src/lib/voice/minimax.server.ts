@@ -126,7 +126,7 @@ export const minimaxVoiceEngine: VoiceEngine = {
      *    Persona voices (alloy, coral, ...) are OpenAI system voices and must
      *    never be sent to MiniMax; sending them silently falls back to a
      *    robotic provider default.
-     * 3. MINIMAX_DEFAULT_VOICE_ID ("Indonesian_CaringMan").
+     * 3. MINIMAX_DEFAULT_VOICE_ID ("Malay_male_1_v1").
      */
     const callerVoice = voice && !isSupportedTtsVoice(voice) ? voice : undefined;
 
