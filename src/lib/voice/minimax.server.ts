@@ -16,6 +16,7 @@
 
 import type { TtsFailureKind, TtsResult, VoiceEngine } from "./tts.server";
 import { isSupportedTtsVoice } from "./persona.core";
+import { resolveVoiceLanguage } from "./language.core";
 
 export const MINIMAX_DEFAULT_MODEL = "speech-2.8-hd";
 /**
