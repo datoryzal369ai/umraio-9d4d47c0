@@ -19,11 +19,10 @@ import { isSupportedTtsVoice } from "./persona.core";
 
 export const MINIMAX_DEFAULT_MODEL = "speech-2.8-hd";
 /**
- * Official MiniMax system voice (validated against the current voice list).
- * "Malaysian_Male_1" is NOT a real system voice and produced robotic output.
- * MINIMAX_TTS_VOICE_ID env override still takes precedence.
+ * Required UMRAIO MiniMax voice. Passed verbatim to the MiniMax TTS API as
+ * voice_id. MINIMAX_TTS_VOICE_ID env override still takes precedence.
  */
-export const MINIMAX_DEFAULT_VOICE_ID = "Indonesian_CaringMan";
+export const MINIMAX_DEFAULT_VOICE_ID = "Malay_male_1_v1";
 export const MINIMAX_DEFAULT_BASE_URL = "https://api.minimax.io/v1";
 /** Bounded latency: a hung provider must never stall a WhatsApp turn. */
 export const MINIMAX_TTS_TIMEOUT_MS = 15_000;
