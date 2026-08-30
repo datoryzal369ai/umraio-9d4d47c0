@@ -84,6 +84,35 @@ function classifyHttp(status: number): { kind: TtsFailureKind; retryable: boolea
   return { kind: "provider", retryable: true };
 }
 
+/**
+ * MULTILINGUAL TTS — maps the EXISTING conversation voice language
+ * (`agency_settings.voice_language`, resolved by language.core) to the MiniMax
+ * `language_boost` label. No second detection pipeline: the caller passes the
+ * already-resolved language. Missing/unknown/"auto" → "Malay" (never guessed
+ * from the voice ID; voice identity and language are separate concerns).
+ */
+export function languageBoostFor(language: string | null | undefined): string {
+  switch (resolveVoiceLanguage(language)) {
+    case "en-US":
+      return "English";
+    case "id-ID":
+      return "Indonesian";
+    case "ar-SA":
+      return "Arabic";
+    case "zh-CN":
+      return "Chinese";
+    case "ta-IN":
+      return "Tamil";
+    case "ur-PK":
+      return "Urdu";
+    case "bn-BD":
+      return "Bengali";
+    default:
+      // ms-MY, "auto" and anything unresolvable.
+      return "Malay";
+  }
+}
+
 /** MiniMax returns audio as a lowercase hex string. */
 export function hexToBytes(hex: string): Uint8Array {
   const clean = hex.trim();
