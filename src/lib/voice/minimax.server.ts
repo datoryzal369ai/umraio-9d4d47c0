@@ -17,7 +17,12 @@
 import type { TtsFailureKind, TtsResult, VoiceEngine } from "./tts.server";
 
 export const MINIMAX_DEFAULT_MODEL = "speech-2.8-hd";
-export const MINIMAX_DEFAULT_VOICE_ID = "Malaysian_Male_1";
+/**
+ * Official MiniMax system voice (validated against the current voice list).
+ * "Malaysian_Male_1" is NOT a real system voice and produced robotic output.
+ * MINIMAX_TTS_VOICE_ID env override still takes precedence.
+ */
+export const MINIMAX_DEFAULT_VOICE_ID = "Indonesian_CaringMan";
 export const MINIMAX_DEFAULT_BASE_URL = "https://api.minimax.io/v1";
 /** Bounded latency: a hung provider must never stall a WhatsApp turn. */
 export const MINIMAX_TTS_TIMEOUT_MS = 15_000;
@@ -118,7 +123,7 @@ export const minimaxVoiceEngine: VoiceEngine = {
       model: config.model,
       text,
       stream: false,
-      language_boost: "auto",
+      language_boost: "Malay",
       output_format: "hex",
       voice_setting: {
         voice_id: voice ?? config.voiceId,
