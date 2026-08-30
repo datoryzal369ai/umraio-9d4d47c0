@@ -1050,6 +1050,7 @@ async function processInboundMessage(
                       voice: decision.presentation.voice,
                       speed: decision.presentation.speed,
                       instructions: decision.presentation.instructions,
+                      language: voiceLanguage,
                     });
                     if (!speech.ok || !isDeliverableAudio({ byteLength: speech.bytes.byteLength })) {
                       vlog(
