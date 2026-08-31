@@ -353,9 +353,9 @@ const PUBLIC_SNAPSHOT_KEYS = [
   "inclusions",
 ] as const;
 
-function publicSnapshot(raw: unknown): Record<string, unknown> {
-  const snap = (raw ?? {}) as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
+function publicSnapshot(raw: unknown): Record<string, any> {
+  const snap = (raw ?? {}) as Record<string, any>;
+  const out: Record<string, any> = {};
   for (const key of PUBLIC_SNAPSHOT_KEYS) {
     if (snap[key] !== undefined && snap[key] !== null) out[key] = snap[key];
   }
