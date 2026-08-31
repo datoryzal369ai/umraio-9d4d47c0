@@ -30,9 +30,20 @@ export const MINIMAX_TTS_TIMEOUT_MS = 15_000;
 /** 1 initial attempt + at most ONE retry, transient failures only. */
 export const MINIMAX_TTS_MAX_ATTEMPTS = 2;
 
+/**
+ * WHATSAPP SPEED PARITY — MiniMax always speaks at its natural rate.
+ *
+ * The Voice Console `pace` control was designed against OpenAI TTS `speed`
+ * (0.86–1.06). Inheriting it on MiniMax made the real WhatsApp note drift from
+ * the validated MiniMax Voice Test, which sends no speed at all. MiniMax is
+ * therefore pinned to 1.0. OpenAI Direct is untouched and still honours pace.
+ */
+export const MINIMAX_FIXED_SPEED = 1;
+
 /** MP3 is a container Meta accepts for a voice note. */
 const MINIMAX_AUDIO_FORMAT = "mp3";
 const MINIMAX_AUDIO_MIME = "audio/mpeg";
+
 
 function env(name: string): string | undefined {
   const value = process.env[name];
@@ -138,7 +149,7 @@ type MinimaxResponse = {
  */
 export const minimaxVoiceEngine: VoiceEngine = {
   name: "minimax",
-  async synthesize({ text, voice, speed, language }): Promise<TtsResult> {
+  async synthesize({ text, voice, language }): Promise<TtsResult> {
     const config = resolveMinimaxConfig();
     if (!config) {
       console.error("[voice] tts_failed engine=minimax category=config");
@@ -168,7 +179,8 @@ export const minimaxVoiceEngine: VoiceEngine = {
       output_format: "hex",
       voice_setting: {
         voice_id: callerVoice ?? config.voiceId,
-        speed: typeof speed === "number" ? Math.min(2, Math.max(0.5, speed)) : 1,
+        // Persona pace is deliberately NOT inherited here — see MINIMAX_FIXED_SPEED.
+        speed: MINIMAX_FIXED_SPEED,
         vol: 1,
         pitch: 0,
       },
