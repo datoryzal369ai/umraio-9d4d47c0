@@ -222,7 +222,7 @@ const fakeDb = {
 
 describe("B-3.1 follow-up retry + atomic claim", () => {
   beforeEach(() => {
-    sendOk = true;
+    hoisted.sendOk.value = true;
     sent.length = 0;
     claimCalls = 0;
     jobs = [baseJob()];
@@ -256,7 +256,7 @@ describe("B-3.1 follow-up retry + atomic claim", () => {
   });
 
   test("transient send failure schedules a retry and increments attempts", async () => {
-    sendOk = false;
+    hoisted.sendOk.value = false;
     const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
     const job = jobs[0]!;
     expect(job.status).toBe("pending");
@@ -268,7 +268,7 @@ describe("B-3.1 follow-up retry + atomic claim", () => {
   });
 
   test("maximum attempts is terminal — no further retry", async () => {
-    sendOk = false;
+    hoisted.sendOk.value = false;
     jobs = [baseJob({ attempts: MAX_ATTEMPTS - 1 })];
     const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
     const job = jobs[0]!;
