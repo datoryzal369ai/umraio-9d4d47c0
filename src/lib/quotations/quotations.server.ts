@@ -439,11 +439,12 @@ export async function respondToQuotationByToken(
     .select("id, agency_id, lead_id, status, quotation_number, total")
     .eq("public_token", token)
     .maybeSingle();
-  if (!row) throw new Error("Quotation not found.");
+  if (!row) throw new Error(PUBLIC_QUOTATION_INVALID_MESSAGE);
   const from = row.status as QuotationStatus;
   if (!canTransition(from, decision)) {
-    throw new Error("This quotation can no longer be updated.");
+    throw new Error(PUBLIC_QUOTATION_INVALID_MESSAGE);
   }
+
 
   const updated = await transitionQuotation(supabase, row.agency_id, row.id, decision, {
     actor: "customer",
