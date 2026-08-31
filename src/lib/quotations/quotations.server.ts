@@ -341,10 +341,55 @@ export async function transitionQuotation(
 }
 
 /** Public (token) read. Marks the quotation viewed exactly once. */
+/** Fields the customer-facing quotation page renders. */
+const PUBLIC_SNAPSHOT_KEYS = [
+  "name",
+  "hotel_makkah",
+  "hotel_madinah",
+  "nights",
+  "star_rating",
+  "airline",
+  "departure_date",
+  "inclusions",
+] as const;
+
+function publicSnapshot(raw: unknown): Record<string, unknown> {
+  const snap = (raw ?? {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of PUBLIC_SNAPSHOT_KEYS) {
+    if (snap[key] !== undefined && snap[key] !== null) out[key] = snap[key];
+  }
+  return out;
+}
+
+/** Customer-safe projection — internal identifiers and notes never leave the server. */
+export function toPublicQuotation(row: Record<string, any>) {
+  return {
+    quotation_number: row["quotation_number"],
+    status: row["status"],
+    currency: row["currency"],
+    customer_name: row["customer_name"],
+    travel_date: row["travel_date"],
+    travel_month: row["travel_month"],
+    number_of_pilgrims: row["number_of_pilgrims"],
+    unit_price: row["unit_price"],
+    quantity: row["quantity"],
+    subtotal: row["subtotal"],
+    discount: row["discount"],
+    total: row["total"],
+    deposit_amount: row["deposit_amount"],
+    balance_amount: row["balance_amount"],
+    package_snapshot: publicSnapshot(row["package_snapshot"]),
+    valid_until: row["valid_until"],
+  };
+}
+
 export async function readQuotationByToken(supabase: Db, token: string) {
   const { data: row } = await supabase
     .from("quotations")
-    .select("*")
+    .select(
+      "id, agency_id, lead_id, quotation_number, status, currency, customer_name, travel_date, travel_month, number_of_pilgrims, unit_price, quantity, subtotal, discount, total, deposit_amount, balance_amount, package_snapshot, valid_until",
+    )
     .eq("public_token", token)
     .maybeSingle();
   if (!row) return null;
@@ -378,8 +423,9 @@ export async function readQuotationByToken(supabase: Db, token: string) {
     .eq("id", row.agency_id)
     .maybeSingle();
 
-  return { quotation: row, agency };
+  return { quotation: toPublicQuotation(row), agency };
 }
+
 
 /** Customer decision from the public quotation page. */
 export async function respondToQuotationByToken(
