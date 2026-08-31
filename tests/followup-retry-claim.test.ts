@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 /**
  * PHASE B-3.1 — follow-up retry + atomic claim.
@@ -8,22 +8,25 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
  * same job, and tenant isolation holds.
  */
 
-let sendOk = true;
-const sent: Array<{ to: string; body: string }> = [];
+const hoisted = vi.hoisted(() => ({
+  sendOk: { value: true },
+  sent: [] as Array<{ to: string; body: string }>,
+}));
+const sent = hoisted.sent;
 
-mock.module("../src/lib/whatsapp-send.server", () => ({
+vi.mock("../src/lib/whatsapp-send.server", () => ({
   sendWhatsappText: async (_pid: string, _token: string, to: string, body: string) => {
-    if (!sendOk) return false;
-    sent.push({ to, body });
+    if (!hoisted.sendOk.value) return false;
+    hoisted.sent.push({ to, body });
     return true;
   },
 }));
-mock.module("../src/lib/billing/usage.server", () => ({
+vi.mock("../src/lib/billing/usage.server", () => ({
   QuotaError: class QuotaError extends Error {},
   assertQuota: async () => {},
   recordUsageEvent: async () => {},
 }));
-mock.module("../src/lib/quotations/quotations.server", () => ({
+vi.mock("../src/lib/quotations/quotations.server", () => ({
   logConversionEvent: async () => {},
 }));
 
@@ -219,7 +222,7 @@ const fakeDb = {
 
 describe("B-3.1 follow-up retry + atomic claim", () => {
   beforeEach(() => {
-    sendOk = true;
+    hoisted.sendOk.value = true;
     sent.length = 0;
     claimCalls = 0;
     jobs = [baseJob()];
@@ -253,7 +256,7 @@ describe("B-3.1 follow-up retry + atomic claim", () => {
   });
 
   test("transient send failure schedules a retry and increments attempts", async () => {
-    sendOk = false;
+    hoisted.sendOk.value = false;
     const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
     const job = jobs[0]!;
     expect(job.status).toBe("pending");
@@ -265,7 +268,7 @@ describe("B-3.1 follow-up retry + atomic claim", () => {
   });
 
   test("maximum attempts is terminal — no further retry", async () => {
-    sendOk = false;
+    hoisted.sendOk.value = false;
     jobs = [baseJob({ attempts: MAX_ATTEMPTS - 1 })];
     const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
     const job = jobs[0]!;

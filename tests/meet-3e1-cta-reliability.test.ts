@@ -5,7 +5,7 @@
  * route to real CTAs only, and never invent a payment mechanism.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { analyzeMeetConversation } from "@/lib/meet/b2b-executive.core";
 import { analyzeConversion } from "@/lib/meet/b2b-conversion.core";
