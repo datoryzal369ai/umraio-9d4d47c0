@@ -99,6 +99,14 @@ export async function acceptQuotationInChat(
     customerMessages?: ReadonlyArray<string | null | undefined>;
     /** RED-3 — agency catalogue package names, so catalogue names win over tiers. */
     catalogueNames?: ReadonlyArray<string | null | undefined>;
+    /** The current acceptance turn (text, or ASR transcript of a voice note). */
+    acceptanceMessage?: string | null;
+    /**
+     * True when the QUOTATION CHECK mismatch reply has ALREADY been sent for
+     * this quotation. The customer has seen exactly what they are accepting,
+     * so a plain acceptance now applies to the presented quotation.
+     */
+    mismatchDisclosed?: boolean;
   },
 ): Promise<AcceptQuotationResult> {
   if (!scope.leadId && !scope.conversationId) return { accepted: false, reason: "no_scope" };
@@ -122,10 +130,22 @@ export async function acceptQuotationInChat(
 
   // RED-3 — never accept package A when the customer explicitly asked for
   // package B. Read-only comparison, reusing the RED-2 identity logic.
-  const requested = detectRequestedPackage(
+  let requested = detectRequestedPackage(
     scope.customerMessages ?? [],
     scope.catalogueNames ?? [],
   );
+
+  // FIX — the sticky package preference must not loop the customer back into
+  // QUOTATION CHECK forever. Once the mismatch has been disclosed and the
+  // customer accepts WITHOUT naming a different package, the acceptance
+  // applies to the quotation that was actually presented.
+  if (requested && scope.mismatchDisclosed) {
+    const requestedNow = detectRequestedPackage(
+      [scope.acceptanceMessage ?? ""],
+      scope.catalogueNames ?? [],
+    );
+    if (!requestedNow) requested = null;
+  }
 
   const mismatchFor = (row: AcceptanceCandidate): AcceptQuotationResult | null => {
     if (!requested) return null;
