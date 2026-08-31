@@ -43,6 +43,7 @@ import { Route as AuthenticatedSettingsApiKeysRouteImport } from './routes/_auth
 import { Route as AuthenticatedSettingsGovernanceRouteImport } from './routes/_authenticated/settings/governance'
 import { Route as AuthenticatedSettingsNotificationsRouteImport } from './routes/_authenticated/settings/notifications'
 import { Route as AuthenticatedSettingsSubscriptionRouteImport } from './routes/_authenticated/settings/subscription'
+import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings/team'
 import { Route as AuthenticatedSettingsVoiceRouteImport } from './routes/_authenticated/settings/voice'
 import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_authenticated/settings/whatsapp'
 import { Route as ApiPublicMeetExecutiveRouteImport } from './routes/api/public/meet-executive'
@@ -239,6 +240,12 @@ const AuthenticatedSettingsSubscriptionRoute =
     path: '/subscription',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
+const AuthenticatedSettingsTeamRoute =
+  AuthenticatedSettingsTeamRouteImport.update({
+    id: '/team',
+    path: '/team',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
 const AuthenticatedSettingsVoiceRoute =
   AuthenticatedSettingsVoiceRouteImport.update({
     id: '/voice',
@@ -331,6 +338,7 @@ export interface FileRoutesByFullPath {
   '/settings/governance': typeof AuthenticatedSettingsGovernanceRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/settings/subscription': typeof AuthenticatedSettingsSubscriptionRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/voice': typeof AuthenticatedSettingsVoiceRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/api/public/meet-executive': typeof ApiPublicMeetExecutiveRoute
@@ -376,6 +384,7 @@ export interface FileRoutesByTo {
   '/settings/governance': typeof AuthenticatedSettingsGovernanceRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/settings/subscription': typeof AuthenticatedSettingsSubscriptionRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/voice': typeof AuthenticatedSettingsVoiceRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/api/public/meet-executive': typeof ApiPublicMeetExecutiveRoute
@@ -424,6 +433,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/governance': typeof AuthenticatedSettingsGovernanceRoute
   '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/_authenticated/settings/subscription': typeof AuthenticatedSettingsSubscriptionRoute
+  '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/voice': typeof AuthenticatedSettingsVoiceRoute
   '/_authenticated/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/api/public/meet-executive': typeof ApiPublicMeetExecutiveRoute
@@ -472,6 +482,7 @@ export interface FileRouteTypes {
     | '/settings/governance'
     | '/settings/notifications'
     | '/settings/subscription'
+    | '/settings/team'
     | '/settings/voice'
     | '/settings/whatsapp'
     | '/api/public/meet-executive'
@@ -517,6 +528,7 @@ export interface FileRouteTypes {
     | '/settings/governance'
     | '/settings/notifications'
     | '/settings/subscription'
+    | '/settings/team'
     | '/settings/voice'
     | '/settings/whatsapp'
     | '/api/public/meet-executive'
@@ -564,6 +576,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/governance'
     | '/_authenticated/settings/notifications'
     | '/_authenticated/settings/subscription'
+    | '/_authenticated/settings/team'
     | '/_authenticated/settings/voice'
     | '/_authenticated/settings/whatsapp'
     | '/api/public/meet-executive'
@@ -844,6 +857,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsSubscriptionRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
     }
+    '/_authenticated/settings/team': {
+      id: '/_authenticated/settings/team'
+      path: '/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof AuthenticatedSettingsTeamRouteImport
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
     '/_authenticated/settings/voice': {
       id: '/_authenticated/settings/voice'
       path: '/voice'
@@ -931,6 +951,7 @@ interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsGovernanceRoute: typeof AuthenticatedSettingsGovernanceRoute
   AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
   AuthenticatedSettingsSubscriptionRoute: typeof AuthenticatedSettingsSubscriptionRoute
+  AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
   AuthenticatedSettingsVoiceRoute: typeof AuthenticatedSettingsVoiceRoute
   AuthenticatedSettingsWhatsappRoute: typeof AuthenticatedSettingsWhatsappRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
@@ -946,6 +967,7 @@ const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteCh
       AuthenticatedSettingsNotificationsRoute,
     AuthenticatedSettingsSubscriptionRoute:
       AuthenticatedSettingsSubscriptionRoute,
+    AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
     AuthenticatedSettingsVoiceRoute: AuthenticatedSettingsVoiceRoute,
     AuthenticatedSettingsWhatsappRoute: AuthenticatedSettingsWhatsappRoute,
     AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
