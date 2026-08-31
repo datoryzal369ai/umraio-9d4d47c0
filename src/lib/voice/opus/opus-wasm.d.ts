@@ -20,8 +20,3 @@ declare module "*.wasm" {
   ): number;
 }
 
-/** Cloudflare CompiledWasm import: the bundler emits the binary as a Worker module. */
-declare module "*.wasm?module" {
-  const module: WebAssembly.Module;
-  export default module;
-}
