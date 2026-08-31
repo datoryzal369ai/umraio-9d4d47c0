@@ -113,12 +113,32 @@ export const transitionQuotationFn = createServerFn({ method: "POST" })
     });
   });
 
+/** Hashed-IP gate for the two unauthenticated quotation endpoints (P1-2). */
+async function publicQuotationGate(action: "read" | "respond") {
+  const {
+    checkPublicQuotationRate,
+    PUBLIC_QUOTATION_RATE_MESSAGE,
+  } = await import("./quotations/public-rate-limit.core");
+  let ipHash = "";
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const { clientIpHash } = await import("./billing/demo-limit.server");
+    ipHash = clientIpHash(getRequest());
+  } catch {
+    return; // Fail open when the request context is unavailable.
+  }
+  if (!checkPublicQuotationRate(action, ipHash).allowed) {
+    throw new Error(PUBLIC_QUOTATION_RATE_MESSAGE);
+  }
+}
+
 /** Public, token-gated read for the customer review page. */
 export const getPublicQuotation = createServerFn({ method: "GET" })
   .inputValidator((input: { token: string }) =>
     z.object({ token: z.string().regex(/^[a-f0-9]{16,64}$/) }).parse(input),
   )
   .handler(async ({ data }) => {
+    await publicQuotationGate("read");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { readQuotationByToken } = await import("./quotations/quotations.server");
     return readQuotationByToken(supabaseAdmin as never, data.token);
@@ -136,6 +156,7 @@ export const respondPublicQuotation = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
+    await publicQuotationGate("respond");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { respondToQuotationByToken } = await import("./quotations/quotations.server");
     await respondToQuotationByToken(
@@ -146,3 +167,4 @@ export const respondPublicQuotation = createServerFn({ method: "POST" })
     );
     return { ok: true };
   });
+
