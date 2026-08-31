@@ -6,9 +6,9 @@
  * MiniMax PCM (s16le / 24 kHz / mono) into a complete, playable OGG/Opus file
  * with no resampling, no FFmpeg, no child_process and no remote fetch.
  *
- * RUNTIME: libopus ships as a bundled Wasm module (./opus/opus.wasm), which is
- * what Cloudflare Workers require — they refuse runtime compilation. The base64
- * copy is the fallback for Node/vitest. Nothing is fetched or read from disk.
+ * RUNTIME: libopus is embedded as a base64 string and instantiated in-process.
+ * Nothing is imported as a binary asset, fetched, or read from disk, so the
+ * server bundle stays plain JavaScript.
  *
  * FAILURE CONTRACT: this module NEVER throws to callers. Every failure returns
  * `{ ok: false }` so the voice reply can fall back to the existing MP3 path.
@@ -61,9 +61,8 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 let exportsPromise: Promise<OpusExports | null> | null = null;
 
 /**
- * WASI/env stubs. The bundled `opus.wasm` declares no imports; the embedded
- * base64 fallback build does. Extra entries are ignored, so one object serves
- * both and none of these functions is ever actually called.
+ * WASI/env stubs required by the embedded libopus build. None of these
+ * functions is ever actually called.
  */
 const OPUS_IMPORTS: WebAssembly.Imports = {
   wasi_snapshot_preview1: {
