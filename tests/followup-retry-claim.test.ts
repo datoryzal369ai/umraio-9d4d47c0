@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "vitest";
 
 /**
  * PHASE B-3.1 — follow-up retry + atomic claim.

@@ -14,7 +14,7 @@
  * than falsely passed.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { analyzeMeetConversation, meetExecutiveInstruction } from "@/lib/meet/b2b-executive.core";
 import { analyzeConversion, conversionInstruction } from "@/lib/meet/b2b-conversion.core";

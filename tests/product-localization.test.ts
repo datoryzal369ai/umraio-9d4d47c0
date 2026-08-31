@@ -9,7 +9,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import * as accountCopy from "../src/lib/i18n/app/account.i18n";
 import * as executiveCopy from "../src/lib/i18n/app/executive.i18n";

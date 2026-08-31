@@ -9,7 +9,7 @@
  *   5. natural Malaysian spoken register guidance
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { analyzeMeetConversation } from "@/lib/meet/b2b-executive.core";
 import { analyzeConversion } from "@/lib/meet/b2b-conversion.core";

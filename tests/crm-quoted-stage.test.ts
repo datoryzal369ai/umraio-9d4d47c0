@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { LEAD_STAGES, STAGE_LABELS, type LeadStage } from "../src/lib/leads";
 import { leadsCopy } from "../src/lib/i18n/app/leads.i18n";

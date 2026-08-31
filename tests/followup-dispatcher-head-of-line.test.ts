@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "vitest";
 
 const sent: Array<{ to: string; body: string }> = [];
 
