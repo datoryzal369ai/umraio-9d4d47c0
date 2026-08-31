@@ -60,46 +60,49 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
 
-/** libopus needs a handful of WASI/env stubs; none of them are ever called. */
-const OPUS_IMPORTS: WebAssembly.Imports = {
-  wasi_snapshot_preview1: {
-    fd_seek: () => 0,
-    fd_write: () => 0,
-    fd_close: () => 0,
-    proc_exit: () => {},
-  },
-  env: { emscripten_notify_memory_growth: () => {} },
-};
+/** The vendored libopus build declares no imports; this satisfies the typing only. */
+const OPUS_IMPORTS: WebAssembly.Imports = {};
+
+function isOpusExports(value: unknown): value is OpusExports {
+  const candidate = value as Partial<OpusExports> | null;
+  return typeof candidate?.opus_encode === "function" && typeof candidate?.malloc === "function";
+}
 
 /**
- * Preferred path: a build-time compiled Wasm Worker module. `?module` makes the
- * bundler emit the binary as a real Cloudflare CompiledWasm import, so workerd
- * hands us an already-compiled `WebAssembly.Module` — no runtime compilation,
- * which the embedder forbids. Kept as a dynamic import so it stays lazy and so
- * Node/vitest (where the query suffix does not resolve) simply falls through.
+ * Preferred path: a build-time compiled Wasm Worker module.
+ *
+ * `?module` is rewritten by the `umraio-compiled-wasm` Vite plugin into a real
+ * ESM `.wasm` import, which Cloudflare compiles at deploy time (CompiledWasm).
+ * workerd forbids `WebAssembly.compile()` on runtime bytes, so this is the only
+ * way the encoder can execute there. Dynamic import keeps it lazy, and Node /
+ * vitest — where the specifier does not resolve — simply falls through to the
+ * embedded base64 binary below.
  */
-async function loadCompiledModule(): Promise<WebAssembly.Module | null> {
+async function loadCompiledExports(): Promise<OpusExports | null> {
   try {
     const mod = (await import("./opus/opus.wasm?module")) as unknown as {
-      default?: WebAssembly.Module;
+      default?: unknown;
     };
-    const compiled = mod?.default ?? (mod as unknown as WebAssembly.Module);
-    return compiled instanceof WebAssembly.Module ? compiled : null;
+    const value = mod?.default ?? mod;
+    // Bundler shapes: a compiled module, an exports getter, or the exports.
+    if (value instanceof WebAssembly.Module) {
+      const instance = await WebAssembly.instantiate(value, OPUS_IMPORTS);
+      return instance.exports as unknown as OpusExports;
+    }
+    if (typeof value === "function") {
+      const resolved: unknown = (value as () => unknown)();
+      return isOpusExports(resolved) ? resolved : null;
+    }
+    return isOpusExports(value) ? value : null;
   } catch {
     return null;
   }
 }
 
 async function loadOpusExports(): Promise<OpusExports | null> {
-  const compiled = await loadCompiledModule();
-  if (compiled) {
-    try {
-      const instance = await WebAssembly.instantiate(compiled, OPUS_IMPORTS);
-      return instance.exports as unknown as OpusExports;
-    } catch {
-      /* fall through to the byte-compiled path below */
-    }
-  }
+  const compiled = await loadCompiledExports();
+  if (compiled) return compiled;
+
   try {
     const { instance } = await WebAssembly.instantiate(
       base64ToBytes(OPUS_WASM_BASE64),
