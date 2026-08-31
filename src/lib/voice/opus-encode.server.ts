@@ -18,7 +18,7 @@ import { OPUS_WASM_BASE64 } from "./opus/opus-wasm.base64";
 // Bundled Wasm module: Cloudflare compiles this at deploy time (workerd forbids
 // runtime WebAssembly.compile). The binary is import-free (WASI/emscripten stubs
 // merged in) so the bundler has nothing to resolve.
-import bundledOpusModule from "./opus/opus.wasm";
+import * as bundledOpus from "./opus/opus.wasm";
 
 /** Opus operates on 20 ms frames; at 24 kHz that is exactly 480 samples. */
 export const OPUS_FRAME_SAMPLES = 480;
@@ -62,23 +62,26 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-let modulePromise: Promise<WebAssembly.Module | null> | null = null;
+let exportsPromise: Promise<OpusExports | null> | null = null;
 
-async function loadOpusModule(): Promise<WebAssembly.Module | null> {
-  // The binary is embedded in the bundle as base64 — never fetched, never read
-  // from disk. Compilation is attempted once and cached for the isolate.
-  const bundled = bundledOpusModule as unknown;
-  if (bundled instanceof WebAssembly.Module) return bundled;
+async function loadOpusExports(): Promise<OpusExports | null> {
+  // Preferred: the bundler instantiated the import-free Wasm module for us.
+  const bundled = bundledOpus as unknown as Partial<OpusExports>;
+  if (typeof bundled?.opus_encode === "function" && bundled.memory) {
+    return bundled as OpusExports;
+  }
+  // Fallback for Node/vitest, where the .wasm module is not pre-instantiated.
   try {
-    return await WebAssembly.compile(base64ToBytes(OPUS_WASM_BASE64));
+    const { instance } = await WebAssembly.instantiate(base64ToBytes(OPUS_WASM_BASE64), {});
+    return instance.exports as unknown as OpusExports;
   } catch {
     return null;
   }
 }
 
-function opusModule(): Promise<WebAssembly.Module | null> {
-  if (!modulePromise) modulePromise = loadOpusModule();
-  return modulePromise;
+function opusExports(): Promise<OpusExports | null> {
+  if (!exportsPromise) exportsPromise = loadOpusExports();
+  return exportsPromise;
 }
 
 /** Ogg CRC32: polynomial 0x04c11db7, no reflection, zero init, zero final xor. */
@@ -188,25 +191,9 @@ export function buildOpusTags(vendor = "UMRAIO"): Uint8Array {
 export async function encodePcmToOggOpus(pcm: Uint8Array): Promise<OpusEncodeResult> {
   if (!pcm || pcm.byteLength < 2) return { ok: false, reason: "invalid_pcm" };
 
-  const module = await opusModule();
-  if (!module) return { ok: false, reason: "wasm_unavailable" };
+  const wasm = await opusExports();
+  if (!wasm) return { ok: false, reason: "wasm_unavailable" };
 
-  let instance: WebAssembly.Instance;
-  try {
-    instance = await WebAssembly.instantiate(module, {
-      wasi_snapshot_preview1: {
-        fd_seek() {},
-        fd_write() {},
-        fd_close() {},
-        proc_exit() {},
-      },
-      env: { emscripten_notify_memory_growth() {} },
-    });
-  } catch {
-    return { ok: false, reason: "wasm_unavailable" };
-  }
-
-  const wasm = instance.exports as unknown as OpusExports;
   let encoderPtr = 0;
   let pcmPtr = 0;
   let outPtr = 0;
