@@ -149,7 +149,7 @@ type MinimaxResponse = {
  */
 export const minimaxVoiceEngine: VoiceEngine = {
   name: "minimax",
-  async synthesize({ text, voice, speed, language }): Promise<TtsResult> {
+  async synthesize({ text, voice, language }): Promise<TtsResult> {
     const config = resolveMinimaxConfig();
     if (!config) {
       console.error("[voice] tts_failed engine=minimax category=config");
@@ -179,7 +179,8 @@ export const minimaxVoiceEngine: VoiceEngine = {
       output_format: "hex",
       voice_setting: {
         voice_id: callerVoice ?? config.voiceId,
-        speed: typeof speed === "number" ? Math.min(2, Math.max(0.5, speed)) : 1,
+        // Persona pace is deliberately NOT inherited here — see MINIMAX_FIXED_SPEED.
+        speed: MINIMAX_FIXED_SPEED,
         vol: 1,
         pitch: 0,
       },
