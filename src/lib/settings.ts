@@ -122,10 +122,30 @@ const AGENCY_COLUMNS =
   "id, name, country, timezone, plan, logo_url, registration_no, address, contact_email, contact_phone, website";
 
 export async function fetchAgency(): Promise<Agency | null> {
-  const { data, error } = await supabase.from("agencies").select(AGENCY_COLUMNS).maybeSingle();
+  // Scope to the caller's OWN agency. Platform owners can read every agency row
+  // via RLS, so an unscoped .maybeSingle() throws "multiple rows returned" and
+  // leaves Settings stuck on its loading state.
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id;
+  if (!userId) return null;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("agency_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile?.agency_id) return null;
+
+  const { data, error } = await supabase
+    .from("agencies")
+    .select(AGENCY_COLUMNS)
+    .eq("id", profile.agency_id)
+    .maybeSingle();
   if (error) throw error;
   return (data as Agency | null) ?? null;
 }
+
 
 export async function updateAgency(
   agencyId: string,
