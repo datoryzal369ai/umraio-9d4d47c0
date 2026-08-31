@@ -75,9 +75,7 @@ const OPUS_IMPORTS: WebAssembly.Imports = {
   env: { emscripten_notify_memory_growth: () => {} },
 };
 
-
 async function loadOpusExports(): Promise<OpusExports | null> {
-
   try {
     const { instance } = await WebAssembly.instantiate(
       base64ToBytes(OPUS_WASM_BASE64),
@@ -93,7 +91,6 @@ function opusExports(): Promise<OpusExports | null> {
   if (!exportsPromise) exportsPromise = loadOpusExports();
   return exportsPromise;
 }
-
 
 /** Ogg CRC32: polynomial 0x04c11db7, no reflection, zero init, zero final xor. */
 const OGG_CRC_TABLE = (() => {
