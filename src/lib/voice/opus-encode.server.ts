@@ -60,8 +60,21 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
 
-/** The vendored libopus build declares no imports; this satisfies the typing only. */
-const OPUS_IMPORTS: WebAssembly.Imports = {};
+/**
+ * WASI/env stubs. The bundled `opus.wasm` declares no imports; the embedded
+ * base64 fallback build does. Extra entries are ignored, so one object serves
+ * both and none of these functions is ever actually called.
+ */
+const OPUS_IMPORTS: WebAssembly.Imports = {
+  wasi_snapshot_preview1: {
+    fd_seek: () => 0,
+    fd_write: () => 0,
+    fd_close: () => 0,
+    proc_exit: () => {},
+  },
+  env: { emscripten_notify_memory_growth: () => {} },
+};
+
 
 function isOpusExports(value: unknown): value is OpusExports {
   const candidate = value as Partial<OpusExports> | null;
