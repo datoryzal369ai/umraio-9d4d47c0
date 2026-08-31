@@ -40,9 +40,26 @@ export const MINIMAX_TTS_MAX_ATTEMPTS = 2;
  */
 export const MINIMAX_FIXED_SPEED = 1;
 
-/** MP3 is a container Meta accepts for a voice note. */
-const MINIMAX_AUDIO_FORMAT = "mp3";
+/** MP3 is a container Meta accepts for a voice note (as an attachment bubble). */
+const MINIMAX_AUDIO_FORMAT: "mp3" = "mp3";
 const MINIMAX_AUDIO_MIME = "audio/mpeg";
+/** OGG/Opus is the ONLY container Meta renders as a NATIVE voice note. */
+const MINIMAX_OGG_MIME = "audio/ogg";
+/** Validated MiniMax PCM shape: s16le, 24 kHz, mono — no resampling needed. */
+export const MINIMAX_PCM_SAMPLE_RATE = 24000;
+export const MINIMAX_PCM_CHANNELS = 1;
+
+export type MinimaxContainer = "mp3" | "ogg_opus";
+
+/**
+ * FEATURE FLAG — MINIMAX_TTS_CONTAINER. Default "mp3": production keeps the
+ * proven MP3 path until the OGG/Opus voice note is validated in the field.
+ */
+export function resolveMinimaxContainer(): MinimaxContainer {
+  return env("MINIMAX_TTS_CONTAINER")?.toLowerCase() === "ogg_opus" ? "ogg_opus" : "mp3";
+}
+
+
 
 
 function env(name: string): string | undefined {
@@ -140,12 +157,111 @@ type MinimaxResponse = {
   base_resp?: { status_code?: number; status_msg?: string };
 };
 
+type MinimaxAudio =
+  | { ok: true; bytes: Uint8Array }
+  | { ok: false; kind: TtsFailureKind };
+
+/**
+ * ONE MiniMax T2A v2 request (with the existing bounded retry policy).
+ * The container is the ONLY thing that varies between calls — voice, model,
+ * language_boost, speed, vol and pitch are identical for MP3 and PCM.
+ */
+async function requestMinimaxAudio(
+  config: MinimaxConfig,
+  body: string,
+): Promise<MinimaxAudio> {
+  const url = config.groupId
+    ? `${config.baseUrl}/t2a_v2?GroupId=${encodeURIComponent(config.groupId)}`
+    : `${config.baseUrl}/t2a_v2`;
+
+  for (let attempt = 1; attempt <= MINIMAX_TTS_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), MINIMAX_TTS_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      const isTimeout = error instanceof Error && error.name === "AbortError";
+      console.error(
+        `[voice] tts_failed engine=minimax category=${isTimeout ? "timeout" : "network"} attempt=${attempt}`,
+      );
+      if (attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
+      return { ok: false, kind: isTimeout ? "timeout" : "provider" };
+    }
+
+    if (!res.ok) {
+      clearTimeout(timer);
+      const failure = classifyHttp(res.status);
+      console.error(
+        `[voice] tts_failed engine=minimax category=${failure.kind} status=${res.status} attempt=${attempt}`,
+      );
+      if (failure.retryable && attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
+      return { ok: false, kind: failure.kind };
+    }
+
+    let payload: MinimaxResponse;
+    try {
+      payload = (await res.json()) as MinimaxResponse;
+    } catch {
+      clearTimeout(timer);
+      console.error("[voice] tts_failed engine=minimax category=invalid_audio reason=bad_json");
+      return { ok: false, kind: "invalid_audio" };
+    }
+    clearTimeout(timer);
+
+    const statusCode = payload.base_resp?.status_code ?? 0;
+    if (statusCode !== 0) {
+      // status_msg may echo request details — only the numeric code is logged.
+      const retryable = statusCode === 1002 || statusCode === 1039 || statusCode === 2013;
+      console.error(
+        `[voice] tts_failed engine=minimax category=provider code=${statusCode} attempt=${attempt}`,
+      );
+      if (retryable && attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
+      // 1008 = insufficient balance: a billing/entitlement state, NOT a bad
+      // credential. Keeping it distinct stops a topped-up-but-wrong-account
+      // situation from being misread as a broken key.
+      const kind: TtsFailureKind =
+        statusCode === 1008
+          ? "entitlement"
+          : statusCode === 1004 || statusCode === 2049
+            ? "unauthorized"
+            : statusCode === 1002
+              ? "rate_limited"
+              : "provider";
+      return { ok: false, kind };
+    }
+
+    const bytes = hexToBytes(payload.data?.audio ?? "");
+    if (bytes.byteLength === 0) {
+      console.error("[voice] tts_failed engine=minimax category=invalid_audio reason=empty");
+      return { ok: false, kind: "invalid_audio" };
+    }
+    return { ok: true, bytes };
+  }
+
+  return { ok: false, kind: "provider" };
+}
+
 /**
  * MiniMax T2A v2 driver.
  *
- * Non-streaming HTTP is used for the POC because WhatsApp requires a COMPLETE
- * audio file; MiniMax's streaming SSE mode emits the same hex chunks and can be
- * enabled later behind this same interface without touching callers.
+ * Non-streaming HTTP is used because WhatsApp requires a COMPLETE audio file.
+ *
+ * CONTAINER (MINIMAX_TTS_CONTAINER, default "mp3"):
+ *   - "mp3"      : the proven production path — audio/mpeg attachment.
+ *   - "ogg_opus" : request raw PCM (s16le/24k/mono) and encode it to OGG/Opus
+ *                  in-process so Meta renders a NATIVE voice note. ANY PCM or
+ *                  encoder failure falls back to exactly ONE MP3 request, so a
+ *                  voice reply is never lost.
  */
 export const minimaxVoiceEngine: VoiceEngine = {
   name: "minimax",
@@ -155,10 +271,6 @@ export const minimaxVoiceEngine: VoiceEngine = {
       console.error("[voice] tts_failed engine=minimax category=config");
       return { ok: false, kind: "config", engine: "minimax" };
     }
-
-    const url = config.groupId
-      ? `${config.baseUrl}/t2a_v2?GroupId=${encodeURIComponent(config.groupId)}`
-      : `${config.baseUrl}/t2a_v2`;
 
     /**
      * Voice resolution order:
@@ -171,101 +283,51 @@ export const minimaxVoiceEngine: VoiceEngine = {
      */
     const callerVoice = voice && !isSupportedTtsVoice(voice) ? voice : undefined;
 
-    const body = JSON.stringify({
-      model: config.model,
-      text,
-      stream: false,
-      language_boost: languageBoostFor(language),
-      output_format: "hex",
-      voice_setting: {
-        voice_id: callerVoice ?? config.voiceId,
-        // Persona pace is deliberately NOT inherited here — see MINIMAX_FIXED_SPEED.
-        speed: MINIMAX_FIXED_SPEED,
-        vol: 1,
-        pitch: 0,
-      },
-      audio_setting: {
-        sample_rate: 24000,
-        bitrate: 128000,
-        format: MINIMAX_AUDIO_FORMAT,
-        channel: 1,
-      },
-    });
+    const requestBody = (format: "mp3" | "pcm") =>
+      JSON.stringify({
+        model: config.model,
+        text,
+        stream: false,
+        language_boost: languageBoostFor(language),
+        output_format: "hex",
+        voice_setting: {
+          voice_id: callerVoice ?? config.voiceId,
+          // Persona pace is deliberately NOT inherited here — see MINIMAX_FIXED_SPEED.
+          speed: MINIMAX_FIXED_SPEED,
+          vol: 1,
+          pitch: 0,
+        },
+        audio_setting: {
+          sample_rate: MINIMAX_PCM_SAMPLE_RATE,
+          bitrate: 128000,
+          format,
+          channel: MINIMAX_PCM_CHANNELS,
+        },
+      });
 
-    for (let attempt = 1; attempt <= MINIMAX_TTS_MAX_ATTEMPTS; attempt++) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), MINIMAX_TTS_TIMEOUT_MS);
-      let res: Response;
-      try {
-        res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${config.apiKey}`,
-          },
-          body,
-          signal: controller.signal,
-        });
-      } catch (error) {
-        clearTimeout(timer);
-        const isTimeout = error instanceof Error && error.name === "AbortError";
-        console.error(
-          `[voice] tts_failed engine=minimax category=${isTimeout ? "timeout" : "network"} attempt=${attempt}`,
-        );
-        if (attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
-        return { ok: false, kind: isTimeout ? "timeout" : "provider", engine: "minimax" };
+    if (resolveMinimaxContainer() === "ogg_opus") {
+      const pcm = await requestMinimaxAudio(config, requestBody("pcm"));
+      if (pcm.ok) {
+        const { encodePcmToOggOpus } = await import("./opus-encode.server");
+        const encoded = await encodePcmToOggOpus(pcm.bytes);
+        if (encoded.ok) {
+          return {
+            ok: true,
+            bytes: encoded.bytes,
+            mimeType: MINIMAX_OGG_MIME,
+            engine: "minimax",
+          };
+        }
+        // The PCM call already succeeded — the ONLY retry is the MP3 container.
+        console.error(`[voice] minimax_opus_encode_failed reason=${encoded.reason} fallback=mp3`);
+      } else {
+        console.error(`[voice] minimax_pcm_failed kind=${pcm.kind} fallback=mp3`);
       }
-
-      if (!res.ok) {
-        clearTimeout(timer);
-        const failure = classifyHttp(res.status);
-        console.error(
-          `[voice] tts_failed engine=minimax category=${failure.kind} status=${res.status} attempt=${attempt}`,
-        );
-        if (failure.retryable && attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
-        return { ok: false, kind: failure.kind, engine: "minimax" };
-      }
-
-      let payload: MinimaxResponse;
-      try {
-        payload = (await res.json()) as MinimaxResponse;
-      } catch {
-        clearTimeout(timer);
-        console.error("[voice] tts_failed engine=minimax category=invalid_audio reason=bad_json");
-        return { ok: false, kind: "invalid_audio", engine: "minimax" };
-      }
-      clearTimeout(timer);
-
-      const statusCode = payload.base_resp?.status_code ?? 0;
-      if (statusCode !== 0) {
-        // status_msg may echo request details — only the numeric code is logged.
-        const retryable = statusCode === 1002 || statusCode === 1039 || statusCode === 2013;
-        console.error(
-          `[voice] tts_failed engine=minimax category=provider code=${statusCode} attempt=${attempt}`,
-        );
-        if (retryable && attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
-        // 1008 = insufficient balance: a billing/entitlement state, NOT a bad
-        // credential. Keeping it distinct stops a topped-up-but-wrong-account
-        // situation from being misread as a broken key.
-        const kind: TtsFailureKind =
-          statusCode === 1008
-            ? "entitlement"
-            : statusCode === 1004 || statusCode === 2049
-              ? "unauthorized"
-              : statusCode === 1002
-                ? "rate_limited"
-                : "provider";
-        return { ok: false, kind, engine: "minimax" };
-      }
-
-      const bytes = hexToBytes(payload.data?.audio ?? "");
-      if (bytes.byteLength === 0) {
-        console.error("[voice] tts_failed engine=minimax category=invalid_audio reason=empty");
-        return { ok: false, kind: "invalid_audio", engine: "minimax" };
-      }
-      return { ok: true, bytes, mimeType: MINIMAX_AUDIO_MIME, engine: "minimax" };
     }
 
-    return { ok: false, kind: "provider", engine: "minimax" };
+    const mp3 = await requestMinimaxAudio(config, requestBody(MINIMAX_AUDIO_FORMAT));
+    if (!mp3.ok) return { ok: false, kind: mp3.kind, engine: "minimax" };
+    return { ok: true, bytes: mp3.bytes, mimeType: MINIMAX_AUDIO_MIME, engine: "minimax" };
   },
 };
+
