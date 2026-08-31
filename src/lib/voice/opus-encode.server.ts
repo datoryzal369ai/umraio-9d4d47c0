@@ -6,15 +6,19 @@
  * MiniMax PCM (s16le / 24 kHz / mono) into a complete, playable OGG/Opus file
  * with no resampling, no FFmpeg, no child_process and no remote fetch.
  *
- * RUNTIME: libopus is embedded in the bundle as base64 (see
- * ./opus/opus-wasm.base64.ts) and compiled once per isolate. Nothing is fetched
- * and nothing is read from disk.
+ * RUNTIME: libopus ships as a bundled Wasm module (./opus/opus.wasm), which is
+ * what Cloudflare Workers require — they refuse runtime compilation. The base64
+ * copy is the fallback for Node/vitest. Nothing is fetched or read from disk.
  *
  * FAILURE CONTRACT: this module NEVER throws to callers. Every failure returns
  * `{ ok: false }` so the voice reply can fall back to the existing MP3 path.
  */
 
 import { OPUS_WASM_BASE64 } from "./opus/opus-wasm.base64";
+// Bundled Wasm module: Cloudflare compiles this at deploy time (workerd forbids
+// runtime WebAssembly.compile). The binary is import-free (WASI/emscripten stubs
+// merged in) so the bundler has nothing to resolve.
+import bundledOpusModule from "./opus/opus.wasm";
 
 /** Opus operates on 20 ms frames; at 24 kHz that is exactly 480 samples. */
 export const OPUS_FRAME_SAMPLES = 480;
@@ -63,6 +67,8 @@ let modulePromise: Promise<WebAssembly.Module | null> | null = null;
 async function loadOpusModule(): Promise<WebAssembly.Module | null> {
   // The binary is embedded in the bundle as base64 — never fetched, never read
   // from disk. Compilation is attempted once and cached for the isolate.
+  const bundled = bundledOpusModule as unknown;
+  if (bundled instanceof WebAssembly.Module) return bundled;
   try {
     return await WebAssembly.compile(base64ToBytes(OPUS_WASM_BASE64));
   } catch {
