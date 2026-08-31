@@ -150,6 +150,59 @@ export type Database = {
           },
         ]
       }
+      agency_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          agency_id: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          agency_id: string
+          created_at?: string
+          email: string
+          expires_at: string
+          id?: string
+          invited_by?: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          agency_id?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agency_invitations_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agency_settings: {
         Row: {
           agency_id: string
@@ -1978,8 +2031,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_agency_invitation: {
+        Args: { p_token_hash: string }
+        Returns: Json
+      }
       claim_followup_job: {
         Args: { p_agency_id: string; p_job_id: string; p_stale_after?: string }
+        Returns: boolean
+      }
+      create_agency_invitation: {
+        Args: {
+          p_email: string
+          p_expires_at: string
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_token_hash: string
+        }
+        Returns: string
+      }
+      remove_agency_member: { Args: { p_user_id: string }; Returns: boolean }
+      revoke_agency_invitation: { Args: { p_id: string }; Returns: boolean }
+      set_agency_member_role: {
+        Args: {
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_user_id: string
+        }
         Returns: boolean
       }
       touch_presence: { Args: never; Returns: string }
