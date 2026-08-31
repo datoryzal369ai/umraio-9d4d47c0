@@ -19,3 +19,4 @@ declare module "*.wasm" {
     maxBytes: number,
   ): number;
 }
+
