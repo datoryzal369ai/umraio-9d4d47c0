@@ -142,7 +142,7 @@ describe("generic invalid/expired response", () => {
   });
 
   it("leaves the state machine unchanged", () => {
-    expect(canTransition("ready", "accepted")).toBe(true);
+    expect(canTransition("viewed", "accepted")).toBe(true);
     expect(canTransition("cancelled", "accepted")).toBe(false);
     expect(canTransition("sent", "viewed")).toBe(true);
   });
