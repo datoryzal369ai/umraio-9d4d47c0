@@ -29,9 +29,7 @@ function compiledWasm(): Plugin {
     enforce: "pre",
     resolveId(id) {
       if (!id.endsWith(".wasm?module")) return null;
-      // Keep `?module` so nitro's wasm plugin emits a CompiledWasm ESM import
-      // (never a runtime `WebAssembly.compile` of inline bytes).
-      return { id: "./opus.wasm?module", external: true };
+      return { id: "./opus.wasm", external: true };
     },
     writeBundle(options) {
       const dir = options.dir ?? (options.file ? dirname(options.file) : undefined);
