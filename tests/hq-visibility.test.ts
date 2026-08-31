@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgencySummaries,
   buildAgencyUsers,
+  buildPlatformStats,
   isUuid,
+  lastActivityByAgency,
+  maskSessionKey,
   sortRoles,
+  HQ_SECURITY_CHECKS,
 } from "@/lib/hq/hq.core";
 
 const agencies = [
@@ -67,5 +71,66 @@ describe("HQ agency selector validation", () => {
     expect(isUuid("a1")).toBe(false);
     expect(isUuid(null)).toBe(false);
     expect(isUuid("11111111-2222-3333-4444-555555555555")).toBe(true);
+  });
+});
+
+describe("Founder HQ control center", () => {
+  it("masks session keys and never reveals the full value", () => {
+    expect(maskSessionKey(null)).toBe("—");
+    expect(maskSessionKey("abc")).toBe("••••");
+    const masked = maskSessionKey("session-key-1234567890");
+    expect(masked).toBe("sess••••90");
+    expect(masked).not.toContain("session-key-1234567890");
+  });
+
+  it("derives platform stats from existing rows only", () => {
+    const now = Date.parse("2026-09-01T00:00:00Z");
+    const recent = new Date(now - 2 * 24 * 3600 * 1000).toISOString();
+    const summaries = buildAgencySummaries(agencies, profiles, roles);
+    const stats = buildPlatformStats(
+      summaries,
+      [{ ...profiles[0]!, last_seen_at: recent }, profiles[1]!, profiles[2]!],
+      [
+        {
+          id: "e1",
+          user_id: "u1",
+          agency_id: "a1",
+          event_type: "login",
+          session_key: "k",
+          occurred_at: recent,
+        },
+      ],
+      now,
+    );
+    expect(stats.totalAgencies).toBe(2);
+    expect(stats.totalUsers).toBe(3);
+    expect(stats.trialAgencies).toBe(1);
+    expect(stats.activeSubscriptions).toBe(1);
+    expect(stats.activeAgencies).toBe(1);
+    expect(stats.recentlyActiveUsers).toBe(1);
+    expect(stats.recentLogins).toBe(1);
+  });
+
+  it("resolves last activity per agency", () => {
+    const map = lastActivityByAgency(profiles, [
+      {
+        id: "e1",
+        user_id: "u3",
+        agency_id: "a2",
+        event_type: "login",
+        session_key: null,
+        occurred_at: "2026-08-30T00:00:00Z",
+      },
+    ]);
+    expect(map["a1"]).toBe("2026-08-31T10:00:00Z");
+    expect(map["a2"]).toBe("2026-08-30T00:00:00Z");
+  });
+
+  it("exposes only audited, non-secret security checks", () => {
+    expect(HQ_SECURITY_CHECKS.length).toBeGreaterThan(0);
+    for (const c of HQ_SECURITY_CHECKS) {
+      expect(c.status).toBe("audited");
+      expect(JSON.stringify(c)).not.toMatch(/key=|secret|token=/i);
+    }
   });
 });
