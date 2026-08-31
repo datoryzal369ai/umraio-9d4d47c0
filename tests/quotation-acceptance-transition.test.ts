@@ -144,7 +144,7 @@ describe("acceptance → checkout transition", () => {
     expect(out.quotation?.depositMyr).toBeNull();
     expect(out.quotation?.totalMyr).toBe(29400);
     const webhook = readFileSync("src/routes/api/public/whatsapp.ts", "utf8");
-    expect(webhook).toContain("resolveDepositMyr");
+    expect(webhook).toContain("deposit-checkout.server");
   });
 
   it("guard kept: naming a different package in the acceptance turn still refuses", async () => {
