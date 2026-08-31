@@ -60,17 +60,51 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
 
-async function loadOpusExports(): Promise<OpusExports | null> {
+/** libopus needs a handful of WASI/env stubs; none of them are ever called. */
+const OPUS_IMPORTS: WebAssembly.Imports = {
+  wasi_snapshot_preview1: {
+    fd_seek: () => 0,
+    fd_write: () => 0,
+    fd_close: () => 0,
+    proc_exit: () => {},
+  },
+  env: { emscripten_notify_memory_growth: () => {} },
+};
+
+/**
+ * Preferred path: a build-time compiled Wasm Worker module. `?module` makes the
+ * bundler emit the binary as a real Cloudflare CompiledWasm import, so workerd
+ * hands us an already-compiled `WebAssembly.Module` — no runtime compilation,
+ * which the embedder forbids. Kept as a dynamic import so it stays lazy and so
+ * Node/vitest (where the query suffix does not resolve) simply falls through.
+ */
+async function loadCompiledModule(): Promise<WebAssembly.Module | null> {
   try {
-    const { instance } = await WebAssembly.instantiate(base64ToBytes(OPUS_WASM_BASE64), {
-      wasi_snapshot_preview1: {
-        fd_seek: () => 0,
-        fd_write: () => 0,
-        fd_close: () => 0,
-        proc_exit: () => {},
-      },
-      env: { emscripten_notify_memory_growth: () => {} },
-    });
+    const mod = (await import("./opus/opus.wasm?module")) as unknown as {
+      default?: WebAssembly.Module;
+    };
+    const compiled = mod?.default ?? (mod as unknown as WebAssembly.Module);
+    return compiled instanceof WebAssembly.Module ? compiled : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadOpusExports(): Promise<OpusExports | null> {
+  const compiled = await loadCompiledModule();
+  if (compiled) {
+    try {
+      const instance = await WebAssembly.instantiate(compiled, OPUS_IMPORTS);
+      return instance.exports as unknown as OpusExports;
+    } catch {
+      /* fall through to the byte-compiled path below */
+    }
+  }
+  try {
+    const { instance } = await WebAssembly.instantiate(
+      base64ToBytes(OPUS_WASM_BASE64),
+      OPUS_IMPORTS,
+    );
     return instance.exports as unknown as OpusExports;
   } catch {
     return null;
@@ -81,6 +115,7 @@ function opusExports(): Promise<OpusExports | null> {
   if (!exportsPromise) exportsPromise = loadOpusExports();
   return exportsPromise;
 }
+
 
 /** Ogg CRC32: polynomial 0x04c11db7, no reflection, zero init, zero final xor. */
 const OGG_CRC_TABLE = (() => {
