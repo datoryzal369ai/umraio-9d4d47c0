@@ -21,6 +21,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedCrmRouteImport } from './routes/_authenticated/crm'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedHqRouteImport } from './routes/_authenticated/hq'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedSalesEliteRouteImport } from './routes/_authenticated/sales-elite'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
@@ -111,6 +112,11 @@ const AuthenticatedCrmRoute = AuthenticatedCrmRouteImport.update({
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHqRoute = AuthenticatedHqRouteImport.update({
+  id: '/hq',
+  path: '/hq',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
@@ -309,6 +315,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/hq': typeof AuthenticatedHqRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/sales-elite': typeof AuthenticatedSalesEliteRoute
   '/tasks': typeof AuthenticatedTasksRoute
@@ -353,6 +360,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/hq': typeof AuthenticatedHqRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/sales-elite': typeof AuthenticatedSalesEliteRoute
   '/tasks': typeof AuthenticatedTasksRoute
@@ -400,6 +408,7 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/crm': typeof AuthenticatedCrmRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/hq': typeof AuthenticatedHqRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/sales-elite': typeof AuthenticatedSalesEliteRoute
   '/_authenticated/tasks': typeof AuthenticatedTasksRoute
@@ -447,6 +456,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/crm'
     | '/dashboard'
+    | '/hq'
     | '/profile'
     | '/sales-elite'
     | '/tasks'
@@ -491,6 +501,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/crm'
     | '/dashboard'
+    | '/hq'
     | '/profile'
     | '/sales-elite'
     | '/tasks'
@@ -537,6 +548,7 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/crm'
     | '/_authenticated/dashboard'
+    | '/_authenticated/hq'
     | '/_authenticated/profile'
     | '/_authenticated/sales-elite'
     | '/_authenticated/tasks'
@@ -676,6 +688,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/hq': {
+      id: '/_authenticated/hq'
+      path: '/hq'
+      fullPath: '/hq'
+      preLoaderRoute: typeof AuthenticatedHqRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/profile': {
@@ -942,6 +961,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedCrmRoute: typeof AuthenticatedCrmRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedHqRoute: typeof AuthenticatedHqRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedSalesEliteRoute: typeof AuthenticatedSalesEliteRoute
   AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
@@ -961,6 +981,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedCrmRoute: AuthenticatedCrmRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedHqRoute: AuthenticatedHqRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedSalesEliteRoute: AuthenticatedSalesEliteRoute,
   AuthenticatedTasksRoute: AuthenticatedTasksRoute,
