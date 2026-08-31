@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 /**
  * PHASE B-3.1 — follow-up retry + atomic claim.
@@ -8,22 +8,25 @@ import { beforeEach, describe, expect, mock, test } from "vitest";
  * same job, and tenant isolation holds.
  */
 
-let sendOk = true;
-const sent: Array<{ to: string; body: string }> = [];
+const hoisted = vi.hoisted(() => ({
+  sendOk: { value: true },
+  sent: [] as Array<{ to: string; body: string }>,
+}));
+const sent = hoisted.sent;
 
-mock.module("../src/lib/whatsapp-send.server", () => ({
+vi.mock("../src/lib/whatsapp-send.server", () => ({
   sendWhatsappText: async (_pid: string, _token: string, to: string, body: string) => {
-    if (!sendOk) return false;
-    sent.push({ to, body });
+    if (!hoisted.sendOk.value) return false;
+    hoisted.sent.push({ to, body });
     return true;
   },
 }));
-mock.module("../src/lib/billing/usage.server", () => ({
+vi.mock("../src/lib/billing/usage.server", () => ({
   QuotaError: class QuotaError extends Error {},
   assertQuota: async () => {},
   recordUsageEvent: async () => {},
 }));
-mock.module("../src/lib/quotations/quotations.server", () => ({
+vi.mock("../src/lib/quotations/quotations.server", () => ({
   logConversionEvent: async () => {},
 }));
 

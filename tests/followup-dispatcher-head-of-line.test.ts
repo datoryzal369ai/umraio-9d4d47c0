@@ -1,19 +1,22 @@
-import { beforeEach, describe, expect, mock, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const sent: Array<{ to: string; body: string }> = [];
+const hoisted = vi.hoisted(() => ({
+  sent: [] as Array<{ to: string; body: string }>,
+}));
+const sent = hoisted.sent;
 
-mock.module("../src/lib/whatsapp-send.server", () => ({
+vi.mock("../src/lib/whatsapp-send.server", () => ({
   sendWhatsappText: async (_pid: string, _token: string, to: string, body: string) => {
-    sent.push({ to, body });
+    hoisted.sent.push({ to, body });
     return true;
   },
 }));
-mock.module("../src/lib/billing/usage.server", () => ({
+vi.mock("../src/lib/billing/usage.server", () => ({
   QuotaError: class QuotaError extends Error {},
   assertQuota: async () => {},
   recordUsageEvent: async () => {},
 }));
-mock.module("../src/lib/quotations/quotations.server", () => ({
+vi.mock("../src/lib/quotations/quotations.server", () => ({
   logConversionEvent: async () => {},
 }));
 
