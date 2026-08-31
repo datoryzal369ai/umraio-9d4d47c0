@@ -33,8 +33,10 @@ function compiledWasm(): Plugin {
     },
     writeBundle(options) {
       const dir = options.dir ?? (options.file ? dirname(options.file) : undefined);
-      // Server graph only — the binary must never land in the client bundle.
-      if (!dir || dir.includes("client") || !existsSync(OPUS_WASM)) return;
+      // Intermediate server graph only: the nitro pass resolves `./opus.wasm`
+      // next to the emitted SSR chunk. Never the client bundle, never the final
+      // worker output (nitro emits its own hashed copy there).
+      if (!dir || !dir.includes(".nitro") || !existsSync(OPUS_WASM)) return;
       const walk = (target: string) => {
         for (const entry of readdirSync(target)) {
           const full = join(target, entry);
