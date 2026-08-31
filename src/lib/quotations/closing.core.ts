@@ -92,15 +92,33 @@ const REJECT_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Only a clear, unambiguous acceptance counts. A bare "boleh" is NOT enough —
- * it is used constantly in Malay as "sure/ok, go on" mid-conversation.
+ * Softer affirmations that only count when a quotation is already on the table
+ * (it was just presented to the customer). Outside that context a bare "ya" or
+ * "boleh" is ordinary conversational filler and must NOT close anything.
  */
-export function detectQuotationAcceptance(text: string | null | undefined): boolean {
+const CONTEXTUAL_ACCEPT_PATTERNS: RegExp[] = [
+  /^\s*(ya|yes|yup|baik|boleh|ok(ay)?|okey)\s*[.!]*\s*$/i,
+  /^\s*(ya|ok(ay)?|baik|boleh)\s*[,.]?\s*(saya\s+)?(setuju|teruskan|nak|proceed|go)\b/i,
+  /\bsaya\s+(nak|mahu)\s*(pakej\s+(ini|ni))?\s*$/i,
+  /\bsaya\s+(pilih|ambil)\s+(yang\s+)?(ini|ni|itu)\b/i,
+  /\bsaya\s+(nak|mahu)\s+pakej\s+(ini|ni)\b/i,
+];
+
+/**
+ * Only a clear, unambiguous acceptance counts. A bare "boleh" is NOT enough —
+ * it is used constantly in Malay as "sure/ok, go on" mid-conversation — unless
+ * `quotationInContext` says a quotation was just presented.
+ */
+export function detectQuotationAcceptance(
+  text: string | null | undefined,
+  options: { quotationInContext?: boolean } = {},
+): boolean {
   if (!text) return false;
   const t = text.trim();
   if (!t) return false;
   if (REJECT_PATTERNS.some((re) => re.test(t))) return false;
-  return ACCEPT_PATTERNS.some((re) => re.test(t));
+  if (ACCEPT_PATTERNS.some((re) => re.test(t))) return true;
+  return Boolean(options.quotationInContext) && CONTEXTUAL_ACCEPT_PATTERNS.some((re) => re.test(t));
 }
 
 /* ------------------------------------------------------------------ */
