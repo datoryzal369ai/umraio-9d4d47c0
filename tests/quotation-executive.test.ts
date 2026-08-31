@@ -68,7 +68,7 @@ describe("AI Quotation Executive — in-chat acceptance", () => {
 
     const fs = require("node:fs") as typeof import("node:fs");
     const webhook = fs.readFileSync("src/routes/api/public/whatsapp.ts", "utf8");
-    expect(webhook).toContain("detectQuotationAcceptance(latestBody)");
+    expect(webhook).toContain("detectQuotationAcceptance(latestBody, { quotationInContext })");
     expect(webhook).toContain("acceptQuotationInChat");
     const acceptance = fs.readFileSync("src/lib/quotations/acceptance.server.ts", "utf8");
     expect(acceptance).toContain('.update({ status: "accepted", accepted_at: acceptedAt })');
