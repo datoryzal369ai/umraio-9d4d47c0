@@ -29,11 +29,14 @@ function compiledWasm(): Plugin {
     enforce: "pre",
     resolveId(id) {
       if (!id.endsWith(".wasm?module")) return null;
-      return { id: "./opus.wasm", external: true };
+      // Keep `?module` so nitro's wasm plugin emits a CompiledWasm ESM import
+      // (never a runtime `WebAssembly.compile` of inline bytes).
+      return { id: "./opus.wasm?module", external: true };
     },
     writeBundle(options) {
       const dir = options.dir ?? (options.file ? dirname(options.file) : undefined);
-      if (!dir || !existsSync(OPUS_WASM)) return;
+      // Server graph only — the binary must never land in the client bundle.
+      if (!dir || dir.includes("client") || !existsSync(OPUS_WASM)) return;
       const walk = (target: string) => {
         for (const entry of readdirSync(target)) {
           const full = join(target, entry);
