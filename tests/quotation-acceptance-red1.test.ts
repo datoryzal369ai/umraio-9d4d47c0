@@ -201,7 +201,7 @@ describe("RED-1 — WhatsApp quotation acceptance", () => {
     const fs = require("node:fs") as typeof import("node:fs");
     const webhook = fs.readFileSync("src/routes/api/public/whatsapp.ts", "utf8");
     expect(webhook).toContain("acceptQuotationInChat");
-    expect(webhook).toContain("detectQuotationAcceptance(latestBody)");
+    expect(webhook).toContain("detectQuotationAcceptance(latestBody, { quotationInContext })");
     expect(webhook).not.toContain('.in("status", ["sent", "viewed"])');
   });
 });

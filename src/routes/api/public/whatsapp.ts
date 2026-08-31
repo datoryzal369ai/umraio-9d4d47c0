@@ -707,7 +707,24 @@ async function processInboundMessage(
               const { detectQuotationAcceptance, quotationAcceptedReply } = await import(
                 "@/lib/quotations/closing.core"
               );
-              if (detectQuotationAcceptance(latestBody)) {
+              // A quotation the customer can accept is already on the table
+              // when the last AI turn presented one (card or QUOTATION CHECK).
+              const { data: lastAiRows } = await supabaseAdmin
+                .from("messages")
+                .select("body")
+                .eq("agency_id", agencyId)
+                .eq("conversation_id", conversationId)
+                .eq("sender", "ai")
+                .order("created_at", { ascending: false })
+                .limit(3);
+              const lastAiBodies = ((lastAiRows ?? []) as Array<{ body?: string | null }>).map(
+                (m) => m.body ?? "",
+              );
+              const mismatchDisclosed = lastAiBodies.some((b) => /QUOTATION CHECK/i.test(b));
+              const quotationInContext =
+                mismatchDisclosed ||
+                lastAiBodies.some((b) => /(Q-\d{4}-\d{3,}|Rujukan|Jumlah:)/i.test(b));
+              if (detectQuotationAcceptance(latestBody, { quotationInContext })) {
                 // RED-1 — scope by tenant + lead (conversation_id optional) and
                 // include every still-live status, including deposit_pending.
                 const { acceptQuotationInChat } = await import(
@@ -740,6 +757,8 @@ async function processInboundMessage(
                   leadId,
                   conversationId,
                   customerMessages,
+                  acceptanceMessage: latestBody,
+                  mismatchDisclosed,
                   catalogueNames: ((catalogue ?? []) as Array<{ name?: string | null }>).map(
                     (p) => p.name ?? "",
                   ),
