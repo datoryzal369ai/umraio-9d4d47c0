@@ -15,10 +15,6 @@
  */
 
 import { OPUS_WASM_BASE64 } from "./opus/opus-wasm.base64";
-// Bundled Wasm module: Cloudflare compiles this at deploy time (workerd forbids
-// runtime WebAssembly.compile). The binary is import-free (WASI/emscripten stubs
-// merged in) so the bundler has nothing to resolve.
-import * as bundledOpus from "./opus/opus.wasm";
 
 /** Opus operates on 20 ms frames; at 24 kHz that is exactly 480 samples. */
 export const OPUS_FRAME_SAMPLES = 480;
@@ -65,12 +61,6 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 let exportsPromise: Promise<OpusExports | null> | null = null;
 
 async function loadOpusExports(): Promise<OpusExports | null> {
-  // Preferred: the bundler instantiated the import-free Wasm module for us.
-  const bundled = bundledOpus as unknown as Partial<OpusExports>;
-  if (typeof bundled?.opus_encode === "function" && bundled.memory) {
-    return bundled as OpusExports;
-  }
-  // Fallback for Node/vitest, where the .wasm module is not pre-instantiated.
   try {
     const { instance } = await WebAssembly.instantiate(base64ToBytes(OPUS_WASM_BASE64), {});
     return instance.exports as unknown as OpusExports;
