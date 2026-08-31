@@ -1,9 +1,12 @@
 import { it } from "vitest";
+import { OPUS_WASM_BASE64 } from "@/lib/voice/opus/opus-wasm.base64";
 it("probe", async () => {
+  console.log("B64LEN", OPUS_WASM_BASE64?.length);
+  const bin = atob(OPUS_WASM_BASE64);
+  const b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
   try {
-    const m = await import("@/lib/voice/opus/opus.wasm?module");
-    console.log("IMPORT OK", typeof m, Object.keys(m as object), typeof (m as any).default);
-  } catch (e) { console.log("IMPORT THROW", String(e)); }
-  const { encodePcmToOggOpus } = await import("@/lib/voice/opus-encode.server");
-  console.log("RESULT", JSON.stringify(await encodePcmToOggOpus(new Uint8Array(24000))));
+    const { instance } = await WebAssembly.instantiate(b, {});
+    console.log("INST OK", typeof (instance.exports as any).opus_encode);
+  } catch (e) { console.log("INST THROW", String(e)); }
 });
