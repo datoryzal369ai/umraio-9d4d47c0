@@ -62,7 +62,15 @@ let exportsPromise: Promise<OpusExports | null> | null = null;
 
 async function loadOpusExports(): Promise<OpusExports | null> {
   try {
-    const { instance } = await WebAssembly.instantiate(base64ToBytes(OPUS_WASM_BASE64), {});
+    const { instance } = await WebAssembly.instantiate(base64ToBytes(OPUS_WASM_BASE64), {
+      wasi_snapshot_preview1: {
+        fd_seek: () => 0,
+        fd_write: () => 0,
+        fd_close: () => 0,
+        proc_exit: () => {},
+      },
+      env: { emscripten_notify_memory_growth: () => {} },
+    });
     return instance.exports as unknown as OpusExports;
   } catch {
     return null;
