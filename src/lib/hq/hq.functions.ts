@@ -5,9 +5,15 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   buildAgencySummaries,
   buildAgencyUsers,
+  buildPlatformStats,
   isUuid,
+  lastActivityByAgency,
+  maskSessionKey,
+  HQ_SECURITY_CHECKS,
   type HqAgencyRow,
   type HqEntitlementRow,
+  type HqActivityRow,
+  type HqLoginEventRow,
   type HqProfileRow,
   type HqRoleRow,
 } from "./hq.core";
@@ -104,4 +110,94 @@ export const getHqAgencyDetail = createServerFn({ method: "POST" })
     }));
 
     return { users, activity };
+  });
+
+/**
+ * Founder HQ Control Center — platform-wide read-only snapshot.
+ * Platform owner only; authorization is server-side and never derived
+ * from client input.
+ */
+export const getHqPlatform = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    await assertPlatformOwner(supabase as never, userId);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const [agenciesRes, profilesRes, rolesRes, entRes, loginsRes, activityRes] =
+      await Promise.all([
+        supabaseAdmin
+          .from("agencies")
+          .select("id, name, plan, created_at")
+          .order("created_at", { ascending: false })
+          .limit(500),
+        supabaseAdmin
+          .from("profiles")
+          .select("id, agency_id, full_name, email, last_seen_at")
+          .limit(2000),
+        supabaseAdmin.from("user_roles").select("user_id, agency_id, role").limit(4000),
+        supabaseAdmin
+          .from("agency_entitlements")
+          .select("agency_id, effective_plan, source")
+          .limit(500),
+        supabaseAdmin
+          .from("login_events")
+          .select("id, user_id, agency_id, event_type, session_key, occurred_at")
+          .order("occurred_at", { ascending: false })
+          .limit(200),
+        supabaseAdmin
+          .from("activity_log")
+          .select("id, agency_id, actor, actor_user_id, action, entity, entity_id, created_at")
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ]);
+
+    const profiles = (profilesRes.data ?? []) as HqProfileRow[];
+    const roles = (rolesRes.data ?? []) as HqRoleRow[];
+    const logins = (loginsRes.data ?? []) as HqLoginEventRow[];
+
+    const agencies = buildAgencySummaries(
+      (agenciesRes.data ?? []) as HqAgencyRow[],
+      profiles,
+      roles,
+      (entRes.data ?? []) as HqEntitlementRow[],
+    );
+
+    const agencyNameById = new Map(agencies.map((a) => [a.id, a.name]));
+    const lastActivity = lastActivityByAgency(profiles, logins);
+    const users = buildAgencyUsers(profiles, roles).map((u) => {
+      const agencyId = profiles.find((p) => p.id === u.id)?.agency_id ?? null;
+      return {
+        ...u,
+        agencyId,
+        agencyName: agencyId ? (agencyNameById.get(agencyId) ?? "—") : "—",
+      };
+    });
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    return {
+      stats: buildPlatformStats(agencies, profiles, logins),
+      agencies: agencies.map((a) => ({ ...a, lastActivityAt: lastActivity[a.id] ?? null })),
+      users,
+      logins: logins.map((e) => ({
+        id: e.id,
+        userName: userById.get(e.user_id)?.name ?? "(unknown user)",
+        userEmail: userById.get(e.user_id)?.email ?? null,
+        agencyName: e.agency_id ? (agencyNameById.get(e.agency_id) ?? "—") : "—",
+        eventType: e.event_type,
+        sessionKey: maskSessionKey(e.session_key),
+        occurredAt: e.occurred_at,
+      })),
+      activity: ((activityRes.data ?? []) as HqActivityRow[]).map((a) => ({
+        id: a.id,
+        createdAt: a.created_at,
+        userName: a.actor_user_id ? (userById.get(a.actor_user_id)?.name ?? a.actor) : a.actor,
+        agencyName: agencyNameById.get(a.agency_id) ?? "—",
+        action: a.action,
+        entity: a.entity,
+        entityId: a.entity_id,
+      })),
+      security: HQ_SECURITY_CHECKS,
+    };
   });
