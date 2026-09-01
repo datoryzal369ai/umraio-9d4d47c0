@@ -530,6 +530,66 @@ export type Database = {
           },
         ]
       }
+      appointments: {
+        Row: {
+          agency_id: string
+          created_at: string
+          created_by: string | null
+          end_at: string
+          id: string
+          lead_id: string | null
+          notes: string | null
+          start_at: string
+          status: string
+          timezone: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id?: string
+          created_at?: string
+          created_by?: string | null
+          end_at: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          start_at: string
+          status?: string
+          timezone?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          created_at?: string
+          created_by?: string | null
+          end_at?: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          start_at?: string
+          status?: string
+          timezone?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bookings: {
         Row: {
           agency_id: string
