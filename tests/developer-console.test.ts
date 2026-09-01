@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -86,7 +88,7 @@ describe("developer console — payload safety", () => {
 
 describe("developer console — authorization posture", () => {
   it("developer access is independent of agency and platform_owner roles", async () => {
-    const source = await Bun.file("src/lib/developer/developer.functions.ts").text();
+    const source = readFileSync("src/lib/developer/developer.functions.ts", "utf8");
     expect(source).toContain("requireSupabaseAuth");
     expect(source).toContain("developer_access");
     expect(source).toContain("Forbidden: developer access required");
@@ -96,7 +98,7 @@ describe("developer console — authorization posture", () => {
   });
 
   it("console reads the allow-list through the caller's RLS-scoped client", async () => {
-    const source = await Bun.file("src/lib/developer/developer.functions.ts").text();
+    const source = readFileSync("src/lib/developer/developer.functions.ts", "utf8");
     const assertBlock = source.slice(
       source.indexOf("async function assertDeveloper"),
       source.indexOf("function envRead"),
@@ -106,7 +108,7 @@ describe("developer console — authorization posture", () => {
   });
 
   it("Founder HQ modules are untouched by the developer layer", async () => {
-    const hq = await Bun.file("src/lib/hq/hq.functions.ts").text();
+    const hq = readFileSync("src/lib/hq/hq.functions.ts", "utf8");
     expect(hq).not.toContain("developer_access");
   });
 });
