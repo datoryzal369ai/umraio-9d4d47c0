@@ -163,7 +163,7 @@ func (s *Server) handleOffer(w http.ResponseWriter, r *http.Request) {
 		_ = sess.Advance(session.StateFailed, "negotiation_failed", s.Now())
 		s.emit(callback.EventMediaFailed, sess, "negotiation_failed")
 		s.Registry.Remove(sess.CallID)
-		s.Logger.Warn("negotiation failed", "error_class", errClass(err), "call_id", claims.CallID, "session_id", sess.ID)
+		s.Logger.Warn("negotiation failed", "error_class", errClass(err), "error_detail", safeErrorDetail(err), "call_id", claims.CallID, "session_id", sess.ID)
 		writeErr(w, http.StatusBadGateway, "negotiation_failed")
 		return
 	}
