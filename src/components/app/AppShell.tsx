@@ -19,6 +19,7 @@ import {
   Radar,
   Repeat,
   Settings,
+  ShieldCheck,
   Target,
   UserRound,
   Users,
@@ -34,6 +35,8 @@ import { LanguageSelector } from "@/components/app/LanguageSelector";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useMyRoles } from "@/hooks/useMyRoles";
+import { canSeeNavItem } from "@/lib/team/team.core";
 import { useCopy } from "@/lib/i18n/dict";
 import { shellCopy } from "@/lib/i18n/app/shell.i18n";
 import { cn } from "@/lib/utils";
@@ -54,7 +57,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const t = useCopy(shellCopy).shell;
 
-  const navItems = [
+  const { role, isPlatformOwner: founder } = useMyRoles();
+
+  const allNavItems = [
+    ...(founder ? [{ to: "/hq", label: "Founder HQ", icon: ShieldCheck } as const] : []),
     { to: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
     { to: "/executive", label: t.nav.executive, icon: BrainCircuit },
     { to: "/tasks", label: t.nav.tasks, icon: ListChecks },
@@ -67,6 +73,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/settings/agency", label: t.nav.settings, icon: Settings },
     { to: "/profile", label: t.nav.profile, icon: UserRound },
   ] as const;
+
+  // Presentation-level filtering only; the server remains authoritative.
+  const navItems = allNavItems.filter(
+    (item) => item.to === "/hq" || canSeeNavItem(role, item.to),
+  );
+
 
   /** Live AI workers, managed from the AI Executive Center. */
   const activeWorkers = [

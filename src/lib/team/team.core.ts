@@ -43,6 +43,67 @@ export function canSeeSettings(role: string | null | undefined): boolean {
   return role !== "agent";
 }
 
+/* ------------------------------------------------------------------ */
+/* Role-aware navigation (presentation only — the server and RLS remain */
+/* the sole authorization boundary).                                    */
+/* ------------------------------------------------------------------ */
+
+const AGENCY_ROLE_RANK: Record<string, number> = {
+  owner: 0,
+  admin: 1,
+  islamic_approver: 2,
+  agent: 3,
+};
+
+export function isPlatformOwner(roles: readonly string[] | null | undefined): boolean {
+  return Array.isArray(roles) && roles.includes("platform_owner");
+}
+
+/**
+ * Highest-privilege agency role held by the user. `platform_owner` is a
+ * platform capability, not an agency role, so it never appears here — the
+ * founder keeps their normal agency-owner capabilities.
+ */
+export function effectiveAgencyRole(roles: readonly string[] | null | undefined): string | null {
+  const candidates = (roles ?? []).filter((r) => r in AGENCY_ROLE_RANK);
+  if (candidates.length === 0) return null;
+  return candidates.sort((a, b) => AGENCY_ROLE_RANK[a]! - AGENCY_ROLE_RANK[b]!)[0]!;
+}
+
+/** Team management surface: owner and admin only. */
+export function canSeeTeam(role: string | null | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** Landing route after sign-in, derived from server-trusted roles only. */
+export function homeRouteForRoles(roles: readonly string[] | null | undefined): string {
+  if (isPlatformOwner(roles)) return "/hq";
+  return "/dashboard";
+}
+
+/** Operational surfaces every signed-in agency member may see. */
+const OPERATIONAL_NAV = new Set([
+  "/dashboard",
+  "/tasks",
+  "/crm",
+  "/leads",
+  "/conversations",
+  "/profile",
+]);
+
+/**
+ * UI-only nav filter. Agents get the operational workspace; management and
+ * billing surfaces stay with owner/admin. Islamic approvers keep the
+ * operational workspace plus their existing governance surface.
+ */
+export function canSeeNavItem(role: string | null | undefined, to: string): boolean {
+  if (OPERATIONAL_NAV.has(to)) return true;
+  if (role === "agent") return false;
+  if (role === "islamic_approver") return to.startsWith("/settings/governance") || to === "/knowledge";
+  return true;
+}
+
+
 export function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
