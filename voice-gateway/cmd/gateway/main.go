@@ -49,9 +49,18 @@ func main() {
 		})
 	}
 
+	// Single fixed UDP media port, bound to Fly's special services address.
+	// Fails closed: no wildcard fallback.
+	udpMux, udpConn, err := gwrtc.NewUDPMux(cfg.UDPMediaHost, cfg.UDPMediaPort)
+	if err != nil {
+		logger.Error("udp media listener failed to bind", "error_class", "udp_mux",
+			"host", cfg.UDPMediaHost, "port", cfg.UDPMediaPort, "error", err.Error())
+		os.Exit(1)
+	}
+	defer func() { _ = udpConn.Close() }()
+
 	engine, err := gwrtc.NewEngine(gwrtc.Config{
-		UDPPortMin:  cfg.UDPPortMin,
-		UDPPortMax:  cfg.UDPPortMax,
+		UDPMux:      udpMux,
 		NAT1To1IPs:  cfg.PublicIPs,
 		ICEServers:  iceServers,
 		NegotiateTO: cfg.NegotiateTimeout,
@@ -115,7 +124,8 @@ func main() {
 
 	go func() {
 		logger.Info("gateway listening", "addr", cfg.Addr, "build_version", cfg.BuildVersion,
-			"udp_min", cfg.UDPPortMin, "udp_max", cfg.UDPPortMax, "max_concurrent", cfg.MaxConcurrent)
+			"udp_media_host", cfg.UDPMediaHost, "udp_media_port", cfg.UDPMediaPort,
+			"max_concurrent", cfg.MaxConcurrent)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("http server stopped", "error_class", "http")
 			os.Exit(1)
@@ -131,5 +141,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
+	if err := udpMux.Close(); err != nil {
+		logger.Warn("udp mux close failed", "error_class", "udp_mux")
+	}
+	_ = udpConn.Close()
 	logger.Info("gateway stopped")
 }

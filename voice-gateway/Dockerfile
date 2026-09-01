@@ -20,6 +20,6 @@ COPY --from=build /out/gateway /gateway
 USER nonroot:nonroot
 
 EXPOSE 8080/tcp
-EXPOSE 40000-40100/udp
+EXPOSE 40000/udp
 
 ENTRYPOINT ["/gateway"]
