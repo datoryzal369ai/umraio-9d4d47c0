@@ -626,7 +626,11 @@ function systemPrompt(
     buildCurrentContextBlock({
       timezone: (ctx.agency as { timezone?: string | null } | null)?.timezone ?? null,
       businessHours: s?.business_hours ?? null,
+      extraLines: buildCalendarContextLines({
+        timezone: (ctx.agency as { timezone?: string | null } | null)?.timezone ?? null,
+      }),
     }),
+
 
     businessHoursLine(s),
 
