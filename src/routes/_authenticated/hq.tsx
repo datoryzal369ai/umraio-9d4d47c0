@@ -137,13 +137,13 @@ function HqPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="flex w-full flex-wrap justify-start gap-1">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="agencies">Agencies</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="logins">Login activity</TabsTrigger>
-            <TabsTrigger value="audit">Activity audit</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsList className="flex w-full flex-nowrap justify-start gap-2 overflow-x-auto px-1 py-1 sm:flex-wrap sm:gap-1 sm:overflow-visible">
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="overview">Overview</TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="agencies">Agencies</TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="users">Users</TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="logins">Login activity</TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="audit">Activity audit</TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="security">Security</TabsTrigger>
           </TabsList>
 
           {/* ── OVERVIEW ─────────────────────────────────────────────── */}
