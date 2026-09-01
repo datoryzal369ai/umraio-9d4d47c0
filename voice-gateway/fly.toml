@@ -1,0 +1,68 @@
+# UMRAIO Real-Time Voice Media Gateway — Fly.io configuration
+# PREPARED ONLY. Do not deploy. No production secrets are defined here.
+#
+# Before any deploy the founder must:
+#   1. fly apps create umraio-voice-gateway
+#   2. fly ips allocate-v4              (dedicated IPv4 is REQUIRED for UDP media)
+#   3. fly secrets set UMRAIO_GATEWAY_SECRET=... UMRAIO_BACKEND_URL=...
+#   4. fly deploy   <-- NOT YET AUTHORISED
+
+app = "umraio-voice-gateway"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  LISTEN_ADDR = ":8080"
+  UDP_PORT_MIN = "40000"
+  UDP_PORT_MAX = "40100"
+  MAX_CONCURRENT_CALLS = "25"
+  MAX_CALL_DURATION_S = "600"
+  MEDIA_NEGOTIATE_TIMEOUT_S = "10"
+  CALLBACK_TIMEOUT_S = "5"
+  CALLBACK_RETRY_MAX = "3"
+  LOG_LEVEL = "info"
+
+# Signalling (control plane -> gateway). HMAC-authenticated at the application
+# layer; keep the app private until authentication is validated end to end.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "10s"
+    method = "GET"
+    timeout = "2s"
+    path = "/health"
+
+# Real-time media. Requires a dedicated IPv4 address on this app.
+[[services]]
+  protocol = "udp"
+  internal_port = 40000
+
+  [[services.ports]]
+    start_port = 40000
+    end_port = 40100
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+[deploy]
+  strategy = "bluegreen"
+
+[restart]
+  policy = "on-failure"
+  max_retries = 5
