@@ -308,6 +308,45 @@ func errClass(err error) string {
 	return "error"
 }
 
+var (
+	reHexPairs  = regexp.MustCompile(`(?i)([0-9a-f]{2}:){3,}[0-9a-f]{2}`) // DTLS fingerprints
+	reIPv4      = regexp.MustCompile(`\b\d{1,3}(\.\d{1,3}){3}\b`)
+	reLongToken = regexp.MustCompile(`[A-Za-z0-9+/=_-]{12,}`) // ufrag, pwd, tokens, signatures
+	reNumber    = regexp.MustCompile(`\+?\d[\d\s-]{6,}\d`)  // phone-like sequences
+)
+
+// safeErrorDetail returns the underlying parser/validation reason from an
+// error with SDP lines, fingerprints, ICE credentials, IPs, tokens and
+// phone-like numbers stripped. It never emits raw SDP or credentials.
+func safeErrorDetail(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	// Drop the class prefix; errClass already carries it.
+	msg = strings.TrimPrefix(msg, errClass(err)+": ")
+	// Drop any SDP line (e.g. "a=...", "m=...") that may be embedded.
+	lines := strings.Split(msg, "\n")
+	keep := lines[:0]
+	for _, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if len(t) >= 2 && t[1] == '=' {
+			continue
+		}
+		keep = append(keep, ln)
+	}
+	msg = strings.Join(keep, " ")
+	msg = reHexPairs.ReplaceAllString(msg, "[redacted]")
+	msg = reIPv4.ReplaceAllString(msg, "[redacted-ip]")
+	msg = reLongToken.ReplaceAllString(msg, "[redacted]")
+	msg = reNumber.ReplaceAllString(msg, "[redacted-number]")
+	msg = strings.Join(strings.Fields(msg), " ")
+	if len(msg) > 160 {
+		msg = msg[:160]
+	}
+	return msg
+}
+
 func newID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
