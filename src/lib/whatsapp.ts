@@ -1,10 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
+import { disconnectWhatsappFn, saveWhatsappConfigFn } from "@/lib/whatsapp/config.functions";
 
 /**
- * SECURITY: `access_token` is never selected into the browser. The database
- * revokes column-level SELECT on it for the `authenticated` role; the client
- * only ever sees the `has_access_token` indicator.
+ * SECURITY: `access_token` is never selected into the browser, and the browser
+ * can no longer write it either. The database revokes every column-level
+ * privilege on it for the `authenticated` role; credential writes go through
+ * the authenticated server functions in `whatsapp/config.functions.ts`. The
+ * client only ever sees the `has_access_token` indicator.
  */
+
 export type WhatsappConfig = {
   id: string;
   agency_id: string;
