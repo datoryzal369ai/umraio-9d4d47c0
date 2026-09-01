@@ -63,6 +63,6 @@ primary_region = "sin"
 [deploy]
   strategy = "bluegreen"
 
-[restart]
+[[restart]]
   policy = "on-failure"
-  max_retries = 5
+  retries = 5
