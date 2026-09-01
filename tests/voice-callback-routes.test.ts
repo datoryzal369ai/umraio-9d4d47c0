@@ -16,15 +16,20 @@ const ROOT = join(__dirname, "..");
 
 describe("P-1A callback route relocation", () => {
   it("exposes the events handler at /api/public/voice/events", () => {
-    expect((EventsRoute as unknown as { fullPath: string }).fullPath).toBe(
-      "/api/public/voice/events",
+    const source = readFileSync(
+      join(ROOT, "src/routes/api/public/voice/events.ts"),
+      "utf8",
     );
+    expect(source).toContain('createFileRoute("/api/public/voice/events")');
+    const tree = readFileSync(join(ROOT, "src/routeTree.gen.ts"), "utf8");
+    expect(tree).toContain("'/api/public/voice/events'");
   });
 
   it("exposes the turn handler at /api/public/voice/turn", () => {
-    expect((TurnRoute as unknown as { fullPath: string }).fullPath).toBe(
-      "/api/public/voice/turn",
-    );
+    const source = readFileSync(join(ROOT, "src/routes/api/public/voice/turn.ts"), "utf8");
+    expect(source).toContain('createFileRoute("/api/public/voice/turn")');
+    const tree = readFileSync(join(ROOT, "src/routeTree.gen.ts"), "utf8");
+    expect(tree).toContain("'/api/public/voice/turn'");
   });
 
   it("leaves no second processing path at the old internal routes", () => {
