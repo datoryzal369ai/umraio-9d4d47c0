@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	ErrNotOgg      = errors.New("media: not an ogg stream")
+	ErrNotOgg       = errors.New("media: not an ogg stream")
 	ErrOggTruncated = errors.New("media: truncated ogg page")
 )
 
