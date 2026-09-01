@@ -1,4 +1,4 @@
-＃ UMRAIO Real-Time Voice Media Gateway — Fly.io configuration
+# UMRAIO Real-Time Voice Media Gateway — Fly.io configuration
 # PREPARED ONLY. Do not deploy. No production secrets are defined here.
 #
 # Before any deploy the founder must:
