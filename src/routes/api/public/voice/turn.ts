@@ -14,7 +14,7 @@ import { parseVoiceTurnRequest, MAX_TURN_AUDIO_BASE64 } from "@/lib/calls/voice-
 /** Body ceiling: one base64 utterance plus envelope. */
 const MAX_BODY_BYTES = MAX_TURN_AUDIO_BASE64 + 4 * 1024;
 
-export const Route = createFileRoute("/api/internal/voice/turn")({
+export const Route = createFileRoute("/api/public/voice/turn")({
   server: {
     handlers: {
       POST: async ({ request }) => {

@@ -51,14 +51,14 @@ import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_aut
 import { Route as ApiPublicMeetExecutiveRouteImport } from './routes/api/public/meet-executive'
 import { Route as ApiPublicMeetRequestRouteImport } from './routes/api/public/meet-request'
 import { Route as ApiPublicWhatsappRouteImport } from './routes/api/public/whatsapp'
-import { Route as ApiInternalVoiceEventsRouteImport } from './routes/api/internal/voice/events'
-import { Route as ApiInternalVoiceTurnRouteImport } from './routes/api/internal/voice/turn'
 import { Route as ApiPublicHealthBuildRouteImport } from './routes/api/public/health/build'
 import { Route as ApiPublicHealthOpusProbeRouteImport } from './routes/api/public/health/opus-probe'
 import { Route as ApiPublicHooksExecutiveAutonomyRouteImport } from './routes/api/public/hooks/executive-autonomy'
 import { Route as ApiPublicHooksTaskEngineRouteImport } from './routes/api/public/hooks/task-engine'
 import { Route as ApiPublicPaymentsStripeWebhookRouteImport } from './routes/api/public/payments/stripe-webhook'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
+import { Route as ApiPublicVoiceEventsRouteImport } from './routes/api/public/voice/events'
+import { Route as ApiPublicVoiceTurnRouteImport } from './routes/api/public/voice/turn'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -287,16 +287,6 @@ const ApiPublicWhatsappRoute = ApiPublicWhatsappRouteImport.update({
   path: '/api/public/whatsapp',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiInternalVoiceEventsRoute = ApiInternalVoiceEventsRouteImport.update({
-  id: '/api/internal/voice/events',
-  path: '/api/internal/voice/events',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiInternalVoiceTurnRoute = ApiInternalVoiceTurnRouteImport.update({
-  id: '/api/internal/voice/turn',
-  path: '/api/internal/voice/turn',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiPublicHealthBuildRoute = ApiPublicHealthBuildRouteImport.update({
   id: '/api/public/health/build',
   path: '/api/public/health/build',
@@ -332,6 +322,16 @@ const ApiPublicPaymentsWebhookRoute =
     path: '/api/public/payments/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicVoiceEventsRoute = ApiPublicVoiceEventsRouteImport.update({
+  id: '/api/public/voice/events',
+  path: '/api/public/voice/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicVoiceTurnRoute = ApiPublicVoiceTurnRouteImport.update({
+  id: '/api/public/voice/turn',
+  path: '/api/public/voice/turn',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -375,14 +375,14 @@ export interface FileRoutesByFullPath {
   '/knowledge/': typeof AuthenticatedKnowledgeIndexRoute
   '/leads/': typeof AuthenticatedLeadsIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
-  '/api/internal/voice/events': typeof ApiInternalVoiceEventsRoute
-  '/api/internal/voice/turn': typeof ApiInternalVoiceTurnRoute
   '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
+  '/api/public/voice/turn': typeof ApiPublicVoiceTurnRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -425,14 +425,14 @@ export interface FileRoutesByTo {
   '/knowledge': typeof AuthenticatedKnowledgeIndexRoute
   '/leads': typeof AuthenticatedLeadsIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
-  '/api/internal/voice/events': typeof ApiInternalVoiceEventsRoute
-  '/api/internal/voice/turn': typeof ApiInternalVoiceTurnRoute
   '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
+  '/api/public/voice/turn': typeof ApiPublicVoiceTurnRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -478,14 +478,14 @@ export interface FileRoutesById {
   '/_authenticated/knowledge/': typeof AuthenticatedKnowledgeIndexRoute
   '/_authenticated/leads/': typeof AuthenticatedLeadsIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
-  '/api/internal/voice/events': typeof ApiInternalVoiceEventsRoute
-  '/api/internal/voice/turn': typeof ApiInternalVoiceTurnRoute
   '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
+  '/api/public/voice/turn': typeof ApiPublicVoiceTurnRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -531,14 +531,14 @@ export interface FileRouteTypes {
     | '/knowledge/'
     | '/leads/'
     | '/settings/'
-    | '/api/internal/voice/events'
-    | '/api/internal/voice/turn'
     | '/api/public/health/build'
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
+    | '/api/public/voice/events'
+    | '/api/public/voice/turn'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -581,14 +581,14 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/leads'
     | '/settings'
-    | '/api/internal/voice/events'
-    | '/api/internal/voice/turn'
     | '/api/public/health/build'
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
+    | '/api/public/voice/events'
+    | '/api/public/voice/turn'
   id:
     | '__root__'
     | '/'
@@ -633,14 +633,14 @@ export interface FileRouteTypes {
     | '/_authenticated/knowledge/'
     | '/_authenticated/leads/'
     | '/_authenticated/settings/'
-    | '/api/internal/voice/events'
-    | '/api/internal/voice/turn'
     | '/api/public/health/build'
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
+    | '/api/public/voice/events'
+    | '/api/public/voice/turn'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -658,14 +658,14 @@ export interface RootRouteChildren {
   ApiPublicMeetExecutiveRoute: typeof ApiPublicMeetExecutiveRoute
   ApiPublicMeetRequestRoute: typeof ApiPublicMeetRequestRoute
   ApiPublicWhatsappRoute: typeof ApiPublicWhatsappRoute
-  ApiInternalVoiceEventsRoute: typeof ApiInternalVoiceEventsRoute
-  ApiInternalVoiceTurnRoute: typeof ApiInternalVoiceTurnRoute
   ApiPublicHealthBuildRoute: typeof ApiPublicHealthBuildRoute
   ApiPublicHealthOpusProbeRoute: typeof ApiPublicHealthOpusProbeRoute
   ApiPublicHooksExecutiveAutonomyRoute: typeof ApiPublicHooksExecutiveAutonomyRoute
   ApiPublicHooksTaskEngineRoute: typeof ApiPublicHooksTaskEngineRoute
   ApiPublicPaymentsStripeWebhookRoute: typeof ApiPublicPaymentsStripeWebhookRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
+  ApiPublicVoiceEventsRoute: typeof ApiPublicVoiceEventsRoute
+  ApiPublicVoiceTurnRoute: typeof ApiPublicVoiceTurnRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -964,20 +964,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/internal/voice/events': {
-      id: '/api/internal/voice/events'
-      path: '/api/internal/voice/events'
-      fullPath: '/api/internal/voice/events'
-      preLoaderRoute: typeof ApiInternalVoiceEventsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/internal/voice/turn': {
-      id: '/api/internal/voice/turn'
-      path: '/api/internal/voice/turn'
-      fullPath: '/api/internal/voice/turn'
-      preLoaderRoute: typeof ApiInternalVoiceTurnRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/health/build': {
       id: '/api/public/health/build'
       path: '/api/public/health/build'
@@ -1018,6 +1004,20 @@ declare module '@tanstack/react-router' {
       path: '/api/public/payments/webhook'
       fullPath: '/api/public/payments/webhook'
       preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/voice/events': {
+      id: '/api/public/voice/events'
+      path: '/api/public/voice/events'
+      fullPath: '/api/public/voice/events'
+      preLoaderRoute: typeof ApiPublicVoiceEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/voice/turn': {
+      id: '/api/public/voice/turn'
+      path: '/api/public/voice/turn'
+      fullPath: '/api/public/voice/turn'
+      preLoaderRoute: typeof ApiPublicVoiceTurnRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -1118,14 +1118,14 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicMeetExecutiveRoute: ApiPublicMeetExecutiveRoute,
   ApiPublicMeetRequestRoute: ApiPublicMeetRequestRoute,
   ApiPublicWhatsappRoute: ApiPublicWhatsappRoute,
-  ApiInternalVoiceEventsRoute: ApiInternalVoiceEventsRoute,
-  ApiInternalVoiceTurnRoute: ApiInternalVoiceTurnRoute,
   ApiPublicHealthBuildRoute: ApiPublicHealthBuildRoute,
   ApiPublicHealthOpusProbeRoute: ApiPublicHealthOpusProbeRoute,
   ApiPublicHooksExecutiveAutonomyRoute: ApiPublicHooksExecutiveAutonomyRoute,
   ApiPublicHooksTaskEngineRoute: ApiPublicHooksTaskEngineRoute,
   ApiPublicPaymentsStripeWebhookRoute: ApiPublicPaymentsStripeWebhookRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
+  ApiPublicVoiceEventsRoute: ApiPublicVoiceEventsRoute,
+  ApiPublicVoiceTurnRoute: ApiPublicVoiceTurnRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

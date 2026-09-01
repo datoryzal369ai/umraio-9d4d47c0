@@ -34,7 +34,7 @@ const (
 	EventMediaFailed  = "media_failed"
 	EventTerminated   = "media_terminated"
 	EventNegotiating  = "media_negotiating"
-	CallbackEventPath = "/api/internal/voice/events"
+	CallbackEventPath = "/api/public/voice/events"
 )
 
 type Client struct {

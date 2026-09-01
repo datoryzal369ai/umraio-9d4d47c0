@@ -18,7 +18,7 @@ import (
 )
 
 // TurnPath is the control-plane endpoint that owns ASR, reasoning and TTS.
-const TurnPath = "/api/internal/voice/turn"
+const TurnPath = "/api/public/voice/turn"
 
 // MaxTurnResponseBytes bounds one synthesised reply (~60 s of Opus, base64).
 const MaxTurnResponseBytes = 4 << 20
