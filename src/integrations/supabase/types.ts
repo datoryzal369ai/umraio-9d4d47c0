@@ -2067,6 +2067,7 @@ export type Database = {
           callback_nonces: string[]
           caller_phone: string
           created_at: string
+          detected_language: string | null
           direction: string
           ended_at: string | null
           gateway_session_id: string | null
@@ -2078,7 +2079,12 @@ export type Database = {
           received_at: string
           status: string
           termination_reason: string | null
+          transcript: Json
+          turn_count: number
           updated_at: string
+          voice_intents: Json
+          voice_outcome: string | null
+          voice_traveller_count: number | null
         }
         Insert: {
           agency_id: string
@@ -2089,6 +2095,7 @@ export type Database = {
           callback_nonces?: string[]
           caller_phone: string
           created_at?: string
+          detected_language?: string | null
           direction?: string
           ended_at?: string | null
           gateway_session_id?: string | null
@@ -2100,7 +2107,12 @@ export type Database = {
           received_at?: string
           status?: string
           termination_reason?: string | null
+          transcript?: Json
+          turn_count?: number
           updated_at?: string
+          voice_intents?: Json
+          voice_outcome?: string | null
+          voice_traveller_count?: number | null
         }
         Update: {
           agency_id?: string
@@ -2111,6 +2123,7 @@ export type Database = {
           callback_nonces?: string[]
           caller_phone?: string
           created_at?: string
+          detected_language?: string | null
           direction?: string
           ended_at?: string | null
           gateway_session_id?: string | null
@@ -2122,7 +2135,12 @@ export type Database = {
           received_at?: string
           status?: string
           termination_reason?: string | null
+          transcript?: Json
+          turn_count?: number
           updated_at?: string
+          voice_intents?: Json
+          voice_outcome?: string | null
+          voice_traveller_count?: number | null
         }
         Relationships: [
           {

@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"strconv"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"

@@ -25,6 +25,7 @@ import (
 	"github.com/umraio/voice-gateway/internal/callback"
 	"github.com/umraio/voice-gateway/internal/config"
 	"github.com/umraio/voice-gateway/internal/health"
+	umedia "github.com/umraio/voice-gateway/internal/media"
 	"github.com/umraio/voice-gateway/internal/session"
 	gwrtc "github.com/umraio/voice-gateway/internal/webrtc"
 )
@@ -61,6 +62,9 @@ func main() {
 	}
 
 	registry := session.NewRegistry(cfg.MaxConcurrent)
+	// Phase 3: real conversation loop. ASR, reasoning and TTS stay in the
+	// control plane; the gateway only segments, ships and plays audio.
+	turns := callback.NewTurnClient(cfg.BackendURL, cfg.Secret, 20*time.Second)
 	srv := &api.Server{
 		Secret:   cfg.Secret,
 		Engine:   engine,
@@ -68,6 +72,11 @@ func main() {
 		Replay:   auth.NewReplayGuard(2 * auth.MaxTokenLifetime),
 		Events:   callback.New(cfg.BackendURL, cfg.Secret, cfg.CallbackTimeout, cfg.CallbackRetryMax, cfg.CallbackRetryBase),
 		Logger:   logger,
+		NewPipeline: func(callID string) umedia.Pipeline {
+			return umedia.NewConversationPipeline(callID, turns, umedia.ConversationConfig{
+				Greet: true,
+			}, logger)
+		},
 	}
 
 	var webrtcReady, draining atomic.Bool
