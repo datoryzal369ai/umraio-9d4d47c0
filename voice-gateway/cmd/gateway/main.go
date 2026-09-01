@@ -25,6 +25,7 @@ import (
 	"github.com/umraio/voice-gateway/internal/callback"
 	"github.com/umraio/voice-gateway/internal/config"
 	"github.com/umraio/voice-gateway/internal/health"
+	umedia "github.com/umraio/voice-gateway/internal/media"
 	"github.com/umraio/voice-gateway/internal/session"
 	gwrtc "github.com/umraio/voice-gateway/internal/webrtc"
 )
