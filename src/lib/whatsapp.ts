@@ -39,50 +39,30 @@ export async function fetchWhatsappConfig(): Promise<WhatsappConfig | null> {
   return (data as WhatsappConfig | null) ?? null;
 }
 
+/**
+ * Signature kept for the existing Settings screen. `agencyId` and `existing`
+ * are no longer trusted from the browser — the server derives the agency from
+ * the caller's own profile and looks the row up itself.
+ */
 export async function saveWhatsappConfig(
-  agencyId: string,
-  existing: { id: string; has_access_token: boolean } | null,
+  _agencyId: string,
+  _existing: { id: string; has_access_token: boolean } | null,
   input: WhatsappInput,
 ): Promise<WhatsappConfig> {
-  const token = input.access_token?.trim() ? input.access_token.trim() : null;
-  const hasToken = token ? true : Boolean(existing?.has_access_token);
-  const isConnected = Boolean(input.phone_number_id && hasToken);
-
-  const base = {
-    display_phone_number: input.display_phone_number,
-    phone_number_id: input.phone_number_id,
-    business_account_id: input.business_account_id,
-    auto_reply: input.auto_reply,
-    is_connected: isConnected,
-  };
-
-  if (existing) {
-    const { data, error } = await supabase
-      .from("whatsapp_configs")
-      // Only write the credential when a new one was entered — the browser
-      // cannot read the stored token, so a blank field must not wipe it.
-      .update(token ? { ...base, access_token: token } : base)
-      .eq("id", existing.id)
-      .select(WHATSAPP_CLIENT_COLUMNS)
-      .single();
-    if (error) throw error;
-    return data as WhatsappConfig;
-  }
-
-  const { data, error } = await supabase
-    .from("whatsapp_configs")
-    .insert({ ...base, access_token: token, agency_id: agencyId })
-    .select(WHATSAPP_CLIENT_COLUMNS)
-    .single();
-  if (error) throw error;
-  return data as WhatsappConfig;
+  const data = await saveWhatsappConfigFn({
+    data: {
+      display_phone_number: input.display_phone_number,
+      phone_number_id: input.phone_number_id,
+      business_account_id: input.business_account_id,
+      access_token: input.access_token,
+      auto_reply: input.auto_reply,
+    },
+  });
+  return data as unknown as WhatsappConfig;
 }
 
-export async function disconnectWhatsapp(id: string) {
-  // No projection is requested back, so the credential never leaves the server.
-  const { error } = await supabase
-    .from("whatsapp_configs")
-    .update({ is_connected: false, access_token: null })
-    .eq("id", id);
-  if (error) throw error;
+export async function disconnectWhatsapp(_id: string) {
+  // The credential is cleared server-side; it never travels to the browser.
+  await disconnectWhatsappFn();
 }
+
