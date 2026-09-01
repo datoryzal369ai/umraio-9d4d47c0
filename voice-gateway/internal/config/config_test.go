@@ -26,7 +26,16 @@ func TestAssertNoForbiddenEnvAllowsCleanEnvironment(t *testing.T) {
 	}
 }
 
+// clearForbidden makes the host environment irrelevant to Load() tests.
+func clearForbidden(t *testing.T) {
+	t.Helper()
+	for _, k := range ForbiddenEnv {
+		t.Setenv(k, "")
+	}
+}
+
 func TestLoadRequiresStrongSecretAndBackend(t *testing.T) {
+	clearForbidden(t)
 	t.Setenv("UMRAIO_GATEWAY_SECRET", "short")
 	t.Setenv("UMRAIO_BACKEND_URL", "https://example.com")
 	if _, err := Load(); err == nil {
@@ -52,6 +61,7 @@ func TestLoadRequiresStrongSecretAndBackend(t *testing.T) {
 }
 
 func TestLoadFailsWhenCredentialLeaksIntoContainer(t *testing.T) {
+	clearForbidden(t)
 	t.Setenv("UMRAIO_GATEWAY_SECRET", "0123456789abcdef0123456789abcdef0123456789")
 	t.Setenv("UMRAIO_BACKEND_URL", "https://example.com")
 	t.Setenv("SUPABASE_SERVICE_ROLE_KEY", "should-not-be-here")
