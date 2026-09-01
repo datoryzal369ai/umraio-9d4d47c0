@@ -339,7 +339,7 @@ describe("requestMediaSession", () => {
       gatewayUrl: "https://gateway.internal/", secret: SECRET, callId: CALL_ID,
       agencyId: AGENCY, phoneNumberId: PHONE_ID, sdpOffer: OFFER_SDP, fetchImpl,
     });
-    expect(r).toMatchObject({ ok: true, sessionId: GATEWAY_SESSION, sdpAnswer: ANSWER_SDP });
+    expect(r).toMatchObject({ ok: true, sessionId: GATEWAY_SESSION, sdpAnswer: ANSWER_SDP.trim() });
     expect(seen.url).toBe("https://gateway.internal/v1/calls/offer");
     expect(seen.init.headers["Authorization"]).toMatch(/^Bearer /);
     expect(seen.init.headers["X-Umraio-Signature"]).toMatch(/^v1=[0-9a-f]{64}$/);
