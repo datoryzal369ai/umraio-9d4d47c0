@@ -2064,11 +2064,16 @@ export type Database = {
           answer_requested_at: string | null
           answered_at: string | null
           call_id: string
+          callback_nonces: string[]
           caller_phone: string
           created_at: string
           direction: string
           ended_at: string | null
+          gateway_session_id: string | null
           id: string
+          media_negotiated_at: string | null
+          media_ready_at: string | null
+          meta_accepted_at: string | null
           phone_number_id: string
           received_at: string
           status: string
@@ -2081,11 +2086,16 @@ export type Database = {
           answer_requested_at?: string | null
           answered_at?: string | null
           call_id: string
+          callback_nonces?: string[]
           caller_phone: string
           created_at?: string
           direction?: string
           ended_at?: string | null
+          gateway_session_id?: string | null
           id?: string
+          media_negotiated_at?: string | null
+          media_ready_at?: string | null
+          meta_accepted_at?: string | null
           phone_number_id: string
           received_at?: string
           status?: string
@@ -2098,11 +2108,16 @@ export type Database = {
           answer_requested_at?: string | null
           answered_at?: string | null
           call_id?: string
+          callback_nonces?: string[]
           caller_phone?: string
           created_at?: string
           direction?: string
           ended_at?: string | null
+          gateway_session_id?: string | null
           id?: string
+          media_negotiated_at?: string | null
+          media_ready_at?: string | null
+          meta_accepted_at?: string | null
           phone_number_id?: string
           received_at?: string
           status?: string
