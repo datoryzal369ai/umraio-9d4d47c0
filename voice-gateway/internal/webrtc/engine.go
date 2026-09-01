@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/ice/v4"
 	pion "github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 
@@ -22,8 +23,9 @@ const OpusPayloadType = 111
 
 // Config describes the media-plane network posture.
 type Config struct {
-	UDPPortMin  uint16
-	UDPPortMax  uint16
+	// UDPMux is the single, shared ICE UDP mux for all peer connections.
+	// It must be created before the engine (see NewUDPMux).
+	UDPMux      ice.UDPMux
 	NAT1To1IPs  []string
 	ICEServers  []pion.ICEServer
 	NegotiateTO time.Duration
@@ -57,10 +59,8 @@ func NewEngine(cfg Config) (*Engine, error) {
 	}
 
 	se := pion.SettingEngine{}
-	if cfg.UDPPortMin > 0 && cfg.UDPPortMax >= cfg.UDPPortMin {
-		if err := se.SetEphemeralUDPPortRange(cfg.UDPPortMin, cfg.UDPPortMax); err != nil {
-			return nil, fmt.Errorf("udp range: %w", err)
-		}
+	if cfg.UDPMux != nil {
+		se.SetICEUDPMux(cfg.UDPMux)
 	}
 	if len(cfg.NAT1To1IPs) > 0 {
 		se.SetNAT1To1IPs(cfg.NAT1To1IPs, pion.ICECandidateTypeHost)

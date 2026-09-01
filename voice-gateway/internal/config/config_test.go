@@ -55,8 +55,8 @@ func TestLoadRequiresStrongSecretAndBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected valid config: %v", err)
 	}
-	if cfg.UDPPortMin != 40000 || cfg.UDPPortMax != 40100 {
-		t.Fatalf("unexpected udp range %d-%d", cfg.UDPPortMin, cfg.UDPPortMax)
+	if cfg.UDPMediaPort != 40000 || cfg.UDPMediaHost != "fly-global-services" {
+		t.Fatalf("unexpected udp media listener %s:%d", cfg.UDPMediaHost, cfg.UDPMediaPort)
 	}
 }
 

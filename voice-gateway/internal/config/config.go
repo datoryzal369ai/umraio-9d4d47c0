@@ -15,8 +15,8 @@ type Config struct {
 	BackendURL        string
 	Secret            string
 	PublicIPs         []string
-	UDPPortMin        uint16
-	UDPPortMax        uint16
+	UDPMediaHost      string
+	UDPMediaPort      int
 	MaxConcurrent     int
 	MaxCallDuration   time.Duration
 	NegotiateTimeout  time.Duration
@@ -54,8 +54,8 @@ func Load() (Config, error) {
 		Addr:              envStr("LISTEN_ADDR", ":8080"),
 		BackendURL:        strings.TrimRight(envStr("UMRAIO_BACKEND_URL", ""), "/"),
 		Secret:            envStr("UMRAIO_GATEWAY_SECRET", ""),
-		UDPPortMin:        uint16(envInt("UDP_PORT_MIN", 40000)),
-		UDPPortMax:        uint16(envInt("UDP_PORT_MAX", 40100)),
+		UDPMediaHost:      envStr("UDP_MEDIA_HOST", "fly-global-services"),
+		UDPMediaPort:      envInt("UDP_MEDIA_PORT", 40000),
 		MaxConcurrent:     envInt("MAX_CONCURRENT_CALLS", 25),
 		MaxCallDuration:   time.Duration(envInt("MAX_CALL_DURATION_S", 600)) * time.Second,
 		NegotiateTimeout:  time.Duration(envInt("MEDIA_NEGOTIATE_TIMEOUT_S", 10)) * time.Second,
@@ -82,8 +82,11 @@ func Load() (Config, error) {
 	if !strings.HasPrefix(c.BackendURL, "https://") && !strings.HasPrefix(c.BackendURL, "http://127.0.0.1") {
 		return c, errors.New("config: UMRAIO_BACKEND_URL must be https")
 	}
-	if c.UDPPortMax < c.UDPPortMin {
-		return c, errors.New("config: UDP_PORT_MAX must be >= UDP_PORT_MIN")
+	if c.UDPMediaPort <= 0 || c.UDPMediaPort > 65535 {
+		return c, errors.New("config: UDP_MEDIA_PORT must be a valid port")
+	}
+	if c.UDPMediaHost == "" {
+		return c, errors.New("config: UDP_MEDIA_HOST must not be empty")
 	}
 	return c, AssertNoForbiddenEnv(os.LookupEnv)
 }
