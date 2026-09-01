@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strconv"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -167,25 +168,4 @@ func TestVerifyRequestSignature(t *testing.T) {
 	}
 }
 
-func itoa(v int64) string {
-	return time.Unix(v, 0).UTC().Format("") + strings.TrimSpace(formatInt(v))
-}
-
-func formatInt(v int64) string {
-	if v == 0 {
-		return "0"
-	}
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	var b []byte
-	for v > 0 {
-		b = append([]byte{byte('0' + v%10)}, b...)
-		v /= 10
-	}
-	if neg {
-		return "-" + string(b)
-	}
-	return string(b)
-}
+func itoa(v int64) string { return strconv.FormatInt(v, 10) }
