@@ -44,6 +44,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
+    // A stale chunk after a deploy is not an app fault: reload into the new build.
+    if (isStaleChunkError(error)) {
+      installStaleChunkRecovery();
+      window.dispatchEvent(new ErrorEvent("error", { error, message: error.message }));
+      return;
+    }
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
