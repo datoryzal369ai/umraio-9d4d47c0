@@ -51,7 +51,7 @@ Public:
 | `UMRAIO_BACKEND_URL` | yes (https) | — |
 | `LISTEN_ADDR` | no | `:8080` |
 | `PUBLIC_IP` | prod | — |
-| `UDP_PORT_MIN` / `UDP_PORT_MAX` | no | `40000` / `40100` |
+| `UDP_MEDIA_HOST` / `UDP_MEDIA_PORT` | no | `fly-global-services` / `40000` (single muxed media port) |
 | `MAX_CONCURRENT_CALLS` | no | `25` |
 | `MAX_CALL_DURATION_S` | no | `600` |
 | `MEDIA_NEGOTIATE_TIMEOUT_S` | no | `10` |
