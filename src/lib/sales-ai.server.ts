@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { GLOBAL_UMRAIO_KNOWLEDGE } from "./global-knowledge.server";
 import { buildCurrentContextBlock } from "@/lib/context/realtime-context.core";
+import { buildCalendarContextLines } from "@/lib/context/calendar-context.core";
 // Provider-agnostic: sales AI talks to the Intelligence Gateway only.
 import { createIntelligenceGateway } from "./ai/gateway.server";
 import { newCorrelationId } from "./ai/context.server";
@@ -626,7 +627,11 @@ function systemPrompt(
     buildCurrentContextBlock({
       timezone: (ctx.agency as { timezone?: string | null } | null)?.timezone ?? null,
       businessHours: s?.business_hours ?? null,
+      extraLines: buildCalendarContextLines({
+        timezone: (ctx.agency as { timezone?: string | null } | null)?.timezone ?? null,
+      }),
     }),
+
 
     businessHoursLine(s),
 

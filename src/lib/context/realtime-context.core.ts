@@ -314,11 +314,16 @@ export function isBusinessOpenNow(
 /**
  * Compact runtime block injected into the AI system prompt. Values are always
  * produced at request time from the server clock and the agency timezone.
+ *
+ * Phase 2 adds Hijri + public-holiday awareness through the optional
+ * `calendar` hook so this module keeps no dependency on those cores.
  */
 export function buildCurrentContextBlock(input: {
   timezone?: string | null;
   businessHours?: BusinessHoursConfig;
   now?: Date;
+  /** Optional extra deterministic lines (Hijri / holiday context). */
+  extraLines?: (string | null | undefined)[];
 }): string {
   const now = input.now ?? new Date();
   const local = getAgencyLocalDateTime(input.timezone, now);
@@ -331,6 +336,8 @@ export function buildCurrentContextBlock(input: {
     `DAY: ${local.weekday}`,
     `MONTH: ${local.month} ${local.year}`,
     `BUSINESS STATUS: ${business.status}`,
+    ...(input.extraLines ?? []).filter((l): l is string => Boolean(l)),
     "Always answer questions about the current date, time, day, month or year from this block. Never use remembered or assumed dates, and resolve relative phrases (today, esok, Jumaat depan, next week) against CURRENT DATE.",
   ].join("\n");
 }
+
