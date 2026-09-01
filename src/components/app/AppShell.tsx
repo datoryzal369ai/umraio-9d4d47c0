@@ -19,6 +19,7 @@ import {
   Radar,
   Repeat,
   Settings,
+  ShieldCheck,
   Target,
   UserRound,
   Users,
@@ -34,6 +35,8 @@ import { LanguageSelector } from "@/components/app/LanguageSelector";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useMyRoles } from "@/hooks/useMyRoles";
+import { canSeeNavItem } from "@/lib/team/team.core";
 import { useCopy } from "@/lib/i18n/dict";
 import { shellCopy } from "@/lib/i18n/app/shell.i18n";
 import { cn } from "@/lib/utils";
