@@ -252,6 +252,9 @@ function AuthSync() {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  useEffect(() => installStaleChunkRecovery(), []);
+
+
   return (
     <QueryClientProvider client={queryClient}>
       <LocaleProvider>
