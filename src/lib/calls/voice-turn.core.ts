@@ -214,3 +214,22 @@ export function deriveCallOutcome(intents: VoiceIntentKey[], turns: VoiceTranscr
   if (intents.includes("package_enquiry")) return "enquiry";
   return "conversation";
 }
+
+/**
+ * Language of the spoken turn, derived from the caller's OWN words. Falls back
+ * to the agency default only when the transcript carries no signal.
+ */
+export function detectSpokenLanguage(transcript: string, fallback: string): string {
+  const text = transcript.trim();
+  if (!text) return fallback;
+  if (/[\u0600-\u06FF]/.test(text)) return "ar-SA";
+  if (
+    /\b(saya|nak|boleh|berapa|tak|awak|encik|puan|tuan|pakej|tempah|harga|bila|terima kasih|assalamualaikum)\b/i.test(
+      text,
+    )
+  ) {
+    return "ms-MY";
+  }
+  if (/\b(the|please|how much|i want|can you|hello|thanks|package)\b/i.test(text)) return "en-US";
+  return fallback;
+}
