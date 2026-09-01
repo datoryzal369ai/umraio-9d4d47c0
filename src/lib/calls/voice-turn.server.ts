@@ -180,9 +180,15 @@ export async function handleVoiceTurn(args: {
   }
 
   // 3. RAIŌ™ voice presentation + MiniMax TTS. No audio means silence.
-  const spoken = prepareSpokenResponse(replyText, { language });
-  const speech = spoken.text?.trim() || replyText;
-  const tts = await synthesizeSpeech({ text: speech, language });
+  const spoken = prepareSpokenResponse({ replyText, language });
+  const speech = spoken.spokenText.trim() || replyText;
+  const tts = await synthesizeSpeech({
+    text: speech,
+    language,
+    voice: spoken.voice,
+    speed: spoken.speed,
+    instructions: spoken.instructions,
+  });
   if (!tts.ok) {
     console.log(`[calls] voice_turn_tts_failed call_id=${payload.call_id} kind=${tts.kind}`);
     return { ok: false, reason: `tts_${tts.kind}` };
