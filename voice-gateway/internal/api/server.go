@@ -337,6 +337,7 @@ func safeErrorDetail(err error) string {
 		keep = append(keep, ln)
 	}
 	msg = strings.Join(keep, " ")
+	msg = reBacktick.ReplaceAllString(msg, "[redacted]")
 	msg = reHexPairs.ReplaceAllString(msg, "[redacted]")
 	msg = reIPv4.ReplaceAllString(msg, "[redacted-ip]")
 	msg = reLongToken.ReplaceAllString(msg, "[redacted]")
