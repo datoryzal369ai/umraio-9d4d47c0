@@ -130,10 +130,12 @@ export async function handleVoiceTurn(args: {
   }
   const row = session!;
 
-  // Agency voice configuration (existing settings — no new surface).
-  const { data: config } = await db
-    .from("whatsapp_configs")
-    .select("agency_id, voice_language")
+  // Agency voice configuration lives in agency_settings — the authoritative
+  // store for voice_persona, voice_controls, voice_name and voice_language.
+  // agency_id comes from the Worker's own session row, never from the client.
+  const { data: settings } = await db
+    .from("agency_settings")
+    .select("voice_persona, voice_controls, voice_name, voice_language")
     .eq("agency_id", row.agency_id)
     .maybeSingle();
   const { data: agency } = await db
@@ -141,7 +143,12 @@ export async function handleVoiceTurn(args: {
     .select("name")
     .eq("id", row.agency_id)
     .maybeSingle();
-  const agencyLanguage = resolveVoiceLanguage((config as any)?.voice_language ?? null);
+  const agencyLanguage = resolveVoiceLanguage((settings as any)?.voice_language ?? null);
+  const voicePersona = {
+    persona: ((settings as any)?.voice_persona as string | null) ?? null,
+    controls: ((settings as any)?.voice_controls as Record<string, unknown> | null) ?? null,
+    voice: ((settings as any)?.voice_name as string | null) ?? null,
+  };
 
   const history = readTranscript(row.transcript);
   let transcript = "";
@@ -180,7 +187,7 @@ export async function handleVoiceTurn(args: {
   }
 
   // 3. RAIŌ™ voice presentation + MiniMax TTS. No audio means silence.
-  const spoken = prepareSpokenResponse({ replyText, language });
+  const spoken = prepareSpokenResponse({ replyText, language, persona: voicePersona });
   const speech = spoken.spokenText.trim() || replyText;
   const tts = await synthesizeSpeech({
     text: speech,
