@@ -15,8 +15,8 @@ primary_region = "sin"
 
 [env]
   LISTEN_ADDR = ":8080"
-  UDP_PORT_MIN = "40000"
-  UDP_PORT_MAX = "40100"
+  UDP_MEDIA_HOST = "fly-global-services"
+  UDP_MEDIA_PORT = "40000"
   MAX_CONCURRENT_CALLS = "25"
   MAX_CALL_DURATION_S = "600"
   MEDIA_NEGOTIATE_TIMEOUT_S = "10"
@@ -51,8 +51,7 @@ primary_region = "sin"
   internal_port = 40000
 
   [[services.ports]]
-    start_port = 40000
-    end_port = 40100
+    port = 40000
 
 [[vm]]
   size = "shared-cpu-2x"
