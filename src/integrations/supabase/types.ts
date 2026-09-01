@@ -801,6 +801,33 @@ export type Database = {
         }
         Relationships: []
       }
+      developer_access: {
+        Row: {
+          active: boolean
+          created_at: string
+          granted_by: string | null
+          label: string | null
+          revoked_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          granted_by?: string | null
+          label?: string | null
+          revoked_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          granted_by?: string | null
+          label?: string | null
+          revoked_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       executive_cycles: {
         Row: {
           actions_attempted: number
