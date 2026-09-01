@@ -21,6 +21,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedCrmRouteImport } from './routes/_authenticated/crm'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedDeveloperRouteImport } from './routes/_authenticated/developer'
 import { Route as AuthenticatedHqRouteImport } from './routes/_authenticated/hq'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedSalesEliteRouteImport } from './routes/_authenticated/sales-elite'
@@ -114,6 +115,11 @@ const AuthenticatedCrmRoute = AuthenticatedCrmRouteImport.update({
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDeveloperRoute = AuthenticatedDeveloperRouteImport.update({
+  id: '/developer',
+  path: '/developer',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedHqRoute = AuthenticatedHqRouteImport.update({
@@ -328,6 +334,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/developer': typeof AuthenticatedDeveloperRoute
   '/hq': typeof AuthenticatedHqRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/sales-elite': typeof AuthenticatedSalesEliteRoute
@@ -375,6 +382,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/developer': typeof AuthenticatedDeveloperRoute
   '/hq': typeof AuthenticatedHqRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/sales-elite': typeof AuthenticatedSalesEliteRoute
@@ -425,6 +433,7 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/crm': typeof AuthenticatedCrmRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/developer': typeof AuthenticatedDeveloperRoute
   '/_authenticated/hq': typeof AuthenticatedHqRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/sales-elite': typeof AuthenticatedSalesEliteRoute
@@ -475,6 +484,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/crm'
     | '/dashboard'
+    | '/developer'
     | '/hq'
     | '/profile'
     | '/sales-elite'
@@ -522,6 +532,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/crm'
     | '/dashboard'
+    | '/developer'
     | '/hq'
     | '/profile'
     | '/sales-elite'
@@ -571,6 +582,7 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/crm'
     | '/_authenticated/dashboard'
+    | '/_authenticated/developer'
     | '/_authenticated/hq'
     | '/_authenticated/profile'
     | '/_authenticated/sales-elite'
@@ -714,6 +726,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/developer': {
+      id: '/_authenticated/developer'
+      path: '/developer'
+      fullPath: '/developer'
+      preLoaderRoute: typeof AuthenticatedDeveloperRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/hq': {
@@ -1003,6 +1022,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedCrmRoute: typeof AuthenticatedCrmRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDeveloperRoute: typeof AuthenticatedDeveloperRoute
   AuthenticatedHqRoute: typeof AuthenticatedHqRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedSalesEliteRoute: typeof AuthenticatedSalesEliteRoute
@@ -1023,6 +1043,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedCrmRoute: AuthenticatedCrmRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDeveloperRoute: AuthenticatedDeveloperRoute,
   AuthenticatedHqRoute: AuthenticatedHqRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedSalesEliteRoute: AuthenticatedSalesEliteRoute,
