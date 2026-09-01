@@ -51,6 +51,7 @@ import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_aut
 import { Route as ApiPublicMeetExecutiveRouteImport } from './routes/api/public/meet-executive'
 import { Route as ApiPublicMeetRequestRouteImport } from './routes/api/public/meet-request'
 import { Route as ApiPublicWhatsappRouteImport } from './routes/api/public/whatsapp'
+import { Route as ApiInternalVoiceEventsRouteImport } from './routes/api/internal/voice/events'
 import { Route as ApiPublicHealthBuildRouteImport } from './routes/api/public/health/build'
 import { Route as ApiPublicHealthOpusProbeRouteImport } from './routes/api/public/health/opus-probe'
 import { Route as ApiPublicHooksExecutiveAutonomyRouteImport } from './routes/api/public/hooks/executive-autonomy'
@@ -285,6 +286,11 @@ const ApiPublicWhatsappRoute = ApiPublicWhatsappRouteImport.update({
   path: '/api/public/whatsapp',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalVoiceEventsRoute = ApiInternalVoiceEventsRouteImport.update({
+  id: '/api/internal/voice/events',
+  path: '/api/internal/voice/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHealthBuildRoute = ApiPublicHealthBuildRouteImport.update({
   id: '/api/public/health/build',
   path: '/api/public/health/build',
@@ -363,6 +369,7 @@ export interface FileRoutesByFullPath {
   '/knowledge/': typeof AuthenticatedKnowledgeIndexRoute
   '/leads/': typeof AuthenticatedLeadsIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/api/internal/voice/events': typeof ApiInternalVoiceEventsRoute
   '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
@@ -411,6 +418,7 @@ export interface FileRoutesByTo {
   '/knowledge': typeof AuthenticatedKnowledgeIndexRoute
   '/leads': typeof AuthenticatedLeadsIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/api/internal/voice/events': typeof ApiInternalVoiceEventsRoute
   '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
@@ -462,6 +470,7 @@ export interface FileRoutesById {
   '/_authenticated/knowledge/': typeof AuthenticatedKnowledgeIndexRoute
   '/_authenticated/leads/': typeof AuthenticatedLeadsIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/api/internal/voice/events': typeof ApiInternalVoiceEventsRoute
   '/api/public/health/build': typeof ApiPublicHealthBuildRoute
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
@@ -513,6 +522,7 @@ export interface FileRouteTypes {
     | '/knowledge/'
     | '/leads/'
     | '/settings/'
+    | '/api/internal/voice/events'
     | '/api/public/health/build'
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
@@ -561,6 +571,7 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/leads'
     | '/settings'
+    | '/api/internal/voice/events'
     | '/api/public/health/build'
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
@@ -611,6 +622,7 @@ export interface FileRouteTypes {
     | '/_authenticated/knowledge/'
     | '/_authenticated/leads/'
     | '/_authenticated/settings/'
+    | '/api/internal/voice/events'
     | '/api/public/health/build'
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
@@ -634,6 +646,7 @@ export interface RootRouteChildren {
   ApiPublicMeetExecutiveRoute: typeof ApiPublicMeetExecutiveRoute
   ApiPublicMeetRequestRoute: typeof ApiPublicMeetRequestRoute
   ApiPublicWhatsappRoute: typeof ApiPublicWhatsappRoute
+  ApiInternalVoiceEventsRoute: typeof ApiInternalVoiceEventsRoute
   ApiPublicHealthBuildRoute: typeof ApiPublicHealthBuildRoute
   ApiPublicHealthOpusProbeRoute: typeof ApiPublicHealthOpusProbeRoute
   ApiPublicHooksExecutiveAutonomyRoute: typeof ApiPublicHooksExecutiveAutonomyRoute
@@ -938,6 +951,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/voice/events': {
+      id: '/api/internal/voice/events'
+      path: '/api/internal/voice/events'
+      fullPath: '/api/internal/voice/events'
+      preLoaderRoute: typeof ApiInternalVoiceEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/health/build': {
       id: '/api/public/health/build'
       path: '/api/public/health/build'
@@ -1078,6 +1098,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicMeetExecutiveRoute: ApiPublicMeetExecutiveRoute,
   ApiPublicMeetRequestRoute: ApiPublicMeetRequestRoute,
   ApiPublicWhatsappRoute: ApiPublicWhatsappRoute,
+  ApiInternalVoiceEventsRoute: ApiInternalVoiceEventsRoute,
   ApiPublicHealthBuildRoute: ApiPublicHealthBuildRoute,
   ApiPublicHealthOpusProbeRoute: ApiPublicHealthOpusProbeRoute,
   ApiPublicHooksExecutiveAutonomyRoute: ApiPublicHooksExecutiveAutonomyRoute,

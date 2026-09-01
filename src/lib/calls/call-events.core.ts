@@ -20,6 +20,7 @@ export type MetaCallEvent = {
 export type CallSessionStatus =
   | "ringing"
   | "answer_requested"
+  | "media_negotiating"
   | "answered"
   | "missed"
   | "terminated"
@@ -39,10 +40,11 @@ export type ParsedCallEvent = {
 const RANK: Record<CallSessionStatus, number> = {
   ringing: 0,
   answer_requested: 1,
-  answered: 2,
-  missed: 3,
-  terminated: 3,
-  failed: 3,
+  media_negotiating: 2,
+  answered: 3,
+  missed: 4,
+  terminated: 4,
+  failed: 4,
 };
 
 export const TERMINAL_CALL_STATUSES: CallSessionStatus[] = ["answered", "missed", "terminated", "failed"];
