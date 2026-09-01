@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { GLOBAL_UMRAIO_KNOWLEDGE } from "./global-knowledge.server";
+import { buildCurrentContextBlock } from "@/lib/context/realtime-context.core";
 // Provider-agnostic: sales AI talks to the Intelligence Gateway only.
 import { createIntelligenceGateway } from "./ai/gateway.server";
 import { newCorrelationId } from "./ai/context.server";
@@ -620,6 +621,12 @@ function systemPrompt(
     "recommend_packages returns halal_review_status for every package. Only a package with status REVIEWED has been reviewed by the agency; anything else must never be presented as religiously verified — unknown means review pending, not halal and not haram.",
     "RISK-BASED ISLAMIC ROUTING: established basic Islamic knowledge (Rukun Islam, Rukun Iman, meaning of Talbiyah/ihram/tawaf/sa'i, common doa, masjid etiquette, Umrah preparation) must be ANSWERED DIRECTLY from approved knowledge — never routed to a reviewer and never left pending. Only genuine ruling requests (hukum, fatwa, halal/haram determination, validity of someone's own worship, dam/fidyah, family or inheritance law) trigger request_expert_review, once, with one concise holding response. Never repeat that holding message on later messages, and never let a previous religious question block normal sales, pricing or logistics replies.",
     religiousBoundary,
+
+    // REAL-TIME CONTEXT v0 — server clock + agency-stored timezone, per request.
+    buildCurrentContextBlock({
+      timezone: (ctx.agency as { timezone?: string | null } | null)?.timezone ?? null,
+      businessHours: s?.business_hours ?? null,
+    }),
 
     businessHoursLine(s),
 
