@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { verifyMetaSignature } from "@/lib/whatsapp-signature";
+import { extractCallEvents, type MetaCallEvent, type ParsedCallEvent } from "@/lib/calls/call-events.core";
+
 import { classifyInboundMessage, persistedModality } from "@/lib/whatsapp/message-classification.core";
 import {
   normalizeWhatsappDeliveryStatus,
@@ -38,8 +40,9 @@ type WebhookValue = {
       error_data?: { details?: string };
     }>;
   }>;
-
+  calls?: MetaCallEvent[];
 };
+
 
 type WebhookBody = {
   entry?: Array<{ changes?: Array<{ value?: WebhookValue }> }>;
