@@ -23,7 +23,9 @@ function SettingsLayout() {
 
     { to: "/settings/api-keys", label: copy.tabs.apiKeys },
     { to: "/settings/subscription", label: copy.tabs.subscription },
+    ...(canSeeTeam(role) ? ([{ to: "/settings/team", label: "Team" }] as const) : []),
   ] as const;
+
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
