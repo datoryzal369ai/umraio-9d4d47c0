@@ -2057,6 +2057,68 @@ export type Database = {
           },
         ]
       }
+      whatsapp_call_sessions: {
+        Row: {
+          agency_id: string
+          answer_deadline_at: string | null
+          answer_requested_at: string | null
+          answered_at: string | null
+          call_id: string
+          caller_phone: string
+          created_at: string
+          direction: string
+          ended_at: string | null
+          id: string
+          phone_number_id: string
+          received_at: string
+          status: string
+          termination_reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          answer_deadline_at?: string | null
+          answer_requested_at?: string | null
+          answered_at?: string | null
+          call_id: string
+          caller_phone: string
+          created_at?: string
+          direction?: string
+          ended_at?: string | null
+          id?: string
+          phone_number_id: string
+          received_at?: string
+          status?: string
+          termination_reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          answer_deadline_at?: string | null
+          answer_requested_at?: string | null
+          answered_at?: string | null
+          call_id?: string
+          caller_phone?: string
+          created_at?: string
+          direction?: string
+          ended_at?: string | null
+          id?: string
+          phone_number_id?: string
+          received_at?: string
+          status?: string
+          termination_reason?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_call_sessions_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_configs: {
         Row: {
           access_token: string | null

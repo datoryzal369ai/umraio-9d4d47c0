@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { verifyMetaSignature } from "@/lib/whatsapp-signature";
+import { extractCallEvents, type MetaCallEvent, type ParsedCallEvent } from "@/lib/calls/call-events.core";
+
 import { classifyInboundMessage, persistedModality } from "@/lib/whatsapp/message-classification.core";
 import {
   normalizeWhatsappDeliveryStatus,
@@ -38,8 +40,9 @@ type WebhookValue = {
       error_data?: { details?: string };
     }>;
   }>;
-
+  calls?: MetaCallEvent[];
 };
+
 
 type WebhookBody = {
   entry?: Array<{ changes?: Array<{ value?: WebhookValue }> }>;
@@ -1215,6 +1218,7 @@ export const Route = createFileRoute("/api/public/whatsapp")({
         // of them are processed (capped), never just the first.
         const queued: Array<{ value: WebhookValue; message: InboundMessage }> = [];
         const statusEvents: Array<{ value: WebhookValue; status: DeliveryStatusEvent }> = [];
+        const callEvents: Array<{ phoneNumberId: string; event: ParsedCallEvent }> = [];
         let candidates = 0;
         for (const entry of payload.entry ?? []) {
           for (const change of entry.changes ?? []) {
@@ -1229,6 +1233,12 @@ export const Route = createFileRoute("/api/public/whatsapp")({
             for (const status of changeValue.statuses ?? []) {
               statusEvents.push({ value: changeValue, status });
             }
+            const callPhoneNumberId = changeValue.metadata?.phone_number_id?.trim();
+            if (callPhoneNumberId) {
+              for (const event of extractCallEvents(changeValue.calls)) {
+                callEvents.push({ phoneNumberId: callPhoneNumberId, event });
+              }
+            }
           }
         }
         if (candidates > MAX_MESSAGES_PER_REQUEST) {
@@ -1237,18 +1247,37 @@ export const Route = createFileRoute("/api/public/whatsapp")({
           );
         }
         console.log(
-          `[whatsapp] webhook received batch_size=${queued.length} messages=${candidates} statuses=${statusEvents.length}`,
+          `[whatsapp] webhook received batch_size=${queued.length} messages=${candidates} statuses=${statusEvents.length} calls=${callEvents.length}`,
         );
-        if (queued.length === 0 && statusEvents.length === 0) {
+        if (queued.length === 0 && statusEvents.length === 0 && callEvents.length === 0) {
           console.log("[whatsapp] inbound_dropped reason=missing_message_or_phone_id messages_count=0");
           return new Response("ok");
         }
 
         let retryable = false;
+        if (callEvents.length > 0) {
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { processCallEvent } = await import("@/lib/calls/calls.server");
+          for (const item of callEvents) {
+            try {
+              await processCallEvent({
+                db: supabaseAdmin as never,
+                event: item.event,
+                phoneNumberId: item.phoneNumberId,
+              });
+            } catch (error) {
+              console.error(
+                `[calls] call_event_failed call_id=${item.event.callId} reason=${error instanceof Error ? error.name : "unknown"}`,
+              );
+              retryable = true;
+            }
+          }
+        }
         for (const item of statusEvents) {
           const outcome = await processDeliveryStatus(item.value, item.status);
           if (outcome === "retry") retryable = true;
         }
+
         for (const item of queued) {
           const itemPhoneNumberId = item.value.metadata?.phone_number_id?.trim();
           if (!itemPhoneNumberId) {
