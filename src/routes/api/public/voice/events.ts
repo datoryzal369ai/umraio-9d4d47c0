@@ -12,7 +12,7 @@ import { parseGatewayCallback } from "@/lib/calls/gateway-callback.core";
 
 const MAX_BODY_BYTES = 16 * 1024;
 
-export const Route = createFileRoute("/api/internal/voice/events")({
+export const Route = createFileRoute("/api/public/voice/events")({
   server: {
     handlers: {
       POST: async ({ request }) => {
