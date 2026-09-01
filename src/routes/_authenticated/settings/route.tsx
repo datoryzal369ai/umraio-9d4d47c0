@@ -1,8 +1,10 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 
 import { PageHeader } from "@/components/app/PageHeader";
+import { useMyRoles } from "@/hooks/useMyRoles";
 import { settingsCopy } from "@/lib/i18n/app/settings.i18n";
 import { useCopy } from "@/lib/i18n/dict";
+import { canSeeTeam } from "@/lib/team/team.core";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -12,6 +14,8 @@ export const Route = createFileRoute("/_authenticated/settings")({
 function SettingsLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const copy = useCopy(settingsCopy).layout;
+  const { role } = useMyRoles();
+
 
   const tabs = [
     { to: "/settings/agency", label: copy.tabs.agency },
