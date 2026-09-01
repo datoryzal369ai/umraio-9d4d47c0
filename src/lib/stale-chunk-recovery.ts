@@ -31,7 +31,7 @@ export function isStaleChunkError(reason: unknown): boolean {
   return STALE_CHUNK_PATTERNS.some((pattern) => pattern.test(message));
 }
 
-function reloadOnce(): void {
+export function recoverFromStaleChunk(): void {
   try {
     const last = Number(window.sessionStorage.getItem(RELOAD_FLAG) ?? "0");
     if (Number.isFinite(last) && Date.now() - last < RELOAD_COOLDOWN_MS) return;
@@ -47,16 +47,16 @@ export function installStaleChunkRecovery(): () => void {
 
   const onPreloadError = (event: Event) => {
     event.preventDefault();
-    reloadOnce();
+    recoverFromStaleChunk();
   };
   const onRejection = (event: PromiseRejectionEvent) => {
     if (!isStaleChunkError(event.reason)) return;
     event.preventDefault();
-    reloadOnce();
+    recoverFromStaleChunk();
   };
   const onError = (event: ErrorEvent) => {
     if (!isStaleChunkError(event.error ?? event.message)) return;
-    reloadOnce();
+    recoverFromStaleChunk();
   };
 
   window.addEventListener("vite:preloadError", onPreloadError);

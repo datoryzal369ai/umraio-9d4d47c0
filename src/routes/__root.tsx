@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { installStaleChunkRecovery, isStaleChunkError } from "@/lib/stale-chunk-recovery";
+import { installStaleChunkRecovery, isStaleChunkError, recoverFromStaleChunk } from "@/lib/stale-chunk-recovery";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -46,8 +46,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   useEffect(() => {
     // A stale chunk after a deploy is not an app fault: reload into the new build.
     if (isStaleChunkError(error)) {
-      installStaleChunkRecovery();
-      window.dispatchEvent(new ErrorEvent("error", { error, message: error.message }));
+      recoverFromStaleChunk();
       return;
     }
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
