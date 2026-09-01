@@ -72,7 +72,11 @@ export const completeEmbeddedSignup = createServerFn({ method: "POST" })
     const displayPhoneNumber =
       data.displayPhoneNumber ?? (await fetchDisplayPhoneNumber(data.phoneNumberId, accessToken));
 
-    const { data: existing, error: existingError } = await supabase
+    // The credential column is service-role-only; the agency was already
+    // derived from the caller's own profile above.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from("whatsapp_configs")
       .select("id, display_phone_number")
       .eq("agency_id", agencyId)
@@ -92,13 +96,14 @@ export const completeEmbeddedSignup = createServerFn({ method: "POST" })
 
     if (existing) {
       // auto_reply and every unrelated setting are preserved by not touching them.
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from("whatsapp_configs")
         .update(patch)
-        .eq("id", (existing as { id: string }).id);
+        .eq("id", (existing as { id: string }).id)
+        .eq("agency_id", agencyId);
       if (error) throw new Error(error.message);
     } else {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from("whatsapp_configs")
         .insert({ ...patch, agency_id: agencyId });
       if (error) throw new Error(error.message);
