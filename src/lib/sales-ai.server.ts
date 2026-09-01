@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { GLOBAL_UMRAIO_KNOWLEDGE } from "./global-knowledge.server";
+import { buildCurrentContextBlock } from "@/lib/context/realtime-context.core";
 // Provider-agnostic: sales AI talks to the Intelligence Gateway only.
 import { createIntelligenceGateway } from "./ai/gateway.server";
 import { newCorrelationId } from "./ai/context.server";
