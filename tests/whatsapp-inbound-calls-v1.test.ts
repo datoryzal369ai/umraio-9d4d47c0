@@ -162,10 +162,18 @@ describe("inbound call orchestration", () => {
       db: db as never,
       event: parseCallEvent(CONNECT)!,
       phoneNumberId: "1232996883231810",
-      env: { WHATSAPP_MEDIA_GATEWAY_URL: "https://gw.example" },
+      env: {
+        WHATSAPP_MEDIA_GATEWAY_URL: "https://gw.example",
+        WHATSAPP_MEDIA_GATEWAY_SECRET: "test-secret",
+      },
+      // The gateway is unreachable in this test: negotiation must fail closed.
+      fetchImpl: (async () => {
+        throw new Error("unreachable");
+      }) as unknown as typeof fetch,
     });
     const written = [...inserts, ...updates].map((w) => w.row.status);
     expect(written).not.toContain("answered");
     expect(written).toContain("answer_requested");
+    expect(written).toContain("failed");
   });
 });
