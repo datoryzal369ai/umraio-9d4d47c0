@@ -160,7 +160,9 @@ func (e *Engine) Establish(
 	if log == nil {
 		log = slog.Default()
 	}
-	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks, log: log}
+	mode := umedia.PipelineMode(pipeline)
+	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks, log: log, pipelineMode: mode}
+	log.Info("media pipeline selected", "call_id", s.CallID, "session_id", s.ID, "pipeline_mode", mode)
 	log.Info("media session created", "call_id", s.CallID, "session_id", s.ID,
 		"udp_mux_configured", e.cfg.UDPMux != nil,
 		"nat_1to1_configured", len(e.cfg.NAT1To1IPs) > 0,
