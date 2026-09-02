@@ -231,21 +231,14 @@ func (e *Engine) Establish(
 	}
 	_ = s.Advance(session.StateMediaNegotiating, "", time.Now())
 
-	// Guarantee the answered audio transceiver keeps a receiving direction
-	// whenever the remote side is willing to send. Never widens beyond what
-	// the offer permits.
-	for _, tr := range pc.GetTransceivers() {
-		if tr == nil || tr.Kind() != pion.RTPCodecTypeAudio {
-			continue
-		}
-		if remoteAudio.PermitsRemoteSend() && tr.Direction() != pion.RTPTransceiverDirectionSendrecv {
-			if err := tr.SetDirection(pion.RTPTransceiverDirectionSendrecv); err != nil {
-				log.Warn("audio transceiver direction not adjustable",
-					"call_id", s.CallID, "session_id", s.ID, "error_class", "transceiver_direction")
-			}
-		}
-		break
+	// Post-offer transceiver posture: purely observational. The receiving
+	// direction is guaranteed by the explicit SENDRECV transceiver added
+	// before SetRemoteDescription.
+	if pre := AuditTransceivers(pc); remoteAudio.PermitsRemoteSend() && !pre.CanReceiveAudio() {
+		log.Warn("audio receiver not bound after remote offer",
+			append([]any{"call_id", s.CallID, "session_id", s.ID}, pre.LogAttrs()...)...)
 	}
+
 
 
 	answer, err := pc.CreateAnswer(nil)
