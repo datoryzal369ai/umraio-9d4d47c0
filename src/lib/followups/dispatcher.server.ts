@@ -206,6 +206,19 @@ export async function dispatchDueFollowups(
       });
       continue;
     }
+
+    // 1b. OUTAGE SAFETY — a follow-up that is far past its scheduled time is no
+    //     longer contextually valid. After a backend outage the queue must never
+    //     be flushed to customers as a burst of late WhatsApp messages.
+    const lateness = latenessMinutes(job.run_at);
+    if (isStaleFollowup(job.run_at)) {
+      console.warn(
+        `[followups] followup_skipped reason=${STALE_SKIP_REASON} job_id=${maskId(job.id)} scheduled_at=${new Date(job.run_at).toISOString()} evaluated_at=${new Date().toISOString()} lateness_minutes=${lateness}`,
+      );
+      await skip(STALE_SKIP_REASON);
+      continue;
+    }
+
     if (!job.lead_id) {
       await skip("No lead attached");
       continue;
