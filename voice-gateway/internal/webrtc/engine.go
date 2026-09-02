@@ -94,6 +94,29 @@ type MediaSession struct {
 	closeOnce sync.Once
 	mu        sync.Mutex
 	closed    bool
+
+	pipelineMode string
+	inbound      atomic.Uint64
+	outbound     atomic.Uint64
+}
+
+// diagEvery bounds progress logging: first packet, then every N packets.
+const diagEvery = 100
+
+// sanitizeCodec constrains any codec string before it reaches a log sink.
+func sanitizeCodec(v string) string {
+	if len(v) > 64 {
+		v = v[:64]
+	}
+	for _, r := range v {
+		if r < 0x20 || r > 0x7e {
+			return "unknown"
+		}
+	}
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }
 
 var ErrClosed = errors.New("webrtc: media session closed")
