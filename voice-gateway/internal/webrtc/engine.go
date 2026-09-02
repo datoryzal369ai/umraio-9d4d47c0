@@ -152,10 +152,18 @@ func (e *Engine) Establish(
 		_ = pc.Close()
 		return "", nil, fmt.Errorf("outbound track: %w", err)
 	}
-	if _, err := pc.AddTrack(track); err != nil {
+	// An explicit SENDRECV audio transceiver is required: AddTrack alone lets
+	// Pion settle on a send-capable-only audio path, in which case no RTP
+	// receiver is bound and OnTrack can never fire even though ICE/DTLS come
+	// up cleanly. WhatsApp Calling only streams caller audio when the answer
+	// advertises a receiving direction.
+	if _, err := pc.AddTransceiverFromTrack(track, pion.RTPTransceiverInit{
+		Direction: pion.RTPTransceiverDirectionSendrecv,
+	}); err != nil {
 		_ = pc.Close()
-		return "", nil, fmt.Errorf("add track: %w", err)
+		return "", nil, fmt.Errorf("add audio transceiver: %w", err)
 	}
+
 
 	log := e.cfg.Logger
 	if log == nil {
@@ -211,6 +219,10 @@ func (e *Engine) Establish(
 		go ms.readInbound(remote)
 	})
 
+	remoteAudio := SummarizeAudioSDP(offerSDP)
+	log.Info("remote offer audio summary",
+		append([]any{"call_id", s.CallID, "session_id", s.ID}, remoteAudio.LogAttrs("remote")...)...)
+
 	if err := pc.SetRemoteDescription(pion.SessionDescription{
 		Type: pion.SDPTypeOffer, SDP: NormalizeOfferTerminator(offerSDP),
 	}); err != nil {
@@ -218,6 +230,16 @@ func (e *Engine) Establish(
 		return "", nil, fmt.Errorf("set remote description: %w", err)
 	}
 	_ = s.Advance(session.StateMediaNegotiating, "", time.Now())
+
+	// Post-offer transceiver posture: purely observational. The receiving
+	// direction is guaranteed by the explicit SENDRECV transceiver added
+	// before SetRemoteDescription.
+	if pre := AuditTransceivers(pc); remoteAudio.PermitsRemoteSend() && !pre.CanReceiveAudio() {
+		log.Warn("audio receiver not bound after remote offer",
+			append([]any{"call_id", s.CallID, "session_id", s.ID}, pre.LogAttrs()...)...)
+	}
+
+
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
@@ -248,6 +270,20 @@ func (e *Engine) Establish(
 	}
 	log.Info("local answer generated",
 		append([]any{"call_id", s.CallID, "session_id", s.ID}, SummarizeAnswer(local.SDP).LogAttrs()...)...)
+
+	localAudio := SummarizeAudioSDP(local.SDP)
+	audit := AuditTransceivers(pc)
+	fields := append([]any{"call_id", s.CallID, "session_id", s.ID}, localAudio.LogAttrs("local")...)
+	fields = append(fields, audit.LogAttrs()...)
+	fields = append(fields, "inbound_audio_permitted", localAudio.PermitsLocalReceive())
+	log.Info("audio negotiation audit", fields...)
+	if !localAudio.PermitsLocalReceive() || !audit.CanReceiveAudio() {
+		log.Warn("inbound audio path not negotiated", "call_id", s.CallID, "session_id", s.ID,
+			"local_audio_direction", localAudio.Direction,
+			"audio_transceiver_direction", audit.Direction,
+			"audio_receiver_negotiated", audit.ReceiverNegotiated)
+	}
+
 	if err := pipeline.Attach(ctx, ms); err != nil {
 		log.Warn("media pipeline attach failed", "call_id", s.CallID, "session_id", s.ID,
 			"pipeline_mode", mode, "error_class", "pipeline_attach")
