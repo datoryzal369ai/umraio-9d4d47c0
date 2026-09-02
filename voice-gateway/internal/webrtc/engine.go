@@ -152,7 +152,7 @@ func (e *Engine) Establish(
 	})
 
 	if err := pc.SetRemoteDescription(pion.SessionDescription{
-		Type: pion.SDPTypeOffer, SDP: offerSDP,
+		Type: pion.SDPTypeOffer, SDP: NormalizeOfferTerminator(offerSDP),
 	}); err != nil {
 		_ = pc.Close()
 		return "", nil, fmt.Errorf("set remote description: %w", err)
