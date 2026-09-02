@@ -110,8 +110,11 @@ export function parseCallEvent(raw: MetaCallEvent | null | undefined): ParsedCal
     return null;
   }
 
-  const sdpValue = raw.session?.sdp?.trim();
-  const sdp = sdpValue ? { type: raw.session?.sdp_type?.trim() || "offer", sdp: sdpValue } : null;
+  // Validate on a trimmed COPY, but forward Meta's SDP byte-for-byte: Pion's
+  // SDP lexer requires the final line to keep its terminating CRLF.
+  const rawSdp = raw.session?.sdp;
+  const sdp = rawSdp && rawSdp.trim() ? { type: raw.session?.sdp_type?.trim() || "offer", sdp: rawSdp } : null;
+
 
   return {
     callId,

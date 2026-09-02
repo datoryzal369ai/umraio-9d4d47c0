@@ -177,3 +177,26 @@ describe("inbound call orchestration", () => {
     expect(written).toContain("failed");
   });
 });
+
+// ── SDP integrity (Pion "failed to unmarshal SDP: EOF" regression) ──────────
+describe("meta sdp integrity", () => {
+  const META_SDP =
+    "v=0\r\no=- 4611731400430051336 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n" +
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\n" +
+    "a=ice-ufrag:abcd\r\na=ice-pwd:efghijklmnopqrstuvwx\r\n" +
+    "a=fingerprint:sha-256 AA:BB:CC\r\na=rtpmap:111 opus/48000/2\r\n";
+
+  it("preserves Meta's SDP byte-for-byte including the trailing CRLF", () => {
+    const parsed = parseCallEvent({
+      ...CONNECT,
+      session: { sdp_type: "offer", sdp: META_SDP },
+    })!;
+    expect(parsed.sdp?.sdp).toBe(META_SDP);
+    expect(parsed.sdp?.sdp.endsWith("\r\n")).toBe(true);
+    expect(parsed.sdp?.type).toBe("offer");
+  });
+
+  it("treats whitespace-only SDP as absent", () => {
+    expect(parseCallEvent({ ...CONNECT, session: { sdp_type: "offer", sdp: "   \r\n" } })!.sdp).toBeNull();
+  });
+});

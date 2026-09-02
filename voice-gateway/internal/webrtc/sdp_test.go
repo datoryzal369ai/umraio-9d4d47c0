@@ -67,3 +67,45 @@ func TestValidateOfferRejectsNonSDPGarbage(t *testing.T) {
 		t.Fatalf("expected ErrSDPStructure, got %v", err)
 	}
 }
+
+// realistic Meta-style offer WITHOUT a terminating newline (production defect).
+const untermOffer = "v=0\r\n" +
+	"o=- 4611731400430051336 2 IN IP4 127.0.0.1\r\n" +
+	"s=-\r\nt=0 0\r\n" +
+	"a=group:BUNDLE 0\r\n" +
+	"m=audio 9 UDP/TLS/RTP/SAVPF 111\r\n" +
+	"c=IN IP4 0.0.0.0\r\n" +
+	"a=rtcp-mux\r\n" +
+	"a=ice-ufrag:abcd\r\na=ice-pwd:efghijklmnopqrstuvwx\r\n" +
+	"a=fingerprint:sha-256 AA:BB:CC\r\n" +
+	"a=setup:actpass\r\na=mid:0\r\na=sendrecv\r\n" +
+	"a=rtpmap:111 opus/48000/2"
+
+func TestNormalizeOfferTerminatorAppendsCRLF(t *testing.T) {
+	got := NormalizeOfferTerminator(untermOffer)
+	if got != untermOffer+"\r\n" {
+		t.Fatal("expected exactly one CRLF appended")
+	}
+	if NormalizeOfferTerminator(got) != got {
+		t.Fatal("normalization must be idempotent")
+	}
+}
+
+func TestNormalizeOfferTerminatorLeavesTerminatedSDPUntouched(t *testing.T) {
+	if NormalizeOfferTerminator(goodOffer) != goodOffer {
+		t.Fatal("LF-terminated sdp must not be modified")
+	}
+	crlf := untermOffer + "\r\n"
+	if NormalizeOfferTerminator(crlf) != crlf {
+		t.Fatal("CRLF-terminated sdp must not be modified")
+	}
+	if NormalizeOfferTerminator("") != "" {
+		t.Fatal("empty sdp must stay empty")
+	}
+}
+
+func TestValidateOfferAcceptsRealisticMetaOffer(t *testing.T) {
+	if err := ValidateOffer(untermOffer); err != nil {
+		t.Fatalf("realistic meta offer rejected: %v", err)
+	}
+}
