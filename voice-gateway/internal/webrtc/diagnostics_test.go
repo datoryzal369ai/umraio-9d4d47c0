@@ -72,15 +72,9 @@ func TestEngineDiagnosticsAreSafe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("engine: %v", err)
 	}
-	offerer, err := NewEngine(Config{NegotiateTO: 5 * time.Second, Logger: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))})
-	if err != nil {
-		t.Fatalf("offerer engine: %v", err)
-	}
-	offer, cleanup, err := makeOffer(offerer)
-	if err != nil {
-		t.Fatalf("offer: %v", err)
-	}
-	defer cleanup()
+	caller, _ := newLoopbackCaller(t)
+	defer caller.Close()
+	offer := callerOffer(t, caller)
 
 	sess := session.New("sess-diag", "call-diag", "agency", "phone", time.Now())
 	answer, ms, err := e.Establish(context.Background(), sess, offer, nil, Hooks{})
