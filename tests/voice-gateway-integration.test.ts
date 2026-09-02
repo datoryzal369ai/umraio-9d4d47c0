@@ -565,3 +565,29 @@ describe("processGatewayCallback", () => {
     expect(logged).not.toContain(SECRET);
   });
 });
+
+describe("sdp terminator forwarding", () => {
+  it("sends the SDP offer to the gateway with its terminator intact", async () => {
+    const offer = OFFER_SDP; // ends with \r\n
+    let sentBody = "";
+    const fetchImpl = (async (_url: any, init: any) => {
+      sentBody = String(init.body);
+      return new Response(
+        JSON.stringify({ session_id: GATEWAY_SESSION, sdp_answer: ANSWER_SDP, state: "media_negotiating" }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const r = await requestMediaSession({
+      gatewayUrl: "https://gateway.internal",
+      secret: SECRET,
+      callId: CALL_ID,
+      agencyId: AGENCY,
+      phoneNumberId: PHONE_ID,
+      sdpOffer: offer,
+      fetchImpl,
+    });
+    expect(r.ok).toBe(true);
+    expect(JSON.parse(sentBody).sdp_offer).toBe(offer);
+  });
+});
