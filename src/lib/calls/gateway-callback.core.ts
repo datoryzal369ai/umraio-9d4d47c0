@@ -13,7 +13,13 @@
  *                  AND the session is not terminal.
  */
 
-export const GATEWAY_CALLBACK_EVENTS = ["media_ready", "media_terminated", "media_failed"] as const;
+export const GATEWAY_CALLBACK_EVENTS = [
+  "media_ready",
+  "media_terminated",
+  "media_failed",
+  // Informational lifecycle only. NEVER implies media readiness or "answered".
+  "media_negotiating",
+] as const;
 export type GatewayCallbackEvent = (typeof GATEWAY_CALLBACK_EVENTS)[number];
 
 /** Bounded per-call replay ledger. A call cannot legitimately emit more. */
