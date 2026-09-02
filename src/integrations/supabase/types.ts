@@ -965,6 +965,56 @@ export type Database = {
           },
         ]
       }
+      executive_objectives: {
+        Row: {
+          agency_id: string
+          created_at: string
+          created_by: string | null
+          deadline: string | null
+          id: string
+          objective_text: string
+          parsed_metric: string | null
+          status: string
+          target_quantity: number | null
+          target_segment: string | null
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          created_at?: string
+          created_by?: string | null
+          deadline?: string | null
+          id?: string
+          objective_text: string
+          parsed_metric?: string | null
+          status?: string
+          target_quantity?: number | null
+          target_segment?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          created_at?: string
+          created_by?: string | null
+          deadline?: string | null
+          id?: string
+          objective_text?: string
+          parsed_metric?: string | null
+          status?: string
+          target_quantity?: number | null
+          target_segment?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "executive_objectives_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       followup_jobs: {
         Row: {
           agency_id: string

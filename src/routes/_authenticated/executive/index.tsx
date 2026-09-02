@@ -25,6 +25,8 @@ import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ExecutiveCommandPanel } from "@/components/executive/ExecutiveCommandPanel";
 import { ExecutiveInsight } from "@/components/executive/ExecutiveInsight";
 import { ExecutiveNowCard } from "@/components/executive/ExecutiveNowCard";
+import { ObjectiveBoard } from "@/components/executive/ObjectiveBoard";
+import { ObjectiveCommandBar } from "@/components/executive/ObjectiveCommandBar";
 import { OutcomeMonitor } from "@/components/executive/OutcomeMonitor";
 import { OrchestrationPanel } from "@/components/executive/OrchestrationPanel";
 import { SalesOpportunities } from "@/components/executive/SalesOpportunities";
@@ -183,6 +185,9 @@ function ExecutiveCenter() {
         </div>
       </header>
 
+      {/* 0. COMMANDER PHASE 1 — business objectives (capture + display only). */}
+      <ObjectiveCommandBar />
+      <ObjectiveBoard />
 
       {/* 1. EXECUTIVE NOW — what needs attention right now. */}
       <ExecutiveNowCard />
