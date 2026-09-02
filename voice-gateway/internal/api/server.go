@@ -274,7 +274,12 @@ func (s *Server) emit(name string, sess *session.Session, reason string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.Events.Send(ctx, ev); err != nil {
-			s.Logger.Warn("callback failed", "error_class", errClass(err), "call_id", ev.CallID, "event", name)
+			// Status only — never the response body, payload, SDP or credentials.
+			s.Logger.Warn("callback failed",
+				"error_class", errClass(err),
+				"http_status", callback.StatusOf(err),
+				"call_id", ev.CallID,
+				"event", name)
 		}
 	}()
 }
