@@ -40,10 +40,10 @@ func TestMetaLikeOfferSummary(t *testing.T) {
 	if !s.MidPresent || !s.BundlePresent || !s.PermitsRemoteSend() {
 		t.Fatalf("unexpected structure: %+v", s)
 	}
-	if r := SummarizeAudioSDP(strings.Replace(metaLikeOffer, "a=sendrecv", "a=recvonly", 1)); r.PermitsRemoteSend() {
-		t.Fatal("recvonly offer must not be treated as inbound-capable")
+	if r := SummarizeAudioSDP(strings.Replace(metaLikeOffer, "a=sendrecv", "a=recvonly", 1)); r.PermitsRemoteSend() || !r.PermitsLocalReceive() {
+		t.Fatal("recvonly offer must not be read as a remote-sending path")
 	}
-	if r := SummarizeAudioSDP(strings.Replace(metaLikeOffer, "m=audio 9 ", "m=audio 0 ", 1)); !r.Rejected || r.PermitsRemoteSend() {
+	if r := SummarizeAudioSDP(strings.Replace(metaLikeOffer, "m=audio 9 ", "m=audio 0 ", 1)); !r.Rejected || r.PermitsRemoteSend() || r.PermitsLocalReceive() {
 		t.Fatal("rejected m-line must not be treated as inbound-capable")
 	}
 	if e := SummarizeAudioSDP(""); e.AudioPresent || e.Direction != DirUnknown {
@@ -72,7 +72,7 @@ func TestNegotiationBindsInboundAudioPath(t *testing.T) {
 	defer ms.Terminate("test_done")
 
 	local := SummarizeAudioSDP(answer)
-	if !local.PermitsRemoteSend() {
+	if !local.PermitsLocalReceive() {
 		t.Fatalf("local answer forbids inbound audio: direction=%s", local.Direction)
 	}
 	if !local.OpusPresent || local.OpusClockRate != 48000 {

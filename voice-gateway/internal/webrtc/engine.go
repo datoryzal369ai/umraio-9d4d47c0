@@ -275,9 +275,9 @@ func (e *Engine) Establish(
 	audit := AuditTransceivers(pc)
 	fields := append([]any{"call_id", s.CallID, "session_id", s.ID}, localAudio.LogAttrs("local")...)
 	fields = append(fields, audit.LogAttrs()...)
-	fields = append(fields, "inbound_audio_permitted", localAudio.PermitsRemoteSend())
+	fields = append(fields, "inbound_audio_permitted", localAudio.PermitsLocalReceive())
 	log.Info("audio negotiation audit", fields...)
-	if !localAudio.PermitsRemoteSend() || !audit.CanReceiveAudio() {
+	if !localAudio.PermitsLocalReceive() || !audit.CanReceiveAudio() {
 		log.Warn("inbound audio path not negotiated", "call_id", s.CallID, "session_id", s.ID,
 			"local_audio_direction", localAudio.Direction,
 			"audio_transceiver_direction", audit.Direction,
