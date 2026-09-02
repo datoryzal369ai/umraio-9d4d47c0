@@ -201,6 +201,12 @@ func (e *Engine) Establish(
 		if remote.Kind() != pion.RTPCodecTypeAudio {
 			return
 		}
+		codec := remote.Codec()
+		log.Info("inbound audio track received", "call_id", s.CallID, "session_id", s.ID,
+			"codec_mime", sanitizeCodec(codec.MimeType),
+			"payload_type", uint8(codec.PayloadType),
+			"clock_rate", codec.ClockRate,
+			"channels", codec.Channels)
 		go ms.readInbound(remote)
 	})
 
