@@ -219,6 +219,10 @@ func (e *Engine) Establish(
 		go ms.readInbound(remote)
 	})
 
+	remoteAudio := SummarizeAudioSDP(offerSDP)
+	log.Info("remote offer audio summary",
+		append([]any{"call_id", s.CallID, "session_id", s.ID}, remoteAudio.LogAttrs("remote")...)...)
+
 	if err := pc.SetRemoteDescription(pion.SessionDescription{
 		Type: pion.SDPTypeOffer, SDP: NormalizeOfferTerminator(offerSDP),
 	}); err != nil {
@@ -226,6 +230,23 @@ func (e *Engine) Establish(
 		return "", nil, fmt.Errorf("set remote description: %w", err)
 	}
 	_ = s.Advance(session.StateMediaNegotiating, "", time.Now())
+
+	// Guarantee the answered audio transceiver keeps a receiving direction
+	// whenever the remote side is willing to send. Never widens beyond what
+	// the offer permits.
+	for _, tr := range pc.GetTransceivers() {
+		if tr == nil || tr.Kind() != pion.RTPCodecTypeAudio {
+			continue
+		}
+		if remoteAudio.PermitsRemoteSend() && tr.Direction() != pion.RTPTransceiverDirectionSendrecv {
+			if err := tr.SetDirection(pion.RTPTransceiverDirectionSendrecv); err != nil {
+				log.Warn("audio transceiver direction not adjustable",
+					"call_id", s.CallID, "session_id", s.ID, "error_class", "transceiver_direction")
+			}
+		}
+		break
+	}
+
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
