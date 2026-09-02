@@ -167,7 +167,7 @@ func (e *Engine) Establish(
 			"ice_connection_state", st.String())
 	})
 
-	pc.OnICEGatheringStateChange(func(st pion.ICEGathererState) {
+	pc.OnICEGatheringStateChange(func(st pion.ICEGatheringState) {
 		log.Info("ice gathering state", "call_id", s.CallID, "session_id", s.ID,
 			"ice_gathering_state", st.String())
 	})
