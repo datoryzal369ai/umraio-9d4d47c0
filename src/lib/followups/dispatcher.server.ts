@@ -45,6 +45,37 @@ export function nextRetryAt(attempts: number, from = new Date()): Date | null {
   return new Date(from.getTime() + minutes * 60_000);
 }
 
+/**
+ * OUTAGE SAFETY — maximum permitted dispatch lateness.
+ *
+ * A scheduled follow-up that is dispatched long after its intended time is no
+ * longer contextually appropriate for the customer. After a backend/database
+ * outage the queue must never be flushed as a burst of late WhatsApp messages.
+ * Configurable via `MAX_FOLLOWUP_LATENESS_MINUTES`; default 60 minutes.
+ */
+export const DEFAULT_MAX_FOLLOWUP_LATENESS_MINUTES = 60;
+export const STALE_SKIP_REASON = "stale_after_outage";
+
+export function maxFollowupLatenessMinutes(): number {
+  const raw = Number(process.env["MAX_FOLLOWUP_LATENESS_MINUTES"]);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_FOLLOWUP_LATENESS_MINUTES;
+}
+
+export function latenessMinutes(runAt: string | Date, now = new Date()): number {
+  const scheduled = new Date(runAt).getTime();
+  if (!Number.isFinite(scheduled)) return 0;
+  return Math.floor((now.getTime() - scheduled) / 60_000);
+}
+
+export function isStaleFollowup(runAt: string | Date, now = new Date()): boolean {
+  return latenessMinutes(runAt, now) > maxFollowupLatenessMinutes();
+}
+
+/** Never log full identifiers alongside customer context. */
+export function maskId(id: string): string {
+  return id.length <= 8 ? id : `${id.slice(0, 8)}…`;
+}
+
 
 export function localHour(timezone: string | null | undefined, at = new Date()): number {
   try {
@@ -206,6 +237,19 @@ export async function dispatchDueFollowups(
       });
       continue;
     }
+
+    // 1b. OUTAGE SAFETY — a follow-up that is far past its scheduled time is no
+    //     longer contextually valid. After a backend outage the queue must never
+    //     be flushed to customers as a burst of late WhatsApp messages.
+    const lateness = latenessMinutes(job.run_at);
+    if (isStaleFollowup(job.run_at)) {
+      console.warn(
+        `[followups] followup_skipped reason=${STALE_SKIP_REASON} job_id=${maskId(job.id)} scheduled_at=${new Date(job.run_at).toISOString()} evaluated_at=${new Date().toISOString()} lateness_minutes=${lateness}`,
+      );
+      await skip(STALE_SKIP_REASON);
+      continue;
+    }
+
     if (!job.lead_id) {
       await skip("No lead attached");
       continue;
