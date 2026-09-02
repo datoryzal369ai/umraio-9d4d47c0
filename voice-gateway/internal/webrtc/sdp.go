@@ -49,3 +49,13 @@ func ValidateOffer(sdp string) error {
 	}
 	return nil
 }
+
+// NormalizeOfferTerminator guarantees the final SDP line is newline-terminated.
+// Pion's SDP lexer returns io.EOF ("failed to unmarshal SDP: EOF") when the
+// last line has no terminator. It never trims, reorders or rewrites content.
+func NormalizeOfferTerminator(sdp string) string {
+	if sdp == "" || strings.HasSuffix(sdp, "\n") {
+		return sdp
+	}
+	return sdp + "\r\n"
+}
