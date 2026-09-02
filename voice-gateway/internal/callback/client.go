@@ -115,5 +115,25 @@ func (c *Client) post(ctx context.Context, body []byte) error {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
-	return fmt.Errorf("callback: control plane responded %d", resp.StatusCode)
+	return &HTTPError{StatusCode: resp.StatusCode}
+}
+
+// HTTPError carries ONLY the control plane's HTTP status code. Response bodies
+// are deliberately never read or retained: they may echo call data.
+type HTTPError struct {
+	StatusCode int
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("callback: control plane responded %d", e.StatusCode)
+}
+
+// StatusOf reports the HTTP status of a callback failure, or 0 when the
+// failure was transport-level.
+func StatusOf(err error) int {
+	var he *HTTPError
+	if errors.As(err, &he) {
+		return he.StatusCode
+	}
+	return 0
 }
