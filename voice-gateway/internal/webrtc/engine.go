@@ -322,6 +322,15 @@ func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 		return err
 	}
 	ms.sess.RecordOutbound()
+	n := ms.outbound.Add(1)
+	if n == 1 {
+		ms.log.Info("first outbound opus", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"payload_length", len(frame.Data), "duration_ms", d.Milliseconds())
+	}
+	if n == 1 || n%diagEvery == 0 {
+		ms.log.Info("outbound opus progress", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"outbound_packets", n)
+	}
 	return nil
 }
 
@@ -332,6 +341,13 @@ func (ms *MediaSession) Terminate(reason string) {
 		ms.closed = true
 		ms.mu.Unlock()
 		now := time.Now()
+		pre := ms.sess.Stats()
+		ms.log.Info("media session terminating", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"state", string(pre.State),
+			"inbound_packets", pre.InboundPackets, "outbound_packets", pre.OutboundPackets,
+			"media_ready", !pre.MediaReadyAt.IsZero(),
+			"pipeline_mode", ms.pipelineMode,
+			"reason", reason)
 		if !session.IsTerminal(ms.sess.State()) {
 			_ = ms.sess.Advance(session.StateTerminating, reason, now)
 			_ = ms.sess.Advance(session.StateTerminated, reason, now)
