@@ -258,7 +258,7 @@ async function maybeRequestAnswer(args: {
 }
 
 export type GatewayCallbackOutcome =
-  | { applied: true; outcome: "answered" | "terminated" | "failed" }
+  | { applied: true; outcome: "answered" | "terminated" | "failed" | "negotiating" }
   | { applied: false; rejection: string };
 
 /**
