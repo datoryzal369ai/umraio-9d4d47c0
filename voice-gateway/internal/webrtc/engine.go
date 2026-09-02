@@ -152,10 +152,18 @@ func (e *Engine) Establish(
 		_ = pc.Close()
 		return "", nil, fmt.Errorf("outbound track: %w", err)
 	}
-	if _, err := pc.AddTrack(track); err != nil {
+	// An explicit SENDRECV audio transceiver is required: AddTrack alone lets
+	// Pion settle on a send-capable-only audio path, in which case no RTP
+	// receiver is bound and OnTrack can never fire even though ICE/DTLS come
+	// up cleanly. WhatsApp Calling only streams caller audio when the answer
+	// advertises a receiving direction.
+	if _, err := pc.AddTransceiverFromTrack(track, pion.RTPTransceiverInit{
+		Direction: pion.RTPTransceiverDirectionSendrecv,
+	}); err != nil {
 		_ = pc.Close()
-		return "", nil, fmt.Errorf("add track: %w", err)
+		return "", nil, fmt.Errorf("add audio transceiver: %w", err)
 	}
+
 
 	log := e.cfg.Logger
 	if log == nil {
