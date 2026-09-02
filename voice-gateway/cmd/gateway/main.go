@@ -64,6 +64,7 @@ func main() {
 		NAT1To1IPs:  cfg.PublicIPs,
 		ICEServers:  iceServers,
 		NegotiateTO: cfg.NegotiateTimeout,
+		Logger:      logger,
 	})
 	if err != nil {
 		logger.Error("webrtc engine failed to start", "error_class", "webrtc")
