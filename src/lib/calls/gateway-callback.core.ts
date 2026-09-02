@@ -13,7 +13,13 @@
  *                  AND the session is not terminal.
  */
 
-export const GATEWAY_CALLBACK_EVENTS = ["media_ready", "media_terminated", "media_failed"] as const;
+export const GATEWAY_CALLBACK_EVENTS = [
+  "media_ready",
+  "media_terminated",
+  "media_failed",
+  // Informational lifecycle only. NEVER implies media readiness or "answered".
+  "media_negotiating",
+] as const;
 export type GatewayCallbackEvent = (typeof GATEWAY_CALLBACK_EVENTS)[number];
 
 /** Bounded per-call replay ledger. A call cannot legitimately emit more. */
@@ -52,7 +58,13 @@ export type CallbackRejection =
 
 export type CallbackDecision =
   | { apply: false; rejection: CallbackRejection }
-  | { apply: true; outcome: "answered" | "terminated" | "failed"; patch: Record<string, unknown> };
+  | {
+      apply: true;
+      outcome: "answered" | "terminated" | "failed" | "negotiating";
+      patch: Record<string, unknown>;
+      /** Compare-and-set guard: only write when gateway_session_id is still NULL. */
+      requireNullGatewaySession?: true;
+    };
 
 const TERMINAL = new Set(["missed", "terminated", "failed"]);
 
@@ -117,12 +129,28 @@ export function decideGatewayCallback(args: {
   if ((session.callback_nonces ?? []).includes(payload.nonce)) {
     return { apply: false, rejection: "replayed_nonce" };
   }
-  if (!session.gateway_session_id || session.gateway_session_id !== payload.session_id) {
+  const storedSession = (session.gateway_session_id ?? "").trim();
+  const negotiating = payload.event === "media_negotiating";
+  // media_negotiating may legitimately race ahead of the control plane's own
+  // persistence of gateway_session_id. It may bind a NULL value, never replace one.
+  const mayBind = negotiating && storedSession === "";
+  if (!mayBind && (!storedSession || storedSession !== payload.session_id)) {
     return { apply: false, rejection: "gateway_session_mismatch" };
   }
 
   const nowIso = now.toISOString();
   const nonces = appendCallbackNonce(session.callback_nonces, payload.nonce);
+
+  if (negotiating) {
+    if (isTerminalSessionStatus(session.status)) return { apply: false, rejection: "session_terminal" };
+    // Purely informational: it must never move status toward answered/media_ready.
+    const patch: Record<string, unknown> = { callback_nonces: nonces };
+    if (mayBind) patch["gateway_session_id"] = payload.session_id;
+    return mayBind
+      ? { apply: true, outcome: "negotiating", patch, requireNullGatewaySession: true }
+      : { apply: true, outcome: "negotiating", patch };
+  }
+
 
   if (payload.event === "media_ready") {
     if (isTerminalSessionStatus(session.status)) return { apply: false, rejection: "session_terminal" };

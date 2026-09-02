@@ -258,7 +258,7 @@ async function maybeRequestAnswer(args: {
 }
 
 export type GatewayCallbackOutcome =
-  | { applied: true; outcome: "answered" | "terminated" | "failed" }
+  | { applied: true; outcome: "answered" | "terminated" | "failed" | "negotiating" }
   | { applied: false; rejection: string };
 
 /**
@@ -290,7 +290,11 @@ export async function processGatewayCallback(args: {
     return { applied: false, rejection: decision.rejection };
   }
 
-  await db.from("whatsapp_call_sessions").update(decision.patch).eq("id", session!.id);
+  // Compare-and-set: a session-id bind is only allowed while the column is NULL,
+  // so a concurrent Establish response can never be overwritten by a callback.
+  let query = db.from("whatsapp_call_sessions").update(decision.patch).eq("id", session!.id);
+  if (decision.requireNullGatewaySession) query = query.is("gateway_session_id", null);
+  await query;
   console.log(
     `[calls] gateway_callback_applied call_id=${payload.call_id} event=${payload.event} outcome=${decision.outcome}`,
   );

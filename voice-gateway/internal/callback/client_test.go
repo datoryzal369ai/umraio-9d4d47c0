@@ -85,3 +85,34 @@ func TestSendRejectsForgedSecret(t *testing.T) {
 		t.Fatal("control plane must reject a callback signed with the wrong secret")
 	}
 }
+
+func TestSendReturnsTypedHTTPStatusWithoutBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"secret":"super-sensitive","sdp":"v=0"}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, secret, time.Second, 1, time.Millisecond)
+	err := c.Send(context.Background(), Event{Event: EventNegotiating, CallID: "call-1", SessionID: "ms_1"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := StatusOf(err); got != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", got)
+	}
+	if strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "sdp") {
+		t.Fatalf("error leaked response body: %s", err.Error())
+	}
+}
+
+func TestStatusOfTransportErrorIsZero(t *testing.T) {
+	c := New("http://127.0.0.1:1", secret, 200*time.Millisecond, 1, time.Millisecond)
+	err := c.Send(context.Background(), Event{Event: EventMediaReady, CallID: "call-1"})
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	if StatusOf(err) != 0 {
+		t.Fatalf("expected 0 for transport error, got %d", StatusOf(err))
+	}
+}

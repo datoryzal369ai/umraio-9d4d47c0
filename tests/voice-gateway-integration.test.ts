@@ -246,6 +246,73 @@ describe("callback payload validation", () => {
   });
 });
 
+describe("media_negotiating lifecycle event", () => {
+  const negotiating: GatewayCallbackPayload = {
+    event: "media_negotiating",
+    call_id: CALL_ID,
+    session_id: GATEWAY_SESSION,
+    timestamp: "2026-09-01T10:00:02.500Z",
+    nonce: "neg-1",
+  };
+
+  it("parses as a supported event", () => {
+    expect(parseGatewayCallback(negotiating)?.event).toBe("media_negotiating");
+  });
+
+  it("is accepted when the stored session id already matches", () => {
+    const d = decideGatewayCallback({ payload: negotiating, session: baseSession, now: NOW });
+    expect(d).toMatchObject({ apply: true, outcome: "negotiating" });
+    if (d.apply) {
+      expect(d.patch["status"]).toBeUndefined();
+      expect(d.patch["answered_at"]).toBeUndefined();
+      expect(d.patch["gateway_session_id"]).toBeUndefined();
+      expect(d.requireNullGatewaySession).toBeUndefined();
+    }
+  });
+
+  it("binds the session id when the control plane has not persisted it yet", () => {
+    const d = decideGatewayCallback({
+      payload: negotiating,
+      session: { ...baseSession, gateway_session_id: null, status: "answer_requested" },
+      now: NOW,
+    });
+    expect(d).toMatchObject({ apply: true, outcome: "negotiating", requireNullGatewaySession: true });
+    if (d.apply) expect(d.patch["gateway_session_id"]).toBe(GATEWAY_SESSION);
+  });
+
+  it("never overwrites a different stored session id", () => {
+    expect(
+      decideGatewayCallback({
+        payload: { ...negotiating, session_id: "sess-evil" },
+        session: baseSession,
+        now: NOW,
+      }),
+    ).toEqual({ apply: false, rejection: "gateway_session_mismatch" });
+  });
+
+  it("still rejects replays and terminal sessions", () => {
+    expect(
+      decideGatewayCallback({ payload: negotiating, session: { ...baseSession, callback_nonces: ["neg-1"] }, now: NOW }),
+    ).toEqual({ apply: false, rejection: "replayed_nonce" });
+    expect(
+      decideGatewayCallback({ payload: negotiating, session: { ...baseSession, status: "terminated" }, now: NOW }),
+    ).toEqual({ apply: false, rejection: "session_terminal" });
+  });
+
+  it("does NOT satisfy media_ready: no answered state without a real media_ready", () => {
+    const d = decideGatewayCallback({
+      payload: negotiating,
+      session: { ...baseSession, gateway_session_id: null, meta_accepted_at: null },
+      now: NOW,
+    });
+    expect(d.apply && d.outcome).toBe("negotiating");
+    // media_ready on a NULL session id remains a hard mismatch.
+    expect(
+      decideGatewayCallback({ payload: readyEvent, session: { ...baseSession, gateway_session_id: null }, now: NOW }),
+    ).toEqual({ apply: false, rejection: "gateway_session_mismatch" });
+  });
+});
+
 describe("answered rule", () => {
   it("answers only after Meta accept AND media_ready", () => {
     const d = decideGatewayCallback({ payload: readyEvent, session: baseSession, now: NOW });
