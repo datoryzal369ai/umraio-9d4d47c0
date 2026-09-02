@@ -277,6 +277,20 @@ func (e *Engine) Establish(
 	}
 	log.Info("local answer generated",
 		append([]any{"call_id", s.CallID, "session_id", s.ID}, SummarizeAnswer(local.SDP).LogAttrs()...)...)
+
+	localAudio := SummarizeAudioSDP(local.SDP)
+	audit := AuditTransceivers(pc)
+	fields := append([]any{"call_id", s.CallID, "session_id", s.ID}, localAudio.LogAttrs("local")...)
+	fields = append(fields, audit.LogAttrs()...)
+	fields = append(fields, "inbound_audio_permitted", localAudio.PermitsRemoteSend())
+	log.Info("audio negotiation audit", fields...)
+	if !localAudio.PermitsRemoteSend() || !audit.CanReceiveAudio() {
+		log.Warn("inbound audio path not negotiated", "call_id", s.CallID, "session_id", s.ID,
+			"local_audio_direction", localAudio.Direction,
+			"audio_transceiver_direction", audit.Direction,
+			"audio_receiver_negotiated", audit.ReceiverNegotiated)
+	}
+
 	if err := pipeline.Attach(ctx, ms); err != nil {
 		log.Warn("media pipeline attach failed", "call_id", s.CallID, "session_id", s.ID,
 			"pipeline_mode", mode, "error_class", "pipeline_attach")
