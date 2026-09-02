@@ -86,10 +86,10 @@ export const closeExecutiveObjective = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string; status?: "completed" | "closed" }) => {
     if (!input?.id) throw new Error("Objective id is required");
-    const status = input.status ?? "closed";
+    const status: string = input.status ?? "closed";
     if (!isObjectiveStatus(status) || status === "active")
       throw new Error("Invalid closing status");
-    return { id: input.id, status };
+    return { id: input.id, status: status as "completed" | "closed" };
   })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
