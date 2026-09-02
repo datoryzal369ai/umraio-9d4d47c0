@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/ice/v4"
@@ -94,6 +95,29 @@ type MediaSession struct {
 	closeOnce sync.Once
 	mu        sync.Mutex
 	closed    bool
+
+	pipelineMode string
+	inbound      atomic.Uint64
+	outbound     atomic.Uint64
+}
+
+// diagEvery bounds progress logging: first packet, then every N packets.
+const diagEvery = 100
+
+// sanitizeCodec constrains any codec string before it reaches a log sink.
+func sanitizeCodec(v string) string {
+	if len(v) > 64 {
+		v = v[:64]
+	}
+	for _, r := range v {
+		if r < 0x20 || r > 0x7e {
+			return "unknown"
+		}
+	}
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }
 
 var ErrClosed = errors.New("webrtc: media session closed")
@@ -137,7 +161,9 @@ func (e *Engine) Establish(
 	if log == nil {
 		log = slog.Default()
 	}
-	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks, log: log}
+	mode := umedia.PipelineMode(pipeline)
+	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks, log: log, pipelineMode: mode}
+	log.Info("media pipeline selected", "call_id", s.CallID, "session_id", s.ID, "pipeline_mode", mode)
 	log.Info("media session created", "call_id", s.CallID, "session_id", s.ID,
 		"udp_mux_configured", e.cfg.UDPMux != nil,
 		"nat_1to1_configured", len(e.cfg.NAT1To1IPs) > 0,
@@ -176,6 +202,12 @@ func (e *Engine) Establish(
 		if remote.Kind() != pion.RTPCodecTypeAudio {
 			return
 		}
+		codec := remote.Codec()
+		log.Info("inbound audio track received", "call_id", s.CallID, "session_id", s.ID,
+			"codec_mime", sanitizeCodec(codec.MimeType),
+			"payload_type", uint8(codec.PayloadType),
+			"clock_rate", codec.ClockRate,
+			"channels", codec.Channels)
 		go ms.readInbound(remote)
 	})
 
@@ -217,9 +249,12 @@ func (e *Engine) Establish(
 	log.Info("local answer generated",
 		append([]any{"call_id", s.CallID, "session_id", s.ID}, SummarizeAnswer(local.SDP).LogAttrs()...)...)
 	if err := pipeline.Attach(ctx, ms); err != nil {
+		log.Warn("media pipeline attach failed", "call_id", s.CallID, "session_id", s.ID,
+			"pipeline_mode", mode, "error_class", "pipeline_attach")
 		_ = pc.Close()
 		return "", nil, fmt.Errorf("attach pipeline: %w", err)
 	}
+	log.Info("media pipeline attached", "call_id", s.CallID, "session_id", s.ID, "pipeline_mode", mode)
 	return local.SDP, ms, nil
 }
 
@@ -234,6 +269,16 @@ func (ms *MediaSession) readInbound(remote *pion.TrackRemote) {
 			continue
 		}
 		ms.sess.RecordInbound(time.Now())
+		n := ms.inbound.Add(1)
+		if n == 1 {
+			ms.log.Info("first inbound rtp", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+				"payload_length", len(pkt.Payload),
+				"sequence_present", true, "timestamp_present", true)
+		}
+		if n == 1 || n%diagEvery == 0 {
+			ms.log.Info("inbound rtp progress", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+				"inbound_packets", n)
+		}
 		ms.pipeline.OnInbound(umedia.OpusFrame{
 			Data:      pkt.Payload,
 			Duration:  20 * time.Millisecond,
@@ -252,6 +297,11 @@ func (ms *MediaSession) maybeFireMediaReady() {
 	}
 	_ = ms.sess.Advance(session.StateMediaReady, "", now)
 	_ = ms.sess.Advance(session.StateActive, "", now)
+	st := ms.sess.Stats()
+	ms.log.Info("media ready", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+		"state", string(st.State),
+		"inbound_packets", st.InboundPackets, "outbound_packets", st.OutboundPackets,
+		"pipeline_mode", ms.pipelineMode)
 	if ms.hooks.OnMediaReady != nil {
 		go ms.hooks.OnMediaReady(ms.sess)
 	}
@@ -273,6 +323,15 @@ func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 		return err
 	}
 	ms.sess.RecordOutbound()
+	n := ms.outbound.Add(1)
+	if n == 1 {
+		ms.log.Info("first outbound opus", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"payload_length", len(frame.Data), "duration_ms", d.Milliseconds())
+	}
+	if n == 1 || n%diagEvery == 0 {
+		ms.log.Info("outbound opus progress", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"outbound_packets", n)
+	}
 	return nil
 }
 
@@ -283,6 +342,13 @@ func (ms *MediaSession) Terminate(reason string) {
 		ms.closed = true
 		ms.mu.Unlock()
 		now := time.Now()
+		pre := ms.sess.Stats()
+		ms.log.Info("media session terminating", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"state", string(pre.State),
+			"inbound_packets", pre.InboundPackets, "outbound_packets", pre.OutboundPackets,
+			"media_ready", !pre.MediaReadyAt.IsZero(),
+			"pipeline_mode", ms.pipelineMode,
+			"reason", reason)
 		if !session.IsTerminal(ms.sess.State()) {
 			_ = ms.sess.Advance(session.StateTerminating, reason, now)
 			_ = ms.sess.Advance(session.StateTerminated, reason, now)

@@ -40,12 +40,41 @@ type Pipeline interface {
 // ErrNotAttached is returned by transports used before negotiation completes.
 var ErrNotAttached = errors.New("media: transport not attached")
 
+// Pipeline modes are the ONLY values ever logged to identify an implementation.
+// They are fixed enums: no Go internals, no configuration, no secrets.
+const (
+	ModeNoop       = "noop"
+	ModeRealtimeAI = "realtime_ai"
+	ModeCustom     = "custom"
+	ModeUnknown    = "unknown"
+)
+
+// Moder is implemented by pipelines that can name themselves safely.
+type Moder interface{ Mode() string }
+
+// PipelineMode returns a safe enum for any pipeline implementation.
+func PipelineMode(p Pipeline) string {
+	if p == nil {
+		return ModeUnknown
+	}
+	if m, ok := p.(Moder); ok {
+		switch v := m.Mode(); v {
+		case ModeNoop, ModeRealtimeAI, ModeCustom:
+			return v
+		default:
+			return ModeUnknown
+		}
+	}
+	return ModeCustom
+}
+
 // NoopPipeline is the Phase 1 default: it counts frames and does nothing else.
 // It exists so the media plane is fully exercisable without any AI provider.
 type NoopPipeline struct {
 	inbound int64
 }
 
+func (p *NoopPipeline) Mode() string                            { return ModeNoop }
 func (p *NoopPipeline) Attach(context.Context, Transport) error { return nil }
 func (p *NoopPipeline) OnInbound(OpusFrame)                     { p.inbound++ }
 func (p *NoopPipeline) Close(string)                            {}

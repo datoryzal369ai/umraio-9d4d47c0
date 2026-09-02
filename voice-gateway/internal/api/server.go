@@ -318,7 +318,7 @@ var (
 	reHexPairs  = regexp.MustCompile(`(?i)([0-9a-f]{2}:){3,}[0-9a-f]{2}`) // DTLS fingerprints
 	reIPv4      = regexp.MustCompile(`\b\d{1,3}(\.\d{1,3}){3}\b`)
 	reLongToken = regexp.MustCompile(`[A-Za-z0-9+/=_-]{12,}`) // ufrag, pwd, tokens, signatures
-	reNumber    = regexp.MustCompile(`\+?\d[\d\s-]{6,}\d`)  // phone-like sequences
+	reNumber    = regexp.MustCompile(`\+?\d[\d\s-]{6,}\d`)    // phone-like sequences
 )
 
 // safeErrorDetail returns the underlying parser/validation reason from an

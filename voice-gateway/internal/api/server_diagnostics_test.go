@@ -114,7 +114,7 @@ func TestNegotiationFailureLogsNoSensitiveMaterial(t *testing.T) {
 		probePort,                              // raw SDP-derived value
 		"opus/48000",                           // SDP media description
 		"a=rtpmap", "m=audio", "a=fingerprint", // SDP lines
-		secret, // shared secret / HMAC key
+		secret,    // shared secret / HMAC key
 		"0.0.0.0", // IP address
 	} {
 		if strings.Contains(out, forbidden) {

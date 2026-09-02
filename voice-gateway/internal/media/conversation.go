@@ -105,6 +105,9 @@ func NewConversationPipeline(callID string, client TurnClient, cfg ConversationC
 	}
 }
 
+// Mode identifies this pipeline in diagnostics as the real-time AI loop.
+func (p *ConversationPipeline) Mode() string { return ModeRealtimeAI }
+
 func (p *ConversationPipeline) Attach(ctx context.Context, t Transport) error {
 	if t == nil {
 		return ErrNoTransport
