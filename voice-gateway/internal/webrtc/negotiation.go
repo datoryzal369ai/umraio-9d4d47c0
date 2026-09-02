@@ -34,12 +34,20 @@ type AudioSDPSummary struct {
 	MediaSections   int
 }
 
-// PermitsRemoteSend reports whether this section lets the *other* side send
-// audio to us (i.e. we are able to receive).
+// PermitsRemoteSend reads the section as a REMOTE offer: true when the remote
+// side declares it will send audio to us.
 func (s AudioSDPSummary) PermitsRemoteSend() bool {
+	return s.AudioPresent && !s.Rejected &&
+		(s.Direction == DirSendRecv || s.Direction == DirSendOnly)
+}
+
+// PermitsLocalReceive reads the section as our LOCAL answer: true when the
+// advertised direction allows caller audio to reach us.
+func (s AudioSDPSummary) PermitsLocalReceive() bool {
 	return s.AudioPresent && !s.Rejected &&
 		(s.Direction == DirSendRecv || s.Direction == DirRecvOnly)
 }
+
 
 func normalizeDirection(v string) string {
 	switch v {
