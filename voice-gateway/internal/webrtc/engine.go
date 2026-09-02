@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -29,6 +30,8 @@ type Config struct {
 	NAT1To1IPs  []string
 	ICEServers  []pion.ICEServer
 	NegotiateTO time.Duration
+	// Logger receives non-sensitive media diagnostics only.
+	Logger *slog.Logger
 }
 
 // Hooks are the media-plane callbacks consumed by the API layer.
@@ -69,6 +72,9 @@ func NewEngine(cfg Config) (*Engine, error) {
 		cfg.NegotiateTO = 10 * time.Second
 	}
 
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
 	return &Engine{
 		api: pion.NewAPI(pion.WithMediaEngine(m), pion.WithSettingEngine(se)),
 		cfg: cfg,
@@ -83,6 +89,7 @@ type MediaSession struct {
 	sess     *session.Session
 	pipeline umedia.Pipeline
 	hooks    Hooks
+	log      *slog.Logger
 
 	closeOnce sync.Once
 	mu        sync.Mutex
@@ -126,11 +133,22 @@ func (e *Engine) Establish(
 		return "", nil, fmt.Errorf("add track: %w", err)
 	}
 
-	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks}
+	log := e.cfg.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks, log: log}
+	log.Info("media session created", "call_id", s.CallID, "session_id", s.ID,
+		"udp_mux_configured", e.cfg.UDPMux != nil,
+		"nat_1to1_configured", len(e.cfg.NAT1To1IPs) > 0,
+		"nat_1to1_count", len(e.cfg.NAT1To1IPs),
+		"ice_servers_configured", len(e.cfg.ICEServers) > 0)
 
 	_ = s.Advance(session.StateConnecting, "", time.Now())
 
 	pc.OnConnectionStateChange(func(st pion.PeerConnectionState) {
+		log.Info("peer connection state", "call_id", s.CallID, "session_id", s.ID,
+			"peer_connection_state", st.String())
 		switch st {
 		case pion.PeerConnectionStateConnected:
 			s.MarkICEConnected(time.Now())
@@ -142,6 +160,16 @@ func (e *Engine) Establish(
 		case pion.PeerConnectionStateDisconnected, pion.PeerConnectionStateClosed:
 			ms.Terminate("peer_disconnected")
 		}
+	})
+
+	pc.OnICEConnectionStateChange(func(st pion.ICEConnectionState) {
+		log.Info("ice connection state", "call_id", s.CallID, "session_id", s.ID,
+			"ice_connection_state", st.String())
+	})
+
+	pc.OnICEGatheringStateChange(func(st pion.ICEGatheringState) {
+		log.Info("ice gathering state", "call_id", s.CallID, "session_id", s.ID,
+			"ice_gathering_state", st.String())
 	})
 
 	pc.OnTrack(func(remote *pion.TrackRemote, _ *pion.RTPReceiver) {
@@ -175,6 +203,8 @@ func (e *Engine) Establish(
 	select {
 	case <-gather:
 	case <-gctx.Done():
+		log.Warn("ice gathering state", "call_id", s.CallID, "session_id", s.ID,
+			"ice_gathering_state", "timeout")
 		_ = pc.Close()
 		return "", nil, errors.New("webrtc: ice gathering timed out")
 	}
@@ -184,6 +214,8 @@ func (e *Engine) Establish(
 		_ = pc.Close()
 		return "", nil, errors.New("webrtc: no local description produced")
 	}
+	log.Info("local answer generated",
+		append([]any{"call_id", s.CallID, "session_id", s.ID}, SummarizeAnswer(local.SDP).LogAttrs()...)...)
 	if err := pipeline.Attach(ctx, ms); err != nil {
 		_ = pc.Close()
 		return "", nil, fmt.Errorf("attach pipeline: %w", err)

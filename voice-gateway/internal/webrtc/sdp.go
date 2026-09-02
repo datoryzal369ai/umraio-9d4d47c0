@@ -59,3 +59,55 @@ func NormalizeOfferTerminator(sdp string) string {
 	}
 	return sdp + "\r\n"
 }
+
+// AnswerSummary is a structural, non-sensitive description of a local answer.
+// It deliberately carries no IPs, ports, candidate strings, ICE credentials,
+// fingerprints or raw SDP — only counts and booleans safe to log.
+type AnswerSummary struct {
+	Present        bool
+	Length         int
+	CandidateCount int
+	HasHost        bool
+	HasSrflx       bool
+	HasRelay       bool
+	HasAudio       bool
+	HasOpus        bool
+}
+
+// SummarizeAnswer derives loggable structure from an SDP answer.
+func SummarizeAnswer(sdp string) AnswerSummary {
+	s := AnswerSummary{Present: strings.TrimSpace(sdp) != "", Length: len(sdp)}
+	lower := strings.ToLower(sdp)
+	s.HasAudio = strings.Contains(lower, "m=audio")
+	s.HasOpus = strings.Contains(lower, "opus/48000")
+	for _, line := range strings.Split(lower, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "a=candidate:") {
+			continue
+		}
+		s.CandidateCount++
+		switch {
+		case strings.Contains(line, " typ host"):
+			s.HasHost = true
+		case strings.Contains(line, " typ srflx"):
+			s.HasSrflx = true
+		case strings.Contains(line, " typ relay"):
+			s.HasRelay = true
+		}
+	}
+	return s
+}
+
+// LogAttrs renders the summary as flat structured log fields.
+func (s AnswerSummary) LogAttrs() []any {
+	return []any{
+		"answer_sdp_present", s.Present,
+		"answer_length", s.Length,
+		"candidate_count", s.CandidateCount,
+		"has_host_candidate", s.HasHost,
+		"has_srflx_candidate", s.HasSrflx,
+		"has_relay_candidate", s.HasRelay,
+		"has_audio", s.HasAudio,
+		"has_opus", s.HasOpus,
+	}
+}
