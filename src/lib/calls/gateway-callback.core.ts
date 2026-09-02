@@ -58,7 +58,13 @@ export type CallbackRejection =
 
 export type CallbackDecision =
   | { apply: false; rejection: CallbackRejection }
-  | { apply: true; outcome: "answered" | "terminated" | "failed"; patch: Record<string, unknown> };
+  | {
+      apply: true;
+      outcome: "answered" | "terminated" | "failed" | "negotiating";
+      patch: Record<string, unknown>;
+      /** Compare-and-set guard: only write when gateway_session_id is still NULL. */
+      requireNullGatewaySession?: true;
+    };
 
 const TERMINAL = new Set(["missed", "terminated", "failed"]);
 
