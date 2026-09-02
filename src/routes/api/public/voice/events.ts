@@ -40,7 +40,15 @@ export const Route = createFileRoute("/api/public/voice/events")({
           return new Response("invalid_payload", { status: 400 });
         }
         const payload = parseGatewayCallback(json);
-        if (!payload) return new Response("invalid_payload", { status: 400 });
+        if (!payload) {
+          // Bounded, sanitized: only the event token, never the payload body.
+          const token =
+            json && typeof json === "object" && typeof (json as Record<string, unknown>)["event"] === "string"
+              ? ((json as Record<string, string>)["event"] as string).slice(0, 32).replace(/[^a-z_]/gi, "")
+              : "none";
+          console.log(`[calls] gateway_callback_invalid_payload event=${token || "none"}`);
+          return new Response("invalid_payload", { status: 400 });
+        }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { processGatewayCallback } = await import("@/lib/calls/calls.server");
