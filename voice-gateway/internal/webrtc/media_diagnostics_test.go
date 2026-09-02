@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pion "github.com/pion/webrtc/v4"
+	pmedia "github.com/pion/webrtc/v4/pkg/media"
 
 	umedia "github.com/umraio/voice-gateway/internal/media"
 	"github.com/umraio/voice-gateway/internal/session"
@@ -178,4 +179,8 @@ func TestSanitizeCodecConstrainsOutput(t *testing.T) {
 	if len(sanitizeCodec(strings.Repeat("x", 500))) != 64 {
 		t.Fatal("codec not truncated")
 	}
+}
+
+func writeSilence(track *pion.TrackLocalStaticSample) error {
+	return track.WriteSample(pmedia.Sample{Data: silentOpusFrame, Duration: 20 * time.Millisecond})
 }
