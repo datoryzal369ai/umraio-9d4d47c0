@@ -1,0 +1,1 @@
+REVOKE ALL ON public.executive_objectives FROM anon;
