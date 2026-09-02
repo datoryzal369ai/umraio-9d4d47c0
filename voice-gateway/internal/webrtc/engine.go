@@ -248,9 +248,12 @@ func (e *Engine) Establish(
 	log.Info("local answer generated",
 		append([]any{"call_id", s.CallID, "session_id", s.ID}, SummarizeAnswer(local.SDP).LogAttrs()...)...)
 	if err := pipeline.Attach(ctx, ms); err != nil {
+		log.Warn("media pipeline attach failed", "call_id", s.CallID, "session_id", s.ID,
+			"pipeline_mode", mode, "error_class", "pipeline_attach")
 		_ = pc.Close()
 		return "", nil, fmt.Errorf("attach pipeline: %w", err)
 	}
+	log.Info("media pipeline attached", "call_id", s.CallID, "session_id", s.ID, "pipeline_mode", mode)
 	return local.SDP, ms, nil
 }
 
@@ -265,6 +268,16 @@ func (ms *MediaSession) readInbound(remote *pion.TrackRemote) {
 			continue
 		}
 		ms.sess.RecordInbound(time.Now())
+		n := ms.inbound.Add(1)
+		if n == 1 {
+			ms.log.Info("first inbound rtp", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+				"payload_length", len(pkt.Payload),
+				"sequence_present", true, "timestamp_present", true)
+		}
+		if n == 1 || n%diagEvery == 0 {
+			ms.log.Info("inbound rtp progress", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+				"inbound_packets", n)
+		}
 		ms.pipeline.OnInbound(umedia.OpusFrame{
 			Data:      pkt.Payload,
 			Duration:  20 * time.Millisecond,
@@ -283,6 +296,11 @@ func (ms *MediaSession) maybeFireMediaReady() {
 	}
 	_ = ms.sess.Advance(session.StateMediaReady, "", now)
 	_ = ms.sess.Advance(session.StateActive, "", now)
+	st := ms.sess.Stats()
+	ms.log.Info("media ready", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+		"state", string(st.State),
+		"inbound_packets", st.InboundPackets, "outbound_packets", st.OutboundPackets,
+		"pipeline_mode", ms.pipelineMode)
 	if ms.hooks.OnMediaReady != nil {
 		go ms.hooks.OnMediaReady(ms.sess)
 	}
