@@ -74,6 +74,7 @@ type NoopPipeline struct {
 	inbound int64
 }
 
+func (p *NoopPipeline) Mode() string                            { return ModeNoop }
 func (p *NoopPipeline) Attach(context.Context, Transport) error { return nil }
 func (p *NoopPipeline) OnInbound(OpusFrame)                     { p.inbound++ }
 func (p *NoopPipeline) Close(string)                            {}
