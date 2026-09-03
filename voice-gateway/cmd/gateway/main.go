@@ -129,6 +129,7 @@ func main() {
 		WebRTCReady:    &webrtcReady,
 		ActiveSessions: registry.Count,
 		Draining:       &draining,
+		SpeechReady:    func() bool { return speaker.Available() },
 	}
 
 	mux := http.NewServeMux()
