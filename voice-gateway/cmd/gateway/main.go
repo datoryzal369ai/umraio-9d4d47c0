@@ -159,6 +159,8 @@ func main() {
 	if err := udpMux.Close(); err != nil {
 		logger.Warn("udp mux close failed", "error_class", "udp_mux")
 	}
-	_ = udpConn.Close()
+	for _, c := range udpConns {
+		_ = c.Close()
+	}
 	logger.Info("gateway stopped")
 }
