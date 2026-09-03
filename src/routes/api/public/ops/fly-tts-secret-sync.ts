@@ -162,9 +162,16 @@ export const Route = createFileRoute("/api/public/ops/fly-tts-secret-sync")({
             .map((e: { message?: string }) => String(e?.message ?? ""))
             .slice(0, 3);
           return json(
-            { ok: false, reason: "fly_app_unreachable", fly_status: listed.status, fly_errors: messages },
+            {
+              ok: false,
+              reason: "fly_app_unreachable",
+              fly_status: listed.status,
+              fly_errors: messages,
+              probe: (listed as any).probe ?? null,
+            },
             502,
           );
+
         }
 
 
