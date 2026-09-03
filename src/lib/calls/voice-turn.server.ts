@@ -41,6 +41,12 @@ import {
   type ConversationSignals,
 } from "./renagi-signals.core";
 import {
+  depthInstruction,
+  honorificInstruction,
+  resolveAddress,
+  routeTurn,
+} from "./cognitive-router.core";
+import {
   EMPTY_CALLER_CONTEXT,
   hydrateCallerContext,
   persistCallMemory,
@@ -298,6 +304,18 @@ export async function handleVoiceTurn(args: {
   const signals: ConversationSignals = updateSignals(readSignals(row.renagi_signals), transcript);
   const pendingWork = callerHasPendingWork(transcript);
 
+  // ADAPTIVE COGNITION — how much thinking this turn actually deserves.
+  // A greeting-ack or a "ya" is answered reflexively; a document or pricing
+  // comparison earns the deep pipeline AND an immediate spoken acknowledgement
+  // so the caller never hears unexplained silence.
+  const address = resolveAddress(context.knownName);
+  const route = routeTurn({
+    transcript,
+    language,
+    address,
+    seed: payload.sequence,
+  });
+
   // 2. RESPONSE. Greeting and closing come from the FAST PATH (deterministic,
   //    no model round-trip); everything else goes to RÉNAIO.CORE™.
   const closingState = readClosingState(row.closing_state);
@@ -329,6 +347,10 @@ export async function handleVoiceTurn(args: {
       replyText = closing.text;
       fastPath = true;
       endCall = closing.action === "farewell";
+    } else if (route.reflex && route.reflexText) {
+      // LEVEL 0 — conversational reflex, answered without a model round-trip.
+      replyText = route.reflexText;
+      fastPath = true;
     }
   }
 
@@ -346,9 +368,18 @@ export async function handleVoiceTurn(args: {
       language,
       contextLines: context.promptLines,
       contextFacts: { ...context.facts, conversation_signals: signals },
-      behaviourLines: adaptationInstruction(signals),
+      behaviourLines: [
+        ...adaptationInstruction(signals),
+        ...depthInstruction(route),
+        ...honorificInstruction(address),
+      ],
     });
     reasoningMs = Date.now() - reasoningStartedAt;
+    // ZERO-SILENCE POLICY: a deep turn opens with the acknowledgement the
+    // caller was owed while RAIŌ was thinking, then the reasoned answer.
+    if (replyText && route.acknowledgement) {
+      replyText = `${route.acknowledgement} ${replyText}`;
+    }
   }
   if (!replyText) {
     console.log(`[calls] voice_turn_reasoning_failed call_id=${payload.call_id}`);
@@ -403,6 +434,8 @@ export async function handleVoiceTurn(args: {
     tts_ms: ttsMs,
     total_ms: Date.now() - startedAt,
     fast_path: fastPath,
+    level: route.level,
+    acknowledged: Boolean(route.acknowledgement) && !fastPath,
   };
   const latency = appendLatency(row.voice_latency, latencyEntry);
   const outcome = deriveCallOutcome(intents, turns);
@@ -430,21 +463,22 @@ export async function handleVoiceTurn(args: {
     })
     .eq("id", row.id);
 
-  // CALL → TEXT continuity, written once at the natural end of the call.
-  if (endCall) {
-    await persistCallMemory(db, {
-      agencyId: row.agency_id,
-      conversationId: row.conversation_id ?? context.conversationId,
-      summary,
-    });
-  }
+  // CALL → TEXT continuity, refreshed after EVERY turn (one row per call, kept
+  // current). A caller who hangs up mid-call is still remembered by the text
+  // brain, instead of the memory only landing at a clean end-of-call.
+  await persistCallMemory(db, {
+    agencyId: row.agency_id,
+    conversationId: row.conversation_id ?? context.conversationId,
+    summary,
+    callId: row.call_id,
+  });
 
   const stats = summarizeLatency(latency);
   console.log(
     `[calls] voice_turn_ok call_id=${payload.call_id} kind=${payload.kind} lang=${language} fast=${fastPath} ` +
       `asr=${asrMs}ms ctx=${contextMs}ms reason=${reasoningMs}ms tts=${ttsMs}ms total=${latencyEntry.total_ms}ms ` +
       `p50=${stats["p50_total_ms"]}ms p95=${stats["p95_total_ms"]}ms known_customer=${context.leadId ? "yes" : "no"} ` +
-      `closing=${nextClosingState} pending=${pendingWork} intents=${intents.join("|") || "none"} end=${endCall}`,
+      `level=${route.level} closing=${nextClosingState} pending=${pendingWork} intents=${intents.join("|") || "none"} end=${endCall}`,
   );
 
   return {

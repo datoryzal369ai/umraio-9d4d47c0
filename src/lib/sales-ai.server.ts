@@ -81,6 +81,7 @@ import {
 } from "./sales/capability-truth.core";
 import { buildSocialProfile, socialPresenceInstruction } from "./sales/social-presence.core";
 import { resolveCapabilities } from "@/lib/capabilities/registry.core";
+import { recentCallInstruction, type RecentCallRow } from "@/lib/calls/recent-call.core";
 import {
   buildConfidenceRead,
   confidentPresenceInstruction,
@@ -203,8 +204,20 @@ export async function loadContext(supabase: Db, conversationId: string) {
         .maybeSingle()
     : { data: null };
 
+  // CALL → TEXT continuity: the newest call session for this same thread, so
+  // the text channel continues the phone conversation instead of restarting it.
+  const { data: recentCall } = await supabase
+    .from("whatsapp_call_sessions")
+    .select("call_id, status, termination_reason, received_at, answered_at, ended_at, call_summary, voice_outcome")
+    .eq("agency_id", conversation.agency_id)
+    .eq("conversation_id", conversationId)
+    .order("received_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return {
     conversation,
+    recentCall: (recentCall ?? null) as RecentCallRow,
     messages: [...((messages ?? []) as ChatMessageRow[])].reverse(),
     lead,
     quotation,
@@ -582,6 +595,7 @@ function systemPrompt(
       }),
     ),
     `You speak with prospective pilgrims on WhatsApp. Personality: ${personality} Tone: ${tone}. Always respect Islamic etiquette.`,
+    recentCallInstruction(ctx.recentCall ?? null),
     ...capabilityTruthInstructions({
       voiceAvailable: true,
       // ONE canonical capability registry — the text channel must never deny
