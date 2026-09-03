@@ -61,6 +61,8 @@ export type VoiceTurnSessionRow = {
   closing_state?: string | null;
   disclosure_spoken?: boolean | null;
   voice_latency?: unknown;
+  /** Rolling conversational perception signals (style only, never facts). */
+  renagi_signals?: unknown;
 };
 
 

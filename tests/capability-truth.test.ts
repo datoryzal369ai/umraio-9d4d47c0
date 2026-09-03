@@ -78,7 +78,7 @@ describe("prompt instructions", () => {
     const joined = capabilityTruthInstructions({ voiceAvailable: true }).join(" ");
     expect(joined).toMatch(/text reply = available/i);
     expect(joined).toMatch(/voice-note reply = AVAILABLE/i);
-    expect(joined).toMatch(/Live phone call = NOT available/i);
+    expect(joined).toMatch(/Live WhatsApp call = NOT available/i);
   });
 });
 

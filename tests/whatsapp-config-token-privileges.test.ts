@@ -55,9 +55,12 @@ describe("whatsapp_configs access_token column privileges (P1-1)", () => {
   );
 
   it.skipIf(!HAS_PG)(
-    "authenticated retains SELECT on non-sensitive config columns",
+    "authenticated has NO direct table privileges (server-function access only)",
     () => {
-      const nonSensitive = [
+      // Hardened posture: the client never touches this table directly. Every
+      // read goes through an owner/admin-checked server function on the
+      // service role, so no column is exposed to `authenticated`.
+      const columns = [
         "id",
         "agency_id",
         "display_phone_number",
@@ -69,18 +72,15 @@ describe("whatsapp_configs access_token column privileges (P1-1)", () => {
         "created_at",
         "updated_at",
       ];
-      for (const column of nonSensitive) {
+      for (const column of columns) {
         expect(
           hasPrivilege("authenticated", column, "SELECT"),
-          `authenticated must keep SELECT on ${column}`,
-        ).toBe(true);
+          `authenticated must NOT have SELECT on ${column}`,
+        ).toBe(false);
       }
     },
   );
 
-  it.skipIf(!HAS_PG)("has_access_token remains readable by authenticated", () => {
-    expect(hasPrivilege("authenticated", "has_access_token", "SELECT")).toBe(true);
-  });
 
   it.skipIf(!HAS_PG)("service_role server-side access is unchanged", () => {
     expect(hasPrivilege("service_role", "access_token", "SELECT")).toBe(true);
