@@ -108,8 +108,16 @@ export const Route = createFileRoute("/api/public/ops/fly-tts-secret-sync")({
           );
         }
         if (listed.status !== 200 || !listed.parsed?.data?.app) {
-          return json({ ok: false, reason: "fly_app_unreachable" }, 502);
+          // Sanitized provider diagnostics only — never credentials.
+          const messages: string[] = (listed.parsed?.errors ?? [])
+            .map((e: { message?: string }) => String(e?.message ?? ""))
+            .slice(0, 3);
+          return json(
+            { ok: false, reason: "fly_app_unreachable", fly_status: listed.status, fly_errors: messages },
+            502,
+          );
         }
+
 
         const set = await flyGraphql(
           flyToken,
