@@ -59,6 +59,7 @@ import { Route as ApiPublicPaymentsStripeWebhookRouteImport } from './routes/api
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicTmpEnvCheckRouteImport } from './routes/api/public/tmp/env-check'
 import { Route as ApiPublicTmpFlyIpv6RouteImport } from './routes/api/public/tmp/fly-ipv6'
+import { Route as ApiPublicTmpFlyVerifyRouteImport } from './routes/api/public/tmp/fly-verify'
 import { Route as ApiPublicVoiceEventsRouteImport } from './routes/api/public/voice/events'
 import { Route as ApiPublicVoiceTurnRouteImport } from './routes/api/public/voice/turn'
 
@@ -334,6 +335,11 @@ const ApiPublicTmpFlyIpv6Route = ApiPublicTmpFlyIpv6RouteImport.update({
   path: '/api/public/tmp/fly-ipv6',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTmpFlyVerifyRoute = ApiPublicTmpFlyVerifyRouteImport.update({
+  id: '/api/public/tmp/fly-verify',
+  path: '/api/public/tmp/fly-verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicVoiceEventsRoute = ApiPublicVoiceEventsRouteImport.update({
   id: '/api/public/voice/events',
   path: '/api/public/voice/events',
@@ -395,6 +401,7 @@ export interface FileRoutesByFullPath {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/tmp/env-check': typeof ApiPublicTmpEnvCheckRoute
   '/api/public/tmp/fly-ipv6': typeof ApiPublicTmpFlyIpv6Route
+  '/api/public/tmp/fly-verify': typeof ApiPublicTmpFlyVerifyRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
   '/api/public/voice/turn': typeof ApiPublicVoiceTurnRoute
 }
@@ -447,6 +454,7 @@ export interface FileRoutesByTo {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/tmp/env-check': typeof ApiPublicTmpEnvCheckRoute
   '/api/public/tmp/fly-ipv6': typeof ApiPublicTmpFlyIpv6Route
+  '/api/public/tmp/fly-verify': typeof ApiPublicTmpFlyVerifyRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
   '/api/public/voice/turn': typeof ApiPublicVoiceTurnRoute
 }
@@ -502,6 +510,7 @@ export interface FileRoutesById {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/tmp/env-check': typeof ApiPublicTmpEnvCheckRoute
   '/api/public/tmp/fly-ipv6': typeof ApiPublicTmpFlyIpv6Route
+  '/api/public/tmp/fly-verify': typeof ApiPublicTmpFlyVerifyRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
   '/api/public/voice/turn': typeof ApiPublicVoiceTurnRoute
 }
@@ -557,6 +566,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/tmp/env-check'
     | '/api/public/tmp/fly-ipv6'
+    | '/api/public/tmp/fly-verify'
     | '/api/public/voice/events'
     | '/api/public/voice/turn'
   fileRoutesByTo: FileRoutesByTo
@@ -609,6 +619,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/tmp/env-check'
     | '/api/public/tmp/fly-ipv6'
+    | '/api/public/tmp/fly-verify'
     | '/api/public/voice/events'
     | '/api/public/voice/turn'
   id:
@@ -663,6 +674,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/tmp/env-check'
     | '/api/public/tmp/fly-ipv6'
+    | '/api/public/tmp/fly-verify'
     | '/api/public/voice/events'
     | '/api/public/voice/turn'
   fileRoutesById: FileRoutesById
@@ -690,6 +702,7 @@ export interface RootRouteChildren {
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicTmpEnvCheckRoute: typeof ApiPublicTmpEnvCheckRoute
   ApiPublicTmpFlyIpv6Route: typeof ApiPublicTmpFlyIpv6Route
+  ApiPublicTmpFlyVerifyRoute: typeof ApiPublicTmpFlyVerifyRoute
   ApiPublicVoiceEventsRoute: typeof ApiPublicVoiceEventsRoute
   ApiPublicVoiceTurnRoute: typeof ApiPublicVoiceTurnRoute
 }
@@ -1046,6 +1059,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTmpFlyIpv6RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/tmp/fly-verify': {
+      id: '/api/public/tmp/fly-verify'
+      path: '/api/public/tmp/fly-verify'
+      fullPath: '/api/public/tmp/fly-verify'
+      preLoaderRoute: typeof ApiPublicTmpFlyVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/voice/events': {
       id: '/api/public/voice/events'
       path: '/api/public/voice/events'
@@ -1166,6 +1186,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicTmpEnvCheckRoute: ApiPublicTmpEnvCheckRoute,
   ApiPublicTmpFlyIpv6Route: ApiPublicTmpFlyIpv6Route,
+  ApiPublicTmpFlyVerifyRoute: ApiPublicTmpFlyVerifyRoute,
   ApiPublicVoiceEventsRoute: ApiPublicVoiceEventsRoute,
   ApiPublicVoiceTurnRoute: ApiPublicVoiceTurnRoute,
 }
