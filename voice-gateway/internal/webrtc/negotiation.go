@@ -5,6 +5,7 @@ package webrtc
 // fingerprints or addresses: only enums, booleans and small integers.
 
 import (
+	"net"
 	"strconv"
 	"strings"
 
@@ -189,4 +190,31 @@ func (a TransceiverAudit) LogAttrs() []any {
 		"transceiver_mid_present", a.MidPresent,
 		"can_receive_audio", a.CanReceiveAudio(),
 	}
+}
+
+// CandidateFamilies counts ICE candidate lines per address family in an SDP.
+// It returns counts only — never addresses, ports, foundations or credentials.
+func CandidateFamilies(sdp string) (v4 int, v6 int) {
+	for _, raw := range strings.Split(sdp, "\n") {
+		line := strings.TrimSpace(raw)
+		lower := strings.ToLower(line)
+		if !strings.HasPrefix(lower, "a=candidate:") {
+			continue
+		}
+		// a=candidate:<foundation> <component> <proto> <priority> <ip> ...
+		f := strings.Fields(line)
+		if len(f) < 5 {
+			continue
+		}
+		ip := net.ParseIP(f[4])
+		if ip == nil {
+			continue
+		}
+		if ip.To4() != nil {
+			v4++
+		} else {
+			v6++
+		}
+	}
+	return v4, v6
 }
