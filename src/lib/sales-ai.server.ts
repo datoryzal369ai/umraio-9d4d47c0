@@ -80,6 +80,7 @@ import {
   sanitizeCapabilityClaims,
 } from "./sales/capability-truth.core";
 import { buildSocialProfile, socialPresenceInstruction } from "./sales/social-presence.core";
+import { resolveCapabilities } from "@/lib/capabilities/registry.core";
 import {
   buildConfidenceRead,
   confidentPresenceInstruction,
@@ -581,7 +582,13 @@ function systemPrompt(
       }),
     ),
     `You speak with prospective pilgrims on WhatsApp. Personality: ${personality} Tone: ${tone}. Always respect Islamic etiquette.`,
-    ...capabilityTruthInstructions({ voiceAvailable: true }),
+    ...capabilityTruthInstructions({
+      voiceAvailable: true,
+      // ONE canonical capability registry — the text channel must never deny
+      // live WhatsApp Calling while the media plane is deployed and answering.
+      callingAvailable: resolveCapabilities(process.env as Record<string, string | undefined>)
+        .whatsappCalling,
+    }),
 
     `${language} ${length} WhatsApp style, no markdown headings.`,
     s?.ai_emoji === false
@@ -1522,6 +1529,8 @@ export async function generateAgentReply(
   const latestCustomerBody = [...ctx.messages].reverse().find((m) => m.sender === "customer")?.body;
   const text = sanitizeCapabilityClaims((result.data ?? "").trim(), {
     voiceAvailable: true,
+    callingAvailable: resolveCapabilities(process.env as Record<string, string | undefined>)
+      .whatsappCalling,
     customerAskedIdentity: customerAskedAboutAiIdentity(latestCustomerBody),
     liveCallRequested: customerAskedForLiveCall(latestCustomerBody),
   });
