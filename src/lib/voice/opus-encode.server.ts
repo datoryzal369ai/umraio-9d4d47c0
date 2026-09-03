@@ -59,6 +59,23 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
+/**
+ * STARTUP COMPILATION — the serverless Worker runtime forbids compiling
+ * WebAssembly from a buffer while handling a request ("wasm code generation
+ * disallowed"), which is exactly why the live call logged
+ * `minimax_opus_encode_failed reason=wasm_unavailable`. Compiling at module
+ * evaluation is permitted, and instantiating an ALREADY compiled module is
+ * permitted at any time — so the module is built once, here.
+ */
+let compiledModule: WebAssembly.Module | null = null;
+try {
+  compiledModule = new WebAssembly.Module(base64ToBytes(OPUS_WASM_BASE64));
+} catch (error) {
+  compiledModule = null;
+  console.error(
+    `[voice] opus_wasm_compile_failed stage=startup reason=${(error as Error)?.name ?? "unknown"}`,
+  );
+}
 
 /**
  * WASI/env stubs required by the embedded libopus build. None of these
