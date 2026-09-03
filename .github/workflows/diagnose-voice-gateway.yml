@@ -2,11 +2,24 @@ name: Diagnose Voice Gateway
 
 # Manual-only, read-only log retrieval for the UMRAIO voice gateway.
 # Uses the existing repository Actions secret FLY_API_TOKEN (never printed).
-# Outputs ONLY sanitized diagnostic lines for the target session and call
-# window. Raw logs are never uploaded, never printed unfiltered.
+# Outputs ONLY sanitized diagnostic lines for the session and window supplied
+# as workflow inputs. Raw logs are never uploaded, never printed unfiltered.
 
 on:
   workflow_dispatch:
+    inputs:
+      gateway_session_id:
+        description: "Gateway media session ID (e.g. ms_xxxxxxxxxxxx)"
+        required: true
+        type: string
+      window_start:
+        description: "Call window start, UTC (e.g. 2026-09-03T10:13:55Z)"
+        required: true
+        type: string
+      window_end:
+        description: "Call window end, UTC (e.g. 2026-09-03T10:14:30Z)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,8 +30,6 @@ concurrency:
 
 env:
   FLY_APP: umraio-voice-gateway
-  TARGET_SESSION: "ms_862516e3fdca6b59845aa42f"
-  TARGET_CALL_FRAGMENT: "IhggMDBCQzUxQkQ4NTU3REJFMUM5NTYwQUFENDUzRkQ5OEU"
 
 jobs:
   diagnose:
@@ -31,9 +42,12 @@ jobs:
         shell: bash
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      SESSION_ID: ${{ inputs.gateway_session_id }}
+      WINDOW_START: ${{ inputs.window_start }}
+      WINDOW_END: ${{ inputs.window_end }}
 
     steps:
-      - name: Verify FLY_API_TOKEN is configured
+      - name: Validate inputs and secret
         run: |
           set -euo pipefail
           if [ -z "${FLY_API_TOKEN:-}" ]; then
@@ -41,6 +55,18 @@ jobs:
             exit 1
           fi
           echo "FLY_API_TOKEN: present (value never printed)"
+          if ! [[ "$SESSION_ID" =~ ^ms_[a-f0-9]{8,64}$ ]]; then
+            echo "::error::gateway_session_id must look like ms_<hex>."
+            exit 1
+          fi
+          for v in "$WINDOW_START" "$WINDOW_END"; do
+            if ! [[ "$v" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+              echo "::error::window_start/window_end must be UTC RFC3339, e.g. 2026-09-03T10:13:55Z"
+              exit 1
+            fi
+          done
+          echo "session: $SESSION_ID"
+          echo "window: $WINDOW_START .. $WINDOW_END"
 
       - name: Install flyctl (latest stable)
         uses: superfly/flyctl-actions/setup-flyctl@master
@@ -57,19 +83,32 @@ jobs:
         run: |
           set -euo pipefail
           RAW="$(mktemp)"
-          trap 'rm -f "$RAW"' EXIT
+          WINDOWED="$(mktemp)"
+          trap 'rm -f "$RAW" "$WINDOWED"' EXIT
 
           flyctl logs -a "$FLY_APP" --no-tail > "$RAW" || true
           echo "raw log lines captured: $(wc -l < "$RAW")"
 
+          # Keep only lines whose leading ISO-8601 timestamp falls inside the
+          # requested window; lines without a timestamp are kept only when they
+          # mention the target session.
+          START="$WINDOW_START" END="$WINDOW_END" SID="$SESSION_ID" \
+          awk '{
+            if (match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}/)) {
+              ts = substr($0, RSTART, RLENGTH) "Z";
+              if (ts >= ENVIRON["START"] && ts <= ENVIRON["END"]) print;
+            } else if (index($0, ENVIRON["SID"]) > 0) { print }
+          }' "$RAW" > "$WINDOWED"
+          echo "lines inside window: $(wc -l < "$WINDOWED")"
+
           # Relevant, safe log keys emitted by the gateway. Raw SDP, ICE
           # credentials, DTLS fingerprints and tokens are never logged by the
           # gateway itself; the sed pass below is defence-in-depth.
-          PATTERN='ms_862516e3fdca6b59845aa42f|'"$TARGET_CALL_FRAGMENT"'|media session created|media pipeline|ice gathering state|ice connection state|peer connection state|local answer generated|candidate_ipv4_count|candidate_ipv6_count|inbound audio track received|first inbound rtp|inbound rtp progress|first outbound opus|outbound opus progress|media ready|media session terminated|call terminated|udp mux|UDPMux|listening|mux|dtls|DTLS|ice_failed|peer_disconnected|inbound_rtp_closed'
+          PATTERN="$SESSION_ID"'|media session created|media pipeline|ice gathering state|ice connection state|peer connection state|selected candidate pair|candidate_ipv4_count|candidate_ipv6_count|dtls|DTLS|on_track|ontrack|inbound audio track received|first inbound rtp|first udp packet|inbound rtp progress|inbound_packets|outbound_packets|first outbound opus|outbound write|outbound opus progress|greeting|accepted|media ready|media_ready|media session terminated|call terminated|udp mux|UDPMux|listening|mux|ice_failed|peer_disconnected|inbound_rtp_closed'
 
-          # Redact: phone numbers, other call IDs, IPv4/IPv6 literals, anything
+          # Redact: phone numbers, call IDs, IPv4/IPv6 literals, anything
           # resembling a token/credential. Keep enum/boolean/integer fields.
-          grep -Ei "$PATTERN" "$RAW" \
+          grep -Ei "$PATTERN" "$WINDOWED" \
             | sed -E \
                 -e 's/[0-9]{10,15}/[PHONE]/g' \
                 -e 's/wacid\.[A-Za-z0-9+\/=_-]+/wacid.[REDACTED]/g' \
@@ -84,8 +123,8 @@ jobs:
             echo "### Voice gateway diagnostics (sanitized)"
             echo ""
             echo "- App: \`$FLY_APP\`"
-            echo "- Target session: \`$TARGET_SESSION\`"
-            echo "- Call window: 2026-09-03 09:28:55Z - 09:29:25Z"
+            echo "- Target session: \`$SESSION_ID\`"
+            echo "- Call window: \`$WINDOW_START\` - \`$WINDOW_END\`"
             echo "- Raw logs: NOT uploaded, NOT printed unfiltered"
             echo "- FLY_API_TOKEN: never printed"
           } >> "$GITHUB_STEP_SUMMARY"
