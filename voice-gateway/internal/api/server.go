@@ -83,6 +83,7 @@ func (s *Server) init() {
 func (s *Server) Routes(mux *http.ServeMux) {
 	s.init()
 	mux.HandleFunc("POST /v1/calls/offer", s.handleOffer)
+	mux.HandleFunc("POST /v1/calls/{callID}/accepted", s.handleAccepted)
 	mux.HandleFunc("POST /v1/calls/{callID}/terminate", s.handleTerminate)
 	mux.HandleFunc("GET /v1/calls/{callID}", s.handleGet)
 }
@@ -178,6 +179,45 @@ func (s *Server) handleOffer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, OfferResponse{
 		SessionID: sess.ID, SDPAnswer: answer, SDPType: "answer", State: string(sess.State()),
 	})
+}
+
+// AcceptedResponse reports the enumerated greeting outcome only.
+type AcceptedResponse struct {
+	CallID   string `json:"call_id"`
+	Greeting string `json:"greeting"`
+}
+
+// handleAccepted is the explicit "Meta accept completed" signal. Until it
+// arrives the pipeline stays silent, because the control plane rejects every
+// turn on a call Meta has not accepted. It is idempotent: repeated
+// notifications yield "duplicate" and start no second greeting.
+func (s *Server) handleAccepted(w http.ResponseWriter, r *http.Request) {
+	s.init()
+	callID := r.PathValue("callID")
+	body, err := readBody(r)
+	if err != nil {
+		writeErr(w, http.StatusRequestEntityTooLarge, "body_too_large")
+		return
+	}
+	claims, err := s.authenticate(r, body, callID)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := s.Registry.Allow(claims.CallID, s.Now()); err != nil {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited")
+		return
+	}
+	s.mu.Lock()
+	ms := s.media[claims.CallID]
+	s.mu.Unlock()
+	if ms == nil {
+		writeErr(w, http.StatusNotFound, "not_found")
+		return
+	}
+	outcome := ms.NotifyAccepted()
+	s.Logger.Info("call accepted notification", "call_id", claims.CallID, "greeting", outcome)
+	writeJSON(w, http.StatusOK, AcceptedResponse{CallID: claims.CallID, Greeting: outcome})
 }
 
 func (s *Server) handleTerminate(w http.ResponseWriter, r *http.Request) {
