@@ -79,10 +79,15 @@ jobs:
           echo "PUBLIC_IP staged for next release."
 
       - name: Deploy
+        working-directory: voice-gateway
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          BUILD_VERSION: ${{ github.sha }}
         run: |
           set -euo pipefail
-          flyctl deploy -c voice-gateway/fly.toml --remote-only -a "$FLY_APP" \
-            --env BUILD_VERSION="${GITHUB_SHA}"
+          fly deploy --config fly.toml --remote-only \
+            --build-arg BUILD_VERSION="${BUILD_VERSION}"
+
 
       - name: Verify health and readiness
         run: |
