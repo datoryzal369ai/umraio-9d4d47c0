@@ -159,7 +159,10 @@ export async function handleVoiceTurn(args: {
     const bytes = payload.audio_ogg_base64 ? base64ToBytes(payload.audio_ogg_base64) : null;
     if (!bytes) return { ok: false, reason: "invalid_audio" };
 
-    const asr = await transcribeAudio({ bytes, mimeType: "audio/ogg" });
+    // LOCALE LOCK — without an explicit hint the model auto-detected short
+    // Malay utterances as Japanese/Spanish on the live call (transcript
+    // evidence: "が。", "Sí."), so the agency voice locale is always sent.
+    const asr = await transcribeAudio({ bytes, mimeType: "audio/ogg", language: agencyLanguage });
     if (!asr.ok) {
       console.log(`[calls] voice_turn_asr_failed call_id=${payload.call_id} kind=${asr.kind}`);
       return { ok: false, reason: `asr_${asr.kind}` };

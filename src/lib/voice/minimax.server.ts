@@ -281,7 +281,10 @@ export const minimaxVoiceEngine: VoiceEngine = {
      *    robotic provider default.
      * 3. MINIMAX_DEFAULT_VOICE_ID ("Malay_male_1_v1").
      */
-    const callerVoice = voice && !isSupportedTtsVoice(voice) ? voice : undefined;
+    // VOICE LOCK — a live WhatsApp call (requireOggOpus) may NEVER use a caller
+    // supplied voice: the configured UMRAIO voice is the only allowed identity.
+    const callerVoice =
+      !requireOggOpus && voice && !isSupportedTtsVoice(voice) ? voice : undefined;
 
     const requestBody = (format: "mp3" | "pcm") =>
       JSON.stringify({

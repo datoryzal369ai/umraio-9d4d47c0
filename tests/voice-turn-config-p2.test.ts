@@ -6,7 +6,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const asrMock = vi.hoisted(() => ({ transcribeAudio: vi.fn() }));
-const ttsMock = vi.hoisted(() => ({ synthesizeSpeech: vi.fn() }));
+const ttsMock = vi.hoisted(() => ({
+  synthesizeSpeech: vi.fn(),
+  // The call path pins the MiniMax engine explicitly (voice lock).
+  lazyMinimaxEngine: { name: "minimax", synthesize: vi.fn() },
+}));
 const gatewayMock = vi.hoisted(() => ({ createIntelligenceGateway: vi.fn() }));
 const presentationMock = vi.hoisted(() => ({ prepareSpokenResponse: vi.fn() }));
 
@@ -95,6 +99,8 @@ describe("P-2 voice configuration retrieval", () => {
       ok: true,
       bytes: OGG_BYTES,
       mimeType: "audio/ogg",
+      // Calls are locked to MiniMax — any other engine is rejected.
+      engine: "minimax",
     });
   });
 

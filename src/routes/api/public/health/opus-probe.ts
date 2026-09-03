@@ -15,10 +15,14 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
           compile = String((e as Error)?.message ?? e)
         }
         console.log('opus_probe_compile', compile)
-        const { encodePcmToOggOpus } = await import('@/lib/voice/opus-encode.server')
+        const { encodePcmToOggOpus, opusWasmSource } = await import('@/lib/voice/opus-encode.server')
         const pcm = new Uint8Array(24000 * 2 * 0.2 * 2)
         const r = await encodePcmToOggOpus(pcm)
-        return Response.json(r.ok ? { ok: true, bytes: r.bytes.byteLength } : r)
+        return Response.json(
+          r.ok
+            ? { ok: true, bytes: r.bytes.byteLength, source: opusWasmSource() }
+            : { ...r, source: opusWasmSource() },
+        )
       },
     },
   },

@@ -149,12 +149,14 @@ describe("Call speech contract", () => {
     }
   });
 
-  it("never returns silent success when both providers fail", async () => {
+  it("never returns silent success, and never substitutes a voice, when MiniMax fails", async () => {
     const synthesize = vi.fn(async () => ({ ok: false, kind: "provider", engine: "minimax" }));
     const result = await synthesizeCallSpeech(
       { text: "Baik.", language: "ms-MY", callId: "c2" },
-      { synthesize: synthesize as any, fallbackEngine: { name: "openai", synthesize: async () => ({ ok: false, kind: "provider", engine: "openai" }) } as any },
+      { synthesize: synthesize as any },
     );
     expect(result.ok).toBe(false);
+    expect(synthesize).toHaveBeenCalledTimes(1);
   });
 });
+

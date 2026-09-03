@@ -59,22 +59,11 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
-/**
- * STARTUP COMPILATION — the serverless Worker runtime forbids compiling
- * WebAssembly from a buffer while handling a request ("wasm code generation
- * disallowed"), which is exactly why the live call logged
- * `minimax_opus_encode_failed reason=wasm_unavailable`. Compiling at module
- * evaluation is permitted, and instantiating an ALREADY compiled module is
- * permitted at any time — so the module is built once, here.
- */
-let compiledModule: WebAssembly.Module | null = null;
-try {
-  compiledModule = new WebAssembly.Module(base64ToBytes(OPUS_WASM_BASE64));
-} catch (error) {
-  compiledModule = null;
-  console.error(
-    `[voice] opus_wasm_compile_failed stage=startup reason=${(error as Error)?.name ?? "unknown"}`,
-  );
+let wasmSource: "bundled_module" | "runtime_compile" | "unavailable" = "unavailable";
+
+/** Which loader produced the encoder — non-secret diagnostic for the probe. */
+export function opusWasmSource(): string {
+  return wasmSource;
 }
 
 /**
@@ -91,39 +80,69 @@ const OPUS_IMPORTS: WebAssembly.Imports = {
   env: { emscripten_notify_memory_growth: () => {} },
 };
 
-async function loadOpusExports(): Promise<OpusExports | null> {
+function finishInstance(instance: WebAssembly.Instance): OpusExports {
+  const exports = instance.exports as unknown as OpusExports & { _initialize?: () => void };
   try {
-    // Preferred: instantiate the module compiled at startup (Worker-safe).
-    if (compiledModule) {
-      const instance = new WebAssembly.Instance(compiledModule, OPUS_IMPORTS);
-      const exports = instance.exports as unknown as OpusExports & { _initialize?: () => void };
-      // WASI reactor builds initialise their heap here; absent on plain builds.
-      try {
-        exports._initialize?.();
-      } catch {
-        /* already initialised */
-      }
+    exports._initialize?.();
+  } catch {
+    /* already initialised */
+  }
+  return exports;
+}
+
+/**
+ * WORKER-SAFE MODULE SOURCE — the serverless Worker runtime forbids ALL
+ * runtime WebAssembly compilation from bytes, including at module evaluation
+ * (`new WebAssembly.Module(bytes)` throws "wasm code generation disallowed").
+ * Production proof: /api/public/health/opus-probe returned
+ * {"ok":false,"reason":"wasm_unavailable"} on the published build.
+ *
+ * The ONLY supported source is a module the bundler links as WebAssembly —
+ * `import opusWasm from "./opus/opus.wasm"` yields an already-compiled
+ * WebAssembly.Module in the Worker. Node/vitest resolve the same import to a
+ * URL/asset path, so the embedded base64 build stays as the local fallback.
+ */
+async function loadBundledModule(): Promise<WebAssembly.Module | null> {
+  try {
+    const mod: unknown = (await import("./opus/opus.wasm")) as unknown;
+    const candidate = (mod as { default?: unknown })?.default ?? mod;
+    if (candidate instanceof WebAssembly.Module) return candidate;
+  } catch {
+    /* not a bundled wasm module in this runtime */
+  }
+  return null;
+}
+
+async function loadOpusExports(): Promise<OpusExports | null> {
+  const bundled = await loadBundledModule();
+  if (bundled) {
+    try {
+      const exports = finishInstance(new WebAssembly.Instance(bundled, OPUS_IMPORTS));
+      wasmSource = "bundled_module";
       return exports;
+    } catch (error) {
+      console.error(
+        `[voice] opus_wasm_instantiate_failed source=bundled reason=${(error as Error)?.name ?? "unknown"}`,
+      );
     }
-    // Fallback for runtimes that allow runtime compilation (dev/node/tests).
+  }
+  try {
+    // Runtimes that still allow compiling from bytes (node, vitest, dev).
     const { instance } = await WebAssembly.instantiate(
       base64ToBytes(OPUS_WASM_BASE64),
       OPUS_IMPORTS,
     );
-    const exports = instance.exports as unknown as OpusExports & { _initialize?: () => void };
-    try {
-      exports._initialize?.();
-    } catch {
-      /* already initialised */
-    }
-    return exports;
+    wasmSource = "runtime_compile";
+    return finishInstance(instance);
   } catch (error) {
+    wasmSource = "unavailable";
     console.error(
-      `[voice] opus_wasm_instantiate_failed reason=${(error as Error)?.name ?? "unknown"}`,
+      `[voice] opus_wasm_instantiate_failed source=base64 reason=${(error as Error)?.name ?? "unknown"}`,
     );
     return null;
   }
 }
+
 
 function opusExports(): Promise<OpusExports | null> {
   if (!exportsPromise) exportsPromise = loadOpusExports();
