@@ -18,7 +18,7 @@ vi.mock("@/lib/calls/call-audio.server", () => ({
 vi.mock("@/lib/voice/asr.server", () => ({ transcribeAudio: mocks.transcribeAudio }));
 vi.mock("@/lib/ai/gateway.server", () => ({
   createIntelligenceGateway: () => ({
-    chat: async () => ({ ok: true, text: "Waalaikumsalam, saya RAIO." }),
+    generate: async () => ({ ok: true, text: "Waalaikumsalam, saya RAIO." }),
   }),
 }));
 
