@@ -88,6 +88,9 @@ func newPipeline(t *testing.T, client TurnClient, cfg ConversationConfig) (*Conv
 	if err := p.Attach(context.Background(), tr); err != nil {
 		t.Fatalf("attach: %v", err)
 	}
+	// Meta accept is what unblocks the pipeline in production; the tests below
+	// exercise post-accept behaviour unless they say otherwise.
+	p.StartGreeting()
 	return p, tr
 }
 

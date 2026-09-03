@@ -481,7 +481,11 @@ describe("connect -> negotiation orchestration", () => {
     });
     expect(outcome).toBe("meta_accepted");
     const statuses = writes.filter((w) => w.op === "update").map((w) => w.payload.status);
-    expect(statuses).toEqual(["answer_requested", "media_negotiating", "meta_pre_accepted", undefined]);
+    // The two trailing status-less updates are the Meta accept timestamp write
+    // and the post-accept notification timing write.
+    expect(statuses).toEqual([
+      "answer_requested", "media_negotiating", "meta_pre_accepted", undefined, undefined,
+    ]);
     const negotiating = writes.find((w) => w.payload.status === "media_negotiating")!;
     expect(negotiating.payload.gateway_session_id).toBe(GATEWAY_SESSION);
     expect(negotiating.payload.media_negotiated_at).toBeTruthy();
