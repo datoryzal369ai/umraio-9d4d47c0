@@ -70,13 +70,15 @@ func LoadConfig(lookup func(string) (string, bool)) (Config, bool) {
 	if key == "" {
 		return Config{}, false
 	}
+	// CANONICAL RAIŌ VOICE LOCK — model, voice and language boost are compiled
+	// constants. No environment override may create a second voice identity.
 	return Config{
 		BaseURL: strings.TrimRight(get("MINIMAX_BASE_URL", DefaultBaseURL), "/"),
 		APIKey:  key,
 		GroupID: get("MINIMAX_GROUP_ID", ""),
-		Model:   get("MINIMAX_TTS_MODEL", DefaultModel),
-		VoiceID: get("MINIMAX_TTS_VOICE_ID", DefaultVoiceID),
-		Boost:   get("MINIMAX_TTS_LANGUAGE_BOOST", DefaultBoost),
+		Model:   DefaultModel,
+		VoiceID: DefaultVoiceID,
+		Boost:   DefaultBoost,
 		Timeout: DefaultTimeout,
 	}, true
 }
