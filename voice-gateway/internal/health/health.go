@@ -13,6 +13,10 @@ type Report struct {
 	WebRTC         string `json:"webrtc"`
 	ActiveSessions int    `json:"active_sessions"`
 	BuildVersion   string `json:"build_version"`
+	// Speech is a capability signal only: "up" when the media plane can
+	// synthesize the canonical voice, "down" otherwise. It never reveals a
+	// credential, a provider response or any tenant data.
+	Speech string `json:"speech"`
 }
 
 type Handler struct {
@@ -20,6 +24,7 @@ type Handler struct {
 	WebRTCReady    *atomic.Bool
 	ActiveSessions func() int
 	Draining       *atomic.Bool
+	SpeechReady    func() bool
 }
 
 func (h *Handler) Health(w http.ResponseWriter, _ *http.Request) {
