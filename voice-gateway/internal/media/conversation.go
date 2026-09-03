@@ -84,6 +84,8 @@ type ConversationPipeline struct {
 	seg       *Segmenter
 	closed    bool
 	busy      bool
+	greeted   bool
+	accepted  bool
 	turns     int
 	speaking  bool
 	cancelTTS chan struct{}
@@ -115,13 +117,59 @@ func (p *ConversationPipeline) Attach(ctx context.Context, t Transport) error {
 	p.mu.Lock()
 	p.transport = t
 	p.ctx, p.cancel = context.WithCancel(context.WithoutCancel(ctx))
-	greet := p.cfg.Greet && p.client != nil
 	p.mu.Unlock()
-
-	if greet {
-		p.startTurn(TurnRequest{CallID: p.callID, Kind: TurnKindGreeting})
-	}
+	// NO greeting here. Attach happens while Meta has only seen the SDP answer;
+	// the control plane rejects any turn before `accept` completes
+	// (voice_turn_rejected reason=not_accepted) and never retries it. The
+	// greeting is started exactly once by StartGreeting, which the control
+	// plane triggers immediately after Meta accept succeeds.
 	return nil
+}
+
+// GreetingOutcome is the safe, enumerated result of a post-accept greeting
+// request. It never carries audio, transcripts or identifiers.
+type GreetingOutcome string
+
+const (
+	GreetingStarted   GreetingOutcome = "started"
+	GreetingDuplicate GreetingOutcome = "duplicate"
+	GreetingDisabled  GreetingOutcome = "disabled"
+	GreetingClosed    GreetingOutcome = "closed"
+	GreetingDetached  GreetingOutcome = "detached"
+)
+
+// StartGreeting begins the opening turn exactly once per call. It is
+// idempotent (duplicate control-plane notifications are no-ops) and refuses
+// after Close, so a TERMINATE that races the accept notification cancels it.
+func (p *ConversationPipeline) StartGreeting() GreetingOutcome {
+	p.mu.Lock()
+	switch {
+	case p.closed:
+		p.mu.Unlock()
+		return GreetingClosed
+	case !p.cfg.Greet || p.client == nil:
+		p.mu.Unlock()
+		return GreetingDisabled
+	case p.transport == nil:
+		p.mu.Unlock()
+		return GreetingDetached
+	case p.greeted:
+		p.mu.Unlock()
+		return GreetingDuplicate
+	}
+	p.greeted = true
+	p.accepted = true
+	p.mu.Unlock()
+	p.logger.Info("greeting_started", "call_id", p.callID)
+	p.startTurn(TurnRequest{CallID: p.callID, Kind: TurnKindGreeting})
+	return GreetingStarted
+}
+
+// Greeted reports whether the single opening turn has been started.
+func (p *ConversationPipeline) Greeted() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.greeted
 }
 
 // OnInbound must never block the RTP reader.
@@ -143,7 +191,7 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 			return
 		}
 	case VADUtteranceEnd:
-		if p.busy || p.client == nil || p.turns >= p.cfg.MaxTurns {
+		if p.busy || p.client == nil || !p.accepted || p.turns >= p.cfg.MaxTurns {
 			p.mu.Unlock()
 			return
 		}
