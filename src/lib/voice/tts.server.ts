@@ -413,6 +413,7 @@ export async function synthesizeSpeech(
       ...(typeof input.speed === "number" ? { speed: input.speed } : {}),
       ...(input.instructions ? { instructions: input.instructions } : {}),
       ...(input.language ? { language: input.language } : {}),
+      ...(input.requireOggOpus ? { requireOggOpus: true } : {}),
     });
     const latency = Date.now() - started;
     if (result.ok) {
