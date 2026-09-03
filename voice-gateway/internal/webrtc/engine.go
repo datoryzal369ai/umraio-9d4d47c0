@@ -164,7 +164,6 @@ func (e *Engine) Establish(
 		return "", nil, fmt.Errorf("add audio transceiver: %w", err)
 	}
 
-
 	log := e.cfg.Logger
 	if log == nil {
 		log = slog.Default()
@@ -238,8 +237,6 @@ func (e *Engine) Establish(
 		log.Warn("audio receiver not bound after remote offer",
 			append([]any{"call_id", s.CallID, "session_id", s.ID}, pre.LogAttrs()...)...)
 	}
-
-
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {

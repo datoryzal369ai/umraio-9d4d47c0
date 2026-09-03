@@ -49,7 +49,6 @@ func (s AudioSDPSummary) PermitsLocalReceive() bool {
 		(s.Direction == DirSendRecv || s.Direction == DirRecvOnly)
 }
 
-
 func normalizeDirection(v string) string {
 	switch v {
 	case DirSendRecv, DirSendOnly, DirRecvOnly, DirInactive:
