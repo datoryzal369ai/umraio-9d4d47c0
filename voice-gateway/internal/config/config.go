@@ -56,6 +56,7 @@ func Load() (Config, error) {
 		BackendURL:        strings.TrimRight(envStr("UMRAIO_BACKEND_URL", ""), "/"),
 		Secret:            envStr("UMRAIO_GATEWAY_SECRET", ""),
 		UDPMediaHost:      envStr("UDP_MEDIA_HOST", "fly-global-services"),
+		UDPMediaHost6:     envStr("UDP_MEDIA_HOST6", "::"),
 		UDPMediaPort:      envInt("UDP_MEDIA_PORT", 40000),
 		MaxConcurrent:     envInt("MAX_CONCURRENT_CALLS", 25),
 		MaxCallDuration:   time.Duration(envInt("MAX_CALL_DURATION_S", 600)) * time.Second,
