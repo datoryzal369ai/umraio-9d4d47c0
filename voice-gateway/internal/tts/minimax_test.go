@@ -114,3 +114,11 @@ func TestEmptyTextIsRejectedWithoutRequest(t *testing.T) {
 		t.Fatalf("want empty audio error, got %v", err)
 	}
 }
+
+// A non-canonical voice must fail closed instead of speaking with another voice.
+func TestSynthesizeRejectsNonCanonicalVoice(t *testing.T) {
+	c := NewClient(Config{APIKey: "k"})
+	if _, err := c.SynthesizePCM(context.Background(), "Salam", "Indonesian_male_1", "Malay"); !errors.Is(err, ErrVoiceIdentity) {
+		t.Fatalf("expected voice identity rejection, got %v", err)
+	}
+}
