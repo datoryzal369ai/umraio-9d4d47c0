@@ -55,7 +55,6 @@ import { Route as ApiPublicHealthBuildRouteImport } from './routes/api/public/he
 import { Route as ApiPublicHealthOpusProbeRouteImport } from './routes/api/public/health/opus-probe'
 import { Route as ApiPublicHooksExecutiveAutonomyRouteImport } from './routes/api/public/hooks/executive-autonomy'
 import { Route as ApiPublicHooksTaskEngineRouteImport } from './routes/api/public/hooks/task-engine'
-import { Route as ApiPublicOpsFlyTtsSecretSyncRouteImport } from './routes/api/public/ops/fly-tts-secret-sync'
 import { Route as ApiPublicPaymentsStripeWebhookRouteImport } from './routes/api/public/payments/stripe-webhook'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicVoiceEventsRouteImport } from './routes/api/public/voice/events'
@@ -311,12 +310,6 @@ const ApiPublicHooksTaskEngineRoute =
     path: '/api/public/hooks/task-engine',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicOpsFlyTtsSecretSyncRoute =
-  ApiPublicOpsFlyTtsSecretSyncRouteImport.update({
-    id: '/api/public/ops/fly-tts-secret-sync',
-    path: '/api/public/ops/fly-tts-secret-sync',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiPublicPaymentsStripeWebhookRoute =
   ApiPublicPaymentsStripeWebhookRouteImport.update({
     id: '/api/public/payments/stripe-webhook',
@@ -386,7 +379,6 @@ export interface FileRoutesByFullPath {
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
-  '/api/public/ops/fly-tts-secret-sync': typeof ApiPublicOpsFlyTtsSecretSyncRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
@@ -437,7 +429,6 @@ export interface FileRoutesByTo {
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
-  '/api/public/ops/fly-tts-secret-sync': typeof ApiPublicOpsFlyTtsSecretSyncRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
@@ -491,7 +482,6 @@ export interface FileRoutesById {
   '/api/public/health/opus-probe': typeof ApiPublicHealthOpusProbeRoute
   '/api/public/hooks/executive-autonomy': typeof ApiPublicHooksExecutiveAutonomyRoute
   '/api/public/hooks/task-engine': typeof ApiPublicHooksTaskEngineRoute
-  '/api/public/ops/fly-tts-secret-sync': typeof ApiPublicOpsFlyTtsSecretSyncRoute
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
@@ -545,7 +535,6 @@ export interface FileRouteTypes {
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
-    | '/api/public/ops/fly-tts-secret-sync'
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
     | '/api/public/voice/events'
@@ -596,7 +585,6 @@ export interface FileRouteTypes {
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
-    | '/api/public/ops/fly-tts-secret-sync'
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
     | '/api/public/voice/events'
@@ -649,7 +637,6 @@ export interface FileRouteTypes {
     | '/api/public/health/opus-probe'
     | '/api/public/hooks/executive-autonomy'
     | '/api/public/hooks/task-engine'
-    | '/api/public/ops/fly-tts-secret-sync'
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
     | '/api/public/voice/events'
@@ -675,7 +662,6 @@ export interface RootRouteChildren {
   ApiPublicHealthOpusProbeRoute: typeof ApiPublicHealthOpusProbeRoute
   ApiPublicHooksExecutiveAutonomyRoute: typeof ApiPublicHooksExecutiveAutonomyRoute
   ApiPublicHooksTaskEngineRoute: typeof ApiPublicHooksTaskEngineRoute
-  ApiPublicOpsFlyTtsSecretSyncRoute: typeof ApiPublicOpsFlyTtsSecretSyncRoute
   ApiPublicPaymentsStripeWebhookRoute: typeof ApiPublicPaymentsStripeWebhookRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicVoiceEventsRoute: typeof ApiPublicVoiceEventsRoute
@@ -1006,13 +992,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksTaskEngineRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/ops/fly-tts-secret-sync': {
-      id: '/api/public/ops/fly-tts-secret-sync'
-      path: '/api/public/ops/fly-tts-secret-sync'
-      fullPath: '/api/public/ops/fly-tts-secret-sync'
-      preLoaderRoute: typeof ApiPublicOpsFlyTtsSecretSyncRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/payments/stripe-webhook': {
       id: '/api/public/payments/stripe-webhook'
       path: '/api/public/payments/stripe-webhook'
@@ -1143,7 +1122,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHealthOpusProbeRoute: ApiPublicHealthOpusProbeRoute,
   ApiPublicHooksExecutiveAutonomyRoute: ApiPublicHooksExecutiveAutonomyRoute,
   ApiPublicHooksTaskEngineRoute: ApiPublicHooksTaskEngineRoute,
-  ApiPublicOpsFlyTtsSecretSyncRoute: ApiPublicOpsFlyTtsSecretSyncRoute,
   ApiPublicPaymentsStripeWebhookRoute: ApiPublicPaymentsStripeWebhookRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicVoiceEventsRoute: ApiPublicVoiceEventsRoute,
