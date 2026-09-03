@@ -55,11 +55,25 @@ export const Route = createFileRoute("/api/public/tmp/fly-ipv6")({
         const report: Record<string, unknown> = { ok: true, steps: [] as string[] };
         const steps = report["steps"] as string[];
 
+        // 0) App visibility probe (distinguishes 404 causes)
+        const appProbe = await fly(token, `/apps/${APP}`);
+        report["app_probe_status"] = appProbe.status;
+        if (appProbe.ok) {
+          const a = (await appProbe.json()) as Record<string, unknown>;
+          report["app"] = { name: a["name"], status: a["status"], network: a["network"] };
+        }
+
         // 1) Current IPs
         const listBefore = await fly(token, `/apps/${APP}/ips`);
         if (!listBefore.ok) {
+          const detail = await listBefore.text().catch(() => "");
           return Response.json(
-            { ok: false, error: `list_ips_http_${listBefore.status}` },
+            {
+              ok: false,
+              error: `list_ips_http_${listBefore.status}`,
+              detail: detail.slice(0, 300),
+              app_probe_status: report["app_probe_status"],
+            },
             { status: 502 },
           );
         }
