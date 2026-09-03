@@ -11,10 +11,28 @@
 export type CapabilityState = {
   /** Voice-note replies are enabled / were just delivered for this turn. */
   voiceAvailable: boolean;
+  /**
+   * Live inbound WhatsApp Calling is deployed and answering. Resolved from the
+   * canonical capability registry, never assumed per channel.
+   */
+  callingAvailable?: boolean;
 };
 
 export const LIVE_CALL_UNAVAILABLE_MS =
   "Buat masa ini panggilan telefon secara langsung belum tersedia, tetapi saya boleh terus berbual di WhatsApp sini.";
+
+/** Truthful answer when WhatsApp Calling IS live. */
+export const LIVE_CALL_AVAILABLE_MS =
+  "Boleh, panggilan WhatsApp memang tersedia — Datuk boleh terus call nombor WhatsApp ini dan saya akan jawab.";
+
+/** Sentences that falsely deny live calling while Calling is enabled. */
+const FALSE_CALL_DENIAL_PATTERNS: RegExp[] = [
+  /\b(?:panggilan\s+(?:telefon|whatsapp|suara)|call|telefon|phone\s+call)\b[^.!?]{0,60}\b(?:belum|tidak|tak)\s+(?:tersedia|boleh|dapat|ada)\b/i,
+  /\b(?:saya|kami)\s+(?:tidak|tak)\s+(?:boleh|dapat)\s+(?:terima|jawab|buat)\s+(?:panggilan|call)\b/i,
+  /\b(?:i|we)\s+(?:can(?:'|’)?t|cannot|am\s+not\s+able\s+to)\s+(?:take|make|answer)\s+(?:a\s+)?(?:phone\s+)?calls?\b/i,
+  /\b(?:phone|voice)\s+calls?\b[^.!?]{0,40}\b(?:not\s+available|unavailable|not\s+supported)\b/i,
+];
+
 
 /**
  * Used when a reply consisted ONLY of forbidden capability-denial text. Never
