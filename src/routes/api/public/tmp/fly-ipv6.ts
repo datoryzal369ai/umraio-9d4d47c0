@@ -105,8 +105,24 @@ export const Route = createFileRoute("/api/public/tmp/fly-ipv6")({
         }
         const beforeErrs = extractErrors(before.body);
         if (beforeErrs.length > 0) {
+          // Diagnostic: does the Machines API accept this token for the app?
+          let machinesStatus: number | string = "not_attempted";
+          try {
+            const m = await fetch(`${FLY_API}/apps/${APP}/machines`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            machinesStatus = m.status;
+            await m.text().catch(() => "");
+          } catch {
+            machinesStatus = "fetch_failed";
+          }
           return Response.json(
-            { ok: false, error: "fly_gql_error", detail: beforeErrs },
+            {
+              ok: false,
+              error: "fly_gql_error",
+              detail: beforeErrs,
+              machines_probe_status: machinesStatus,
+            },
             { status: 502 },
           );
         }
