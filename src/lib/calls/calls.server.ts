@@ -26,7 +26,8 @@ import {
   type GatewayCallbackPayload,
 } from "./gateway-callback.core";
 import { requestMediaSession, resolveGatewayConfig, terminateMediaSession } from "./media-gateway.server";
-import { metaAcceptCall } from "./meta-calls.server";
+import { metaAcceptCall, metaPreAcceptCall } from "./meta-calls.server";
+import { CallTimeline, mergeCallTimings, type CallTimings } from "./call-timings.core";
 
 type Db = { from: (table: string) => any };
 
@@ -51,7 +52,9 @@ export type CallHandlingOutcome =
   | "answer_deferred_media_gateway_required"
   | "answer_requested"
   | "media_negotiating"
+  | "meta_pre_accepted"
   | "meta_accepted"
+  | "cancelled_by_terminate"
   | "negotiation_failed";
 
 /**
@@ -70,15 +73,19 @@ export async function processCallEvent(args: {
   const env = args.env ?? (process.env as Record<string, string | undefined>);
   const now = args.now ?? (() => new Date());
 
+  const timeline = new CallTimeline(now);
+  timeline.mark("webhook_received_at");
+
   const tenant = await resolveTenant(db, phoneNumberId);
   if (!tenant) {
     console.log(`[calls] call_event_ignored reason=config_not_found call_id=${event.callId}`);
     return "ignored_unknown_tenant";
   }
+  timeline.mark("tenant_resolved_at");
 
   const { data: existing } = await db
     .from("whatsapp_call_sessions")
-    .select("id, status")
+    .select("id, status, stage_timings")
     .eq("call_id", event.callId)
     .maybeSingle();
 
@@ -105,7 +112,7 @@ export async function processCallEvent(args: {
       `[calls] call_session_created call_id=${event.callId} status=${event.status} has_sdp=${Boolean(event.sdp)}`,
     );
     if (event.status !== "ringing") return "state_updated";
-    return maybeRequestAnswer({ db, event, env, nowIso, tenant, phoneNumberId, now, ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}) });
+    return maybeRequestAnswer({ db, event, env, nowIso, tenant, phoneNumberId, now, timeline, ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}) });
   }
 
   if (!shouldApplyCallStatus(existing.status, event.status)) {
@@ -115,22 +122,25 @@ export async function processCallEvent(args: {
     return "state_regression_ignored";
   }
 
-  await db
-    .from("whatsapp_call_sessions")
-    .update({
-      status: event.status,
-      ended_at: isTerminalCallStatus(event.status) ? event.occurredAt : null,
-      termination_reason: event.terminationReason,
-    })
-    .eq("id", existing.id);
+  const terminal = isTerminalCallStatus(event.status);
+  const statusPatch: Record<string, unknown> = {
+    status: event.status,
+    ended_at: terminal ? event.occurredAt : null,
+    termination_reason: event.terminationReason,
+  };
+  if (terminal) {
+    timeline.mark("terminate_received_at", new Date(event.occurredAt));
+    statusPatch["stage_timings"] = mergeCallTimings(existing.stage_timings, timeline.snapshot());
+  }
+  await db.from("whatsapp_call_sessions").update(statusPatch).eq("id", existing.id);
   console.log(
     `[calls] call_state_transition call_id=${event.callId} from=${existing.status} to=${event.status} reason=${event.terminationReason ?? "none"}`,
   );
 
   // A caller who hangs up mid-negotiation must not leave media running.
-  if (isTerminalCallStatus(event.status)) {
+  if (terminal) {
     const gateway = resolveGatewayConfig(env);
-    if (gateway && existing.status === "media_negotiating") {
+    if (gateway && NEGOTIATION_STATUSES.has(existing.status)) {
       await terminateMediaSession({
         gatewayUrl: gateway.url,
         secret: gateway.secret,
