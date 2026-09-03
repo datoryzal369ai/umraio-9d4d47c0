@@ -1,0 +1,53 @@
+name: Deploy Voice Gateway
+
+# Manual-only deploy of the UMRAIO voice media gateway to Fly.io.
+# Requires repository secret FLY_API_TOKEN (org-scoped deploy token).
+# The token is never printed; flyctl reads it from the environment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      set_public_ip:
+        description: "Also set PUBLIC_IP (IPv4,IPv6) before deploying"
+        type: boolean
+        default: true
+
+concurrency:
+  group: voice-gateway-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP: umraio-voice-gateway
+      PUBLIC_IP_VALUE: "149.248.202.126,2a09:8280:1::180:ea3c:0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Verify token is present
+        run: test -n "$FLY_API_TOKEN" && echo "FLY_API_TOKEN present"
+
+      - name: Go build, vet and test
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: voice-gateway/go.mod
+      - run: go build ./... && go vet ./... && go test ./...
+        working-directory: voice-gateway
+
+      - name: Set PUBLIC_IP
+        if: ${{ inputs.set_public_ip }}
+        run: flyctl secrets set PUBLIC_IP="$PUBLIC_IP_VALUE" --stage -a "$FLY_APP"
+
+      - name: Deploy
+        run: flyctl deploy -c voice-gateway/fly.toml --remote-only -a "$FLY_APP"
+
+      - name: Post-deploy verification
+        run: |
+          flyctl status -a "$FLY_APP"
+          flyctl ips list -a "$FLY_APP"
+          curl -sf https://$FLY_APP.fly.dev/health; echo
+          curl -sf -o /dev/null -w "ready=%{http_code}\n" https://$FLY_APP.fly.dev/ready
