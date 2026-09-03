@@ -65,6 +65,8 @@ func classOf(err error) string {
 		return "not_configured"
 	case errorsIs(err, ErrEmptyAudio):
 		return "empty_audio"
+	case errorsIs(err, ErrVoiceIdentity):
+		return "voice_identity"
 	case errorsIs(err, ErrEncoder):
 		return "encoder"
 	case errorsIs(err, ErrProvider):
