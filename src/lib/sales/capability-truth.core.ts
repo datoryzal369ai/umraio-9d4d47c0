@@ -104,6 +104,7 @@ export function sanitizeCapabilityClaims(
   const original = (text ?? "").trim();
   const drop: RegExp[] = [];
   if (options.voiceAvailable) drop.push(...FALSE_VOICE_DENIAL_PATTERNS);
+  if (options.callingAvailable) drop.push(...FALSE_CALL_DENIAL_PATTERNS);
   if (!options.customerAskedIdentity) drop.push(...SELF_REFERENTIAL_PATTERNS);
 
   let cleaned = original;
@@ -116,12 +117,22 @@ export function sanitizeCapabilityClaims(
 
   // A reply made up ONLY of forbidden denial text must never be shipped as-is.
   if (!cleaned) {
-    cleaned = options.voiceAvailable && original ? VOICE_CAPABILITY_FALLBACK_MS : original;
+    if (options.callingAvailable && original && FALSE_CALL_DENIAL_PATTERNS.some((p) => p.test(original))) {
+      cleaned = LIVE_CALL_AVAILABLE_MS;
+    } else {
+      cleaned = options.voiceAvailable && original ? VOICE_CAPABILITY_FALLBACK_MS : original;
+    }
   }
 
   // Runtime enforcement (not prompt-only): the customer asked for a phone call.
-  if (options.liveCallRequested && !mentionsLiveCallUnavailable(cleaned)) {
-    cleaned = cleaned ? `${LIVE_CALL_UNAVAILABLE_MS} ${cleaned}` : LIVE_CALL_UNAVAILABLE_MS;
+  if (options.liveCallRequested) {
+    if (options.callingAvailable) {
+      if (!/\b(?:boleh|tersedia|available|call\s+saya|jawab)\b/i.test(cleaned)) {
+        cleaned = cleaned ? `${LIVE_CALL_AVAILABLE_MS} ${cleaned}` : LIVE_CALL_AVAILABLE_MS;
+      }
+    } else if (!mentionsLiveCallUnavailable(cleaned)) {
+      cleaned = cleaned ? `${LIVE_CALL_UNAVAILABLE_MS} ${cleaned}` : LIVE_CALL_UNAVAILABLE_MS;
+    }
   }
 
   return cleaned;
@@ -132,7 +143,12 @@ export function capabilityTruthInstructions(state: CapabilityState): string[] {
   return [
     `CAPABILITY TRUTH (absolute): WhatsApp text reply = available. WhatsApp voice-note reply = ${
       state.voiceAvailable ? "AVAILABLE and already in use in this conversation" : "available when voice generation succeeds"
-    }. Live phone call = NOT available yet. Never claim you cannot speak, cannot send a voice note, or that you can "only reply in text" — that is false. If the customer asks for a phone call, say only that live phone calling is not available at the moment and continue on WhatsApp.`,
+    }. Live WhatsApp call = ${
+      state.callingAvailable
+        ? "AVAILABLE — RAIŌ answers inbound WhatsApp calls on this same number. Never say phone calls are unavailable."
+        : "NOT available yet. If the customer asks for a phone call, say only that live phone calling is not available at the moment and continue on WhatsApp."
+    } Never claim you cannot speak, cannot send a voice note, or that you can "only reply in text" — that is false.`,
+
     "SELF-REFERENCE: do not announce that you are an AI, a system, a bot or a program during a normal sales conversation. Disclose it plainly and briefly only when the customer directly asks. Otherwise behave as a professional Malaysian Umrah sales consultant — truthful about what the service can do, never pretending to be something it is not.",
     "VOICE-NOTE STYLE: keep spoken replies short and natural in Malaysian Malay, warm and professional, one useful follow-up question at a time. No long robotic explanations, no IVR or call-centre phrasing, no repeated disclaimers, no repeating the customer's title in every sentence. Keep Islamic courtesy (salam) natural and unforced.",
   ];
