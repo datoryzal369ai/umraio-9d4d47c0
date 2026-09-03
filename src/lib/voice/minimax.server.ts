@@ -305,7 +305,9 @@ export const minimaxVoiceEngine: VoiceEngine = {
         },
       });
 
-    if (resolveMinimaxContainer() === "ogg_opus") {
+    // WhatsApp Calling can transmit nothing but OGG/Opus, so it always takes
+    // the PCM→Opus path regardless of the WhatsApp-message container flag.
+    if (requireOggOpus || resolveMinimaxContainer() === "ogg_opus") {
       const pcm = await requestMinimaxAudio(config, requestBody("pcm"));
       if (pcm.ok) {
         const { encodePcmToOggOpus } = await import("./opus-encode.server");
