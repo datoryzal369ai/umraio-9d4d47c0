@@ -16,8 +16,11 @@ RUN go vet ./... && go test ./... && \
 
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /
+ARG BUILD_VERSION=dev
+ENV BUILD_VERSION=${BUILD_VERSION}
 COPY --from=build /out/gateway /gateway
 USER nonroot:nonroot
+
 
 EXPOSE 8080/tcp
 EXPOSE 40000/udp
