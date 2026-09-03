@@ -45,6 +45,8 @@ var (
 	ErrNotConfigured = errors.New("tts: minimax not configured")
 	ErrProvider      = errors.New("tts: minimax provider error")
 	ErrEmptyAudio    = errors.New("tts: minimax returned no audio")
+	// ErrVoiceIdentity fails closed when a non-canonical voice is requested.
+	ErrVoiceIdentity = errors.New("tts: non-canonical voice identity rejected")
 )
 
 type Config struct {
