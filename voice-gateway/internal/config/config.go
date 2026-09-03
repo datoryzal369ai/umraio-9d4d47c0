@@ -16,6 +16,7 @@ type Config struct {
 	Secret            string
 	PublicIPs         []string
 	UDPMediaHost      string
+	UDPMediaHost6     string
 	UDPMediaPort      int
 	MaxConcurrent     int
 	MaxCallDuration   time.Duration
