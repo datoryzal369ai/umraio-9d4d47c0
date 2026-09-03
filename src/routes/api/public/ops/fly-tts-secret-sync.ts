@@ -130,12 +130,24 @@ export const Route = createFileRoute("/api/public/ops/fly-tts-secret-sync")({
           );
         }
 
+        // Token-validity probe against the app-scoped Machines API (status only).
+        const probe = await fetch(`https://api.machines.dev/v1/apps/${FLY_APP}`, {
+          headers: { Authorization: `Bearer ${flyToken}` },
+        });
+        const probeAlt = probe.ok
+          ? null
+          : await fetch(`https://api.machines.dev/v1/apps/${FLY_APP}`, {
+              headers: { Authorization: `Bearer FlyV1 ${flyToken}` },
+            });
+
         // Replay/idempotency guard: refuse when the gateway already holds it.
         const listed = await flyGraphql(
           flyToken,
           `query($name:String!){ app(name:$name){ secrets{ name } } }`,
           { name: FLY_APP },
         );
+        (listed as any).probe = { machines: probe.status, machines_flyv1: probeAlt?.status ?? null };
+
         const existing: string[] =
           listed.parsed?.data?.app?.secrets?.map((s: { name: string }) => s.name) ?? [];
         if (existing.includes("MINIMAX_TTS_API_KEY")) {
@@ -150,9 +162,16 @@ export const Route = createFileRoute("/api/public/ops/fly-tts-secret-sync")({
             .map((e: { message?: string }) => String(e?.message ?? ""))
             .slice(0, 3);
           return json(
-            { ok: false, reason: "fly_app_unreachable", fly_status: listed.status, fly_errors: messages },
+            {
+              ok: false,
+              reason: "fly_app_unreachable",
+              fly_status: listed.status,
+              fly_errors: messages,
+              probe: (listed as any).probe ?? null,
+            },
             502,
           );
+
         }
 
 
