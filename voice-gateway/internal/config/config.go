@@ -60,7 +60,11 @@ func Load() (Config, error) {
 		UDPMediaPort:      envInt("UDP_MEDIA_PORT", 40000),
 		MaxConcurrent:     envInt("MAX_CONCURRENT_CALLS", 25),
 		MaxCallDuration:   time.Duration(envInt("MAX_CALL_DURATION_S", 600)) * time.Second,
-		NegotiateTimeout:  time.Duration(envInt("MEDIA_NEGOTIATE_TIMEOUT_S", 10)) * time.Second,
+		// Observed production: session creation -> media_ready took ~16s on a
+		// healthy dual-stack call, so a 10s reaper killed live sessions before
+		// the first turn. 30s keeps the stuck-session guard without ending a
+		// healthy negotiation. MAX_CALL_DURATION_S is untouched.
+		NegotiateTimeout:  time.Duration(envInt("MEDIA_NEGOTIATE_TIMEOUT_S", 30)) * time.Second,
 		TurnUsername:      envStr("TURN_USERNAME", ""),
 		TurnCredential:    envStr("TURN_CREDENTIAL", ""),
 		BuildVersion:      envStr("BUILD_VERSION", "dev"),
