@@ -34,6 +34,13 @@ import {
   type TurnLatency,
 } from "./call-experience.core";
 import {
+  adaptationInstruction,
+  callerHasPendingWork,
+  readSignals,
+  updateSignals,
+  type ConversationSignals,
+} from "./renagi-signals.core";
+import {
   EMPTY_CALLER_CONTEXT,
   hydrateCallerContext,
   persistCallMemory,
@@ -84,7 +91,7 @@ function synthesizeInWorker(): boolean {
 }
 
 const SESSION_COLUMNS =
-  "id, agency_id, call_id, caller_phone, status, meta_accepted_at, transcript, turn_count, detected_language, voice_intents, lead_id, conversation_id, closing_state, disclosure_spoken, voice_latency";
+  "id, agency_id, call_id, caller_phone, status, meta_accepted_at, transcript, turn_count, detected_language, voice_intents, lead_id, conversation_id, closing_state, disclosure_spoken, voice_latency, renagi_signals";
 
 function base64ToBytes(value: string): Uint8Array | null {
   try {
@@ -116,6 +123,8 @@ async function reason(args: {
   language: string;
   contextLines: string[];
   contextFacts: Record<string, unknown>;
+  /** Style-only behaviour guidance from the internal perception layer. */
+  behaviourLines: string[];
 }): Promise<string | null> {
   const gateway = createIntelligenceGateway();
   const messages = args.history.slice(-8).map((turn) => ({
@@ -138,6 +147,9 @@ async function reason(args: {
     "Vary your openers — do not begin every turn with the same word.",
     "If the caller asks whether you are human, say plainly that you are RAIŌ, the UMRAIO AI executive.",
   ];
+  if (args.behaviourLines.length) {
+    systemLines.push("", ...args.behaviourLines);
+  }
   if (args.contextLines.length) {
     systemLines.push("", "CUSTOMER RELATIONSHIP MEMORY (authoritative, never invent beyond it):", ...args.contextLines);
   }
@@ -281,6 +293,11 @@ export async function handleVoiceTurn(args: {
 
   const context = await contextPromise;
 
+  // ROLLING PERCEPTION — incremental, deterministic, zero added latency. It
+  // shapes HOW RAIŌ speaks; the decision itself stays with RÉNAIO.CORE™.
+  const signals: ConversationSignals = updateSignals(readSignals(row.renagi_signals), transcript);
+  const pendingWork = callerHasPendingWork(transcript);
+
   // 2. RESPONSE. Greeting and closing come from the FAST PATH (deterministic,
   //    no model round-trip); everything else goes to RÉNAIO.CORE™.
   const closingState = readClosingState(row.closing_state);
@@ -304,6 +321,8 @@ export async function handleVoiceTurn(args: {
       language,
       turnCount: history.length,
       maxTurns: MAX_STORED_TURNS,
+      // COMMON SENSE: never close while the caller still has business open.
+      pendingWork,
     });
     nextClosingState = closing.state;
     if (closing.action !== "continue") {
@@ -326,7 +345,8 @@ export async function handleVoiceTurn(args: {
       transcript,
       language,
       contextLines: context.promptLines,
-      contextFacts: context.facts,
+      contextFacts: { ...context.facts, conversation_signals: signals },
+      behaviourLines: adaptationInstruction(signals),
     });
     reasoningMs = Date.now() - reasoningStartedAt;
   }
@@ -386,9 +406,10 @@ export async function handleVoiceTurn(args: {
   };
   const latency = appendLatency(row.voice_latency, latencyEntry);
   const outcome = deriveCallOutcome(intents, turns);
-  const summary = endCall
-    ? buildCallSummary({ turns, intents, outcome, language })
-    : null;
+  // INCREMENTAL CALL MEMORY — the summary is refreshed on EVERY turn, so a
+  // dropped call is still remembered. Only the end of call writes it across
+  // into the WhatsApp thread.
+  const summary = buildCallSummary({ turns, intents, outcome, language });
 
   await db
     .from("whatsapp_call_sessions")
@@ -401,15 +422,16 @@ export async function handleVoiceTurn(args: {
       closing_state: endCall ? "farewell" : nextClosingState,
       disclosure_spoken: row.disclosure_spoken === true || payload.kind === "greeting",
       voice_latency: latency,
+      renagi_signals: signals,
+      call_summary: summary,
       lead_id: row.lead_id ?? context.leadId,
       conversation_id: row.conversation_id ?? context.conversationId,
-      ...(summary ? { call_summary: summary } : {}),
       ...(travellers ? { voice_traveller_count: travellers } : {}),
     })
     .eq("id", row.id);
 
   // CALL → TEXT continuity, written once at the natural end of the call.
-  if (summary) {
+  if (endCall) {
     await persistCallMemory(db, {
       agencyId: row.agency_id,
       conversationId: row.conversation_id ?? context.conversationId,
@@ -422,7 +444,7 @@ export async function handleVoiceTurn(args: {
     `[calls] voice_turn_ok call_id=${payload.call_id} kind=${payload.kind} lang=${language} fast=${fastPath} ` +
       `asr=${asrMs}ms ctx=${contextMs}ms reason=${reasoningMs}ms tts=${ttsMs}ms total=${latencyEntry.total_ms}ms ` +
       `p50=${stats["p50_total_ms"]}ms p95=${stats["p95_total_ms"]}ms known_customer=${context.leadId ? "yes" : "no"} ` +
-      `closing=${nextClosingState} intents=${intents.join("|") || "none"} end=${endCall}`,
+      `closing=${nextClosingState} pending=${pendingWork} intents=${intents.join("|") || "none"} end=${endCall}`,
   );
 
   return {
