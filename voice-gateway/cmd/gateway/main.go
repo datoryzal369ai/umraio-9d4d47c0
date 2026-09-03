@@ -52,10 +52,10 @@ func main() {
 	// Single fixed UDP media port, dual-stack. IPv4 binds Fly's special
 	// services address and fails closed; IPv6 binds the wildcard and is
 	// best-effort so a v6-less host still serves media.
-	udpMux, udpConns, v6Err := gwrtc.NewDualStackUDPMux(cfg.UDPMediaHost, cfg.UDPMediaHost6, cfg.UDPMediaPort)
-	if err != nil {
+	udpMux, udpConns, v6Err, muxErr := gwrtc.NewDualStackUDPMux(cfg.UDPMediaHost, cfg.UDPMediaHost6, cfg.UDPMediaPort)
+	if muxErr != nil {
 		logger.Error("udp media listener failed to bind", "error_class", "udp_mux",
-			"host", cfg.UDPMediaHost, "port", cfg.UDPMediaPort, "error", err.Error())
+			"host", cfg.UDPMediaHost, "port", cfg.UDPMediaPort, "error", muxErr.Error())
 		os.Exit(1)
 	}
 	if v6Err != nil {

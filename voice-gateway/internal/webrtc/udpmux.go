@@ -52,9 +52,9 @@ func NewDualStackUDPMux(host string, host6 string, port int) (mux ice.UDPMux, co
 	}
 
 	if len(muxes) == 1 {
-		return muxes[0], conns, v6Err
+		return muxes[0], conns, v6Err, nil
 	}
-	return ice.NewMultiUDPMuxDefault(muxes...), conns, v6Err
+	return ice.NewMultiUDPMuxDefault(muxes...), conns, v6Err, nil
 }
 
 func listenUDP(network, host string, port int) (*net.UDPConn, error) {
