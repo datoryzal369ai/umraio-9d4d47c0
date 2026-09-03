@@ -25,7 +25,12 @@ import {
   type CallSessionRow,
   type GatewayCallbackPayload,
 } from "./gateway-callback.core";
-import { requestMediaSession, resolveGatewayConfig, terminateMediaSession } from "./media-gateway.server";
+import {
+  notifyCallAccepted,
+  requestMediaSession,
+  resolveGatewayConfig,
+  terminateMediaSession,
+} from "./media-gateway.server";
 import { metaAcceptCall, metaPreAcceptCall } from "./meta-calls.server";
 import { CallTimeline, mergeCallTimings, type CallTimings } from "./call-timings.core";
 
@@ -359,6 +364,32 @@ async function maybeRequestAnswer(args: {
   console.log(
     `[calls] meta_accept_ok call_id=${event.callId} awaiting=media_ready pre_accept=${preAccepted.ok} ${timeline.logLine()}`,
   );
+
+  // 4) Post-accept notification. Exactly one greeting is started by the
+  //    gateway here — never earlier (the turn endpoint rejects a call Meta has
+  //    not accepted) and never again (the gateway keeps it idempotent). A
+  //    TERMINATE that already closed the media session yields "closed".
+  const notified = await notifyCallAccepted({
+    gatewayUrl: gateway.url,
+    secret: gateway.secret,
+    callId: event.callId,
+    agencyId: tenant.agencyId,
+    phoneNumberId,
+    now: now(),
+    ...fetchOpt,
+  });
+  console.log(
+    `[calls] post_accept_notify call_id=${event.callId} ok=${notified.ok} greeting=${notified.greeting ?? notified.reason ?? "unknown"}`,
+  );
+  await db
+    .from("whatsapp_call_sessions")
+    .update({
+      stage_timings: mergeCallTimings(timeline.snapshot(), {
+        post_accept_notified_at: now().toISOString(),
+      }),
+    })
+    .eq("call_id", event.callId);
+
   return "meta_accepted";
 }
 

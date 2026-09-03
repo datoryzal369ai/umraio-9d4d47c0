@@ -146,6 +146,61 @@ export async function terminateMediaSession(args: {
   }
 }
 
+/**
+ * Explicit "Meta accept completed" signal.
+ *
+ * Until this lands the gateway stays silent by design: any turn attempted
+ * before Meta accept is rejected by the control plane (`not_accepted`) and is
+ * never retried, so nothing would ever produce the first outbound RTP packet.
+ * The gateway treats this as idempotent — a repeat yields `duplicate`.
+ * Failure here never changes business call state.
+ */
+export async function notifyCallAccepted(args: {
+  gatewayUrl: string;
+  secret: string;
+  callId: string;
+  agencyId: string;
+  phoneNumberId: string;
+  now?: Date;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}): Promise<{ ok: boolean; greeting?: string; reason?: string }> {
+  const doFetch = args.fetchImpl ?? fetch;
+  const now = args.now ?? new Date();
+  if (!args.gatewayUrl || !args.secret) return { ok: false, reason: "gateway_not_configured" };
+
+  try {
+    const { token } = await mintVoiceGatewaySessionToken({
+      secret: args.secret,
+      callId: args.callId,
+      agencyId: args.agencyId,
+      phoneNumberId: args.phoneNumberId,
+      now,
+    });
+    const body = JSON.stringify({ event: "meta_accepted" });
+    const ts = Math.floor(now.getTime() / 1000);
+    const response = await doFetch(
+      `${normalizeBase(args.gatewayUrl)}/v1/calls/${encodeURIComponent(args.callId)}/accepted`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          [GATEWAY_TIMESTAMP_HEADER]: String(ts),
+          [GATEWAY_SIGNATURE_HEADER]: await signGatewayRequest(args.secret, ts, body),
+        },
+        body,
+        signal: AbortSignal.timeout(args.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      },
+    );
+    if (!response.ok) return { ok: false, reason: `gateway_http_${response.status}` };
+    const parsed = (await response.json().catch(() => null)) as { greeting?: string } | null;
+    return { ok: true, greeting: parsed?.greeting ?? "unknown" };
+  } catch {
+    return { ok: false, reason: "gateway_unavailable" };
+  }
+}
+
 export function resolveGatewayConfig(env: GatewayEnv): { url: string; secret: string } | null {
   const url = env["WHATSAPP_MEDIA_GATEWAY_URL"]?.trim();
   const secret = env["WHATSAPP_MEDIA_GATEWAY_SECRET"]?.trim();
