@@ -321,9 +321,17 @@ export const minimaxVoiceEngine: VoiceEngine = {
           };
         }
         // The PCM call already succeeded — the ONLY retry is the MP3 container.
-        console.error(`[voice] minimax_opus_encode_failed reason=${encoded.reason} fallback=mp3`);
+        console.error(
+          `[voice] minimax_opus_encode_failed reason=${encoded.reason} fallback=${requireOggOpus ? "none" : "mp3"}`,
+        );
+        // A live call cannot use MP3: retrying it only adds seconds of latency
+        // before the caller-audible fallback engine runs.
+        if (requireOggOpus) return { ok: false, kind: "invalid_audio", engine: "minimax" };
       } else {
-        console.error(`[voice] minimax_pcm_failed kind=${pcm.kind} fallback=mp3`);
+        console.error(
+          `[voice] minimax_pcm_failed kind=${pcm.kind} fallback=${requireOggOpus ? "none" : "mp3"}`,
+        );
+        if (requireOggOpus) return { ok: false, kind: pcm.kind, engine: "minimax" };
       }
     }
 
