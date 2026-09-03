@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,6 +100,9 @@ type MediaSession struct {
 	pipelineMode string
 	inbound      atomic.Uint64
 	outbound     atomic.Uint64
+	trackFired   atomic.Bool
+	accepted     atomic.Bool
+	outboundErrs atomic.Uint64
 }
 
 // diagEvery bounds progress logging: first packet, then every N packets.
@@ -186,6 +190,7 @@ func (e *Engine) Establish(
 		case pion.PeerConnectionStateConnected:
 			s.MarkICEConnected(time.Now())
 			s.MarkOutboundReady()
+			ms.logTransportDiagnostics()
 			ms.maybeFireMediaReady()
 		case pion.PeerConnectionStateFailed:
 			_ = s.Advance(session.StateFailed, "ice_failed", time.Now())
@@ -206,7 +211,10 @@ func (e *Engine) Establish(
 	})
 
 	pc.OnTrack(func(remote *pion.TrackRemote, _ *pion.RTPReceiver) {
+		ms.trackFired.Store(true)
 		if remote.Kind() != pion.RTPCodecTypeAudio {
+			log.Info("non audio track ignored", "call_id", s.CallID, "session_id", s.ID,
+				"on_track_fired", true)
 			return
 		}
 		codec := remote.Codec()
@@ -343,6 +351,76 @@ func (ms *MediaSession) maybeFireMediaReady() {
 	}
 }
 
+// logTransportDiagnostics emits family/type/state facts only. It never logs an
+// IP address, ICE credential, DTLS fingerprint or SDP line.
+func (ms *MediaSession) logTransportDiagnostics() {
+	pairType, localFam, remoteFam := "unknown", "unknown", "unknown"
+	if pair, err := selectedPair(ms.pc); err == nil && pair != nil {
+		pairType = pair.Local.Typ.String() + "/" + pair.Remote.Typ.String()
+		localFam = addressFamily(pair.Local.Address)
+		remoteFam = addressFamily(pair.Remote.Address)
+	}
+	dtls := "unknown"
+	if t := ms.pc.SCTP(); t != nil && t.Transport() != nil {
+		dtls = t.Transport().State().String()
+	}
+	ms.log.Info("transport diagnostics", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+		"selected_pair_type", pairType,
+		"selected_local_family", localFam,
+		"selected_remote_family", remoteFam,
+		"dtls_transport_state", dtls,
+		"on_track_fired", ms.trackFired.Load(),
+		"inbound_packets", ms.inbound.Load(),
+		"outbound_packets", ms.outbound.Load())
+}
+
+func selectedPair(pc *pion.PeerConnection) (*pion.ICECandidatePair, error) {
+	transport := pc.SCTP()
+	if transport == nil || transport.Transport() == nil || transport.Transport().ICETransport() == nil {
+		return nil, errors.New("webrtc: no ice transport")
+	}
+	return transport.Transport().ICETransport().GetSelectedCandidatePair()
+}
+
+// addressFamily reduces an address to an enum. The address itself is discarded.
+func addressFamily(addr string) string {
+	if addr == "" {
+		return "unknown"
+	}
+	if strings.Contains(addr, ":") {
+		return "ipv6"
+	}
+	return "ipv4"
+}
+
+// NotifyAccepted is the explicit "Meta accept completed" signal from the
+// control plane. It is the ONLY trigger for the opening greeting: exactly one
+// greeting per call, never before accept, never after Close.
+func (ms *MediaSession) NotifyAccepted() string {
+	ms.mu.Lock()
+	closed := ms.closed
+	ms.mu.Unlock()
+	if closed {
+		ms.log.Info("post_accept_greeting", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"outcome", string(umedia.GreetingClosed))
+		return string(umedia.GreetingClosed)
+	}
+	ms.accepted.Store(true)
+	greeter, ok := ms.pipeline.(umedia.Greeter)
+	if !ok {
+		ms.log.Info("post_accept_greeting", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+			"outcome", string(umedia.GreetingDisabled))
+		return string(umedia.GreetingDisabled)
+	}
+	outcome := greeter.StartGreeting()
+	ms.log.Info("post_accept_greeting", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
+		"outcome", string(outcome), "pipeline_mode", ms.pipelineMode)
+	return string(outcome)
+}
+
+// Accepted reports whether the control plane confirmed the Meta accept.
+func (ms *MediaSession) Accepted() bool { return ms.accepted.Load() }
+
 // SendOpus implements media.Transport.
 func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	ms.mu.Lock()
@@ -355,7 +433,12 @@ func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	if d <= 0 {
 		d = 20 * time.Millisecond
 	}
+	first := ms.outbound.Load() == 0
 	if err := ms.out.WriteSample(media.Sample{Data: frame.Data, Duration: d}); err != nil {
+		if first && ms.outboundErrs.Add(1) == 1 {
+			ms.log.Warn("first outbound rtp write failed", "call_id", ms.sess.CallID,
+				"session_id", ms.sess.ID, "error_class", "outbound_write")
+		}
 		return err
 	}
 	ms.sess.RecordOutbound()

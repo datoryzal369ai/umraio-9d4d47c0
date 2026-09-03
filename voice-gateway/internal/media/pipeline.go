@@ -37,6 +37,12 @@ type Pipeline interface {
 	Close(reason string)
 }
 
+// Greeter is implemented by pipelines that can produce a single opening turn
+// on an explicit, post-accept signal from the control plane.
+type Greeter interface {
+	StartGreeting() GreetingOutcome
+}
+
 // ErrNotAttached is returned by transports used before negotiation completes.
 var ErrNotAttached = errors.New("media: transport not attached")
 
