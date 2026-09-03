@@ -406,7 +406,7 @@ describe("requestMediaSession", () => {
       gatewayUrl: "https://gateway.internal/", secret: SECRET, callId: CALL_ID,
       agencyId: AGENCY, phoneNumberId: PHONE_ID, sdpOffer: OFFER_SDP, fetchImpl,
     });
-    expect(r).toMatchObject({ ok: true, sessionId: GATEWAY_SESSION, sdpAnswer: ANSWER_SDP.trim() });
+    expect(r).toMatchObject({ ok: true, sessionId: GATEWAY_SESSION, sdpAnswer: ANSWER_SDP });
     expect(seen.url).toBe("https://gateway.internal/v1/calls/offer");
     expect(seen.init.headers["Authorization"]).toMatch(/^Bearer /);
     expect(seen.init.headers["X-Umraio-Signature"]).toMatch(/^v1=[0-9a-f]{64}$/);
@@ -481,7 +481,7 @@ describe("connect -> negotiation orchestration", () => {
     });
     expect(outcome).toBe("meta_accepted");
     const statuses = writes.filter((w) => w.op === "update").map((w) => w.payload.status);
-    expect(statuses).toEqual(["answer_requested", "media_negotiating", undefined]);
+    expect(statuses).toEqual(["answer_requested", "media_negotiating", "meta_pre_accepted", undefined]);
     const negotiating = writes.find((w) => w.payload.status === "media_negotiating")!;
     expect(negotiating.payload.gateway_session_id).toBe(GATEWAY_SESSION);
     expect(negotiating.payload.media_negotiated_at).toBeTruthy();

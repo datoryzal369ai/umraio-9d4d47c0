@@ -2125,8 +2125,10 @@ export type Database = {
           media_negotiated_at: string | null
           media_ready_at: string | null
           meta_accepted_at: string | null
+          meta_pre_accepted_at: string | null
           phone_number_id: string
           received_at: string
+          stage_timings: Json
           status: string
           termination_reason: string | null
           transcript: Json
@@ -2153,8 +2155,10 @@ export type Database = {
           media_negotiated_at?: string | null
           media_ready_at?: string | null
           meta_accepted_at?: string | null
+          meta_pre_accepted_at?: string | null
           phone_number_id: string
           received_at?: string
+          stage_timings?: Json
           status?: string
           termination_reason?: string | null
           transcript?: Json
@@ -2181,8 +2185,10 @@ export type Database = {
           media_negotiated_at?: string | null
           media_ready_at?: string | null
           meta_accepted_at?: string | null
+          meta_pre_accepted_at?: string | null
           phone_number_id?: string
           received_at?: string
+          stage_timings?: Json
           status?: string
           termination_reason?: string | null
           transcript?: Json

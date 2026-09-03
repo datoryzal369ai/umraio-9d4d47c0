@@ -21,6 +21,7 @@ export type CallSessionStatus =
   | "ringing"
   | "answer_requested"
   | "media_negotiating"
+  | "meta_pre_accepted"
   | "answered"
   | "missed"
   | "terminated"
@@ -41,10 +42,11 @@ const RANK: Record<CallSessionStatus, number> = {
   ringing: 0,
   answer_requested: 1,
   media_negotiating: 2,
-  answered: 3,
-  missed: 4,
-  terminated: 4,
-  failed: 4,
+  meta_pre_accepted: 3,
+  answered: 4,
+  missed: 5,
+  terminated: 5,
+  failed: 5,
 };
 
 export const TERMINAL_CALL_STATUSES: CallSessionStatus[] = ["answered", "missed", "terminated", "failed"];

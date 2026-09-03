@@ -26,7 +26,8 @@ import {
   type GatewayCallbackPayload,
 } from "./gateway-callback.core";
 import { requestMediaSession, resolveGatewayConfig, terminateMediaSession } from "./media-gateway.server";
-import { metaAcceptCall } from "./meta-calls.server";
+import { metaAcceptCall, metaPreAcceptCall } from "./meta-calls.server";
+import { CallTimeline, mergeCallTimings, type CallTimings } from "./call-timings.core";
 
 type Db = { from: (table: string) => any };
 
@@ -51,7 +52,9 @@ export type CallHandlingOutcome =
   | "answer_deferred_media_gateway_required"
   | "answer_requested"
   | "media_negotiating"
+  | "meta_pre_accepted"
   | "meta_accepted"
+  | "cancelled_by_terminate"
   | "negotiation_failed";
 
 /**
@@ -70,15 +73,19 @@ export async function processCallEvent(args: {
   const env = args.env ?? (process.env as Record<string, string | undefined>);
   const now = args.now ?? (() => new Date());
 
+  const timeline = new CallTimeline(now);
+  timeline.mark("webhook_received_at");
+
   const tenant = await resolveTenant(db, phoneNumberId);
   if (!tenant) {
     console.log(`[calls] call_event_ignored reason=config_not_found call_id=${event.callId}`);
     return "ignored_unknown_tenant";
   }
+  timeline.mark("tenant_resolved_at");
 
   const { data: existing } = await db
     .from("whatsapp_call_sessions")
-    .select("id, status")
+    .select("id, status, stage_timings")
     .eq("call_id", event.callId)
     .maybeSingle();
 
@@ -105,7 +112,7 @@ export async function processCallEvent(args: {
       `[calls] call_session_created call_id=${event.callId} status=${event.status} has_sdp=${Boolean(event.sdp)}`,
     );
     if (event.status !== "ringing") return "state_updated";
-    return maybeRequestAnswer({ db, event, env, nowIso, tenant, phoneNumberId, now, ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}) });
+    return maybeRequestAnswer({ db, event, env, nowIso, tenant, phoneNumberId, now, timeline, ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}) });
   }
 
   if (!shouldApplyCallStatus(existing.status, event.status)) {
@@ -115,22 +122,25 @@ export async function processCallEvent(args: {
     return "state_regression_ignored";
   }
 
-  await db
-    .from("whatsapp_call_sessions")
-    .update({
-      status: event.status,
-      ended_at: isTerminalCallStatus(event.status) ? event.occurredAt : null,
-      termination_reason: event.terminationReason,
-    })
-    .eq("id", existing.id);
+  const terminal = isTerminalCallStatus(event.status);
+  const statusPatch: Record<string, unknown> = {
+    status: event.status,
+    ended_at: terminal ? event.occurredAt : null,
+    termination_reason: event.terminationReason,
+  };
+  if (terminal) {
+    timeline.mark("terminate_received_at", new Date(event.occurredAt));
+    statusPatch["stage_timings"] = mergeCallTimings(existing.stage_timings, timeline.snapshot());
+  }
+  await db.from("whatsapp_call_sessions").update(statusPatch).eq("id", existing.id);
   console.log(
     `[calls] call_state_transition call_id=${event.callId} from=${existing.status} to=${event.status} reason=${event.terminationReason ?? "none"}`,
   );
 
   // A caller who hangs up mid-negotiation must not leave media running.
-  if (isTerminalCallStatus(event.status)) {
+  if (terminal) {
     const gateway = resolveGatewayConfig(env);
-    if (gateway && existing.status === "media_negotiating") {
+    if (gateway && NEGOTIATION_STATUSES.has(existing.status)) {
       await terminateMediaSession({
         gatewayUrl: gateway.url,
         secret: gateway.secret,
@@ -146,17 +156,53 @@ export async function processCallEvent(args: {
   return "state_updated";
 }
 
-async function markFailed(db: Db, callId: string, reason: string, nowIso: string): Promise<void> {
-  await db
+async function markFailed(
+  db: Db,
+  callId: string,
+  reason: string,
+  nowIso: string,
+  timings?: CallTimings,
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    status: "failed",
+    ended_at: nowIso,
+    termination_reason: reason,
+  };
+  if (timings) patch["stage_timings"] = timings;
+  await db.from("whatsapp_call_sessions").update(patch).eq("call_id", callId);
+}
+
+/** Statuses in which media negotiation is (or may be) in flight. */
+const NEGOTIATION_STATUSES = new Set([
+  "answer_requested",
+  "media_negotiating",
+  "meta_pre_accepted",
+]);
+
+/**
+ * Authoritative liveness re-check. Called immediately before and immediately
+ * after every Meta call action so a TERMINATE that landed in a concurrent
+ * webhook invocation can cancel the answer instead of being overwritten.
+ */
+async function isCallStillActive(db: Db, callId: string): Promise<boolean> {
+  const { data } = await db
     .from("whatsapp_call_sessions")
-    .update({ status: "failed", ended_at: nowIso, termination_reason: reason })
-    .eq("call_id", callId);
+    .select("status")
+    .eq("call_id", callId)
+    .maybeSingle();
+  const status = (data?.status as string | undefined) ?? null;
+  if (!status) return false;
+  return !isTerminalCallStatus(status) && status !== "answered";
 }
 
 /**
  * The answer decision. With no media gateway the platform CANNOT establish the
  * call, so nothing is sent to Meta and no `answered` state is written — the
  * call is left ringing until Meta reports the real outcome.
+ *
+ * Critical path only: tenant/security resolution, gateway negotiation, Meta
+ * pre_accept, Meta accept. Nothing else (analytics, AI, CRM, greeting, TTS)
+ * runs before the call is accepted.
  */
 async function maybeRequestAnswer(args: {
   db: Db;
@@ -166,9 +212,10 @@ async function maybeRequestAnswer(args: {
   tenant: Tenant;
   phoneNumberId: string;
   now: () => Date;
+  timeline: CallTimeline;
   fetchImpl?: typeof fetch;
 }): Promise<CallHandlingOutcome> {
-  const { db, event, env, nowIso, tenant, phoneNumberId, now } = args;
+  const { db, event, env, nowIso, tenant, phoneNumberId, now, timeline } = args;
   const capability = resolveMediaCapability(env);
   if (!capability.supported) {
     console.log(
@@ -194,7 +241,20 @@ async function maybeRequestAnswer(args: {
 
   const fetchOpt = args.fetchImpl ? { fetchImpl: args.fetchImpl } : {};
 
-  // 1) Real SDP offer from Meta -> gateway -> real SDP answer.
+  const teardown = (reason: string) =>
+    terminateMediaSession({
+      gatewayUrl: gateway.url,
+      secret: gateway.secret,
+      callId: event.callId,
+      agencyId: tenant.agencyId,
+      phoneNumberId,
+      reason,
+      now: now(),
+      ...fetchOpt,
+    }).catch(() => undefined);
+
+  // 1) Real SDP offer from Meta -> gateway -> real SDP answer. No delay.
+  timeline.mark("gateway_offer_started_at");
   const media = await requestMediaSession({
     gatewayUrl: gateway.url,
     secret: gateway.secret,
@@ -207,9 +267,10 @@ async function maybeRequestAnswer(args: {
   });
   if (!media.ok) {
     console.log(`[calls] media_session_failed call_id=${event.callId} reason=${media.reason}`);
-    await markFailed(db, event.callId, media.reason, now().toISOString());
+    await markFailed(db, event.callId, media.reason, now().toISOString(), timeline.snapshot());
     return "negotiation_failed";
   }
+  timeline.mark("gateway_answer_received_at");
 
   await db
     .from("whatsapp_call_sessions")
@@ -217,15 +278,59 @@ async function maybeRequestAnswer(args: {
       status: "media_negotiating",
       gateway_session_id: media.sessionId,
       media_negotiated_at: now().toISOString(),
+      stage_timings: timeline.snapshot(),
     })
     .eq("call_id", event.callId);
   console.log(`[calls] media_negotiating call_id=${event.callId} session_id=${media.sessionId}`);
 
-  // 2) Accept at Meta with the gateway's REAL answer. Still not "answered".
   if (!tenant.accessToken) {
-    await markFailed(db, event.callId, "meta_token_missing", now().toISOString());
+    await teardown("meta_token_missing");
+    await markFailed(db, event.callId, "meta_token_missing", now().toISOString(), timeline.snapshot());
     return "negotiation_failed";
   }
+
+  const cancelled = async (phase: string): Promise<CallHandlingOutcome> => {
+    console.log(`[calls] answer_cancelled call_id=${event.callId} phase=${phase} reason=call_terminated`);
+    await teardown("call_terminated");
+    await db
+      .from("whatsapp_call_sessions")
+      .update({ stage_timings: timeline.snapshot() })
+      .eq("call_id", event.callId);
+    return "cancelled_by_terminate";
+  };
+
+  // 2) PRE-ACCEPT with the gateway's REAL answer: lets ICE/DTLS establish
+  //    before the final accept. Never implies "answered".
+  if (!(await isCallStillActive(db, event.callId))) return cancelled("before_pre_accept");
+  timeline.mark("meta_pre_accept_started_at");
+  const preAccepted = await metaPreAcceptCall({
+    phoneNumberId,
+    accessToken: tenant.accessToken,
+    callId: event.callId,
+    sdpAnswer: media.sdpAnswer,
+    ...fetchOpt,
+  });
+  if (preAccepted.ok) {
+    timeline.mark("meta_pre_accept_completed_at");
+    if (!(await isCallStillActive(db, event.callId))) return cancelled("after_pre_accept");
+    await db
+      .from("whatsapp_call_sessions")
+      .update({
+        status: "meta_pre_accepted",
+        meta_pre_accepted_at: timeline.get("meta_pre_accept_completed_at"),
+        stage_timings: timeline.snapshot(),
+      })
+      .eq("call_id", event.callId);
+    console.log(`[calls] meta_pre_accept_ok call_id=${event.callId}`);
+  } else {
+    // Documented fallback: when pre_accept cannot be completed, proceed
+    // straight to accept rather than dropping the call.
+    console.log(`[calls] meta_pre_accept_failed call_id=${event.callId} reason=${preAccepted.reason}`);
+  }
+
+  // 3) Final accept, with the SAME SDP answer Meta already saw on pre_accept.
+  if (!(await isCallStillActive(db, event.callId))) return cancelled("before_accept");
+  timeline.mark("meta_accept_started_at");
   const accepted = await metaAcceptCall({
     phoneNumberId,
     accessToken: tenant.accessToken,
@@ -235,25 +340,25 @@ async function maybeRequestAnswer(args: {
   });
   if (!accepted.ok) {
     console.log(`[calls] meta_accept_failed call_id=${event.callId} reason=${accepted.reason}`);
-    await terminateMediaSession({
-      gatewayUrl: gateway.url,
-      secret: gateway.secret,
-      callId: event.callId,
-      agencyId: tenant.agencyId,
-      phoneNumberId,
-      reason: "meta_accept_failed",
-      now: now(),
-      ...fetchOpt,
-    }).catch(() => undefined);
-    await markFailed(db, event.callId, accepted.reason, now().toISOString());
+    await teardown("meta_accept_failed");
+    await markFailed(db, event.callId, accepted.reason, now().toISOString(), timeline.snapshot());
     return "negotiation_failed";
   }
+  timeline.mark("meta_accept_completed_at");
+
+  // A TERMINATE that landed while accept was in flight must NOT be revived.
+  if (!(await isCallStillActive(db, event.callId))) return cancelled("after_accept");
 
   await db
     .from("whatsapp_call_sessions")
-    .update({ meta_accepted_at: now().toISOString() })
+    .update({
+      meta_accepted_at: timeline.get("meta_accept_completed_at"),
+      stage_timings: timeline.snapshot(),
+    })
     .eq("call_id", event.callId);
-  console.log(`[calls] meta_accept_ok call_id=${event.callId} awaiting=media_ready`);
+  console.log(
+    `[calls] meta_accept_ok call_id=${event.callId} awaiting=media_ready pre_accept=${preAccepted.ok} ${timeline.logLine()}`,
+  );
   return "meta_accepted";
 }
 
@@ -276,7 +381,7 @@ export async function processGatewayCallback(args: {
 
   const { data } = await db
     .from("whatsapp_call_sessions")
-    .select("id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces")
+    .select("id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces, stage_timings")
     .eq("call_id", payload.call_id)
     .maybeSingle();
 
@@ -288,6 +393,22 @@ export async function processGatewayCallback(args: {
       `[calls] gateway_callback_rejected call_id=${payload.call_id} event=${payload.event} reason=${decision.rejection}`,
     );
     return { applied: false, rejection: decision.rejection };
+  }
+
+  // Safe timing telemetry from the media plane (no SDP, no candidates).
+  if (decision.outcome === "answered" || decision.outcome === "terminated" || decision.outcome === "failed") {
+    const marks: CallTimings = {};
+    if (decision.outcome === "answered") {
+      marks.media_ready_at = decision.patch["media_ready_at"] as string;
+      if ((payload.inbound_packets ?? 0) > 0) marks.first_inbound_rtp_at = payload.timestamp;
+      if ((payload.outbound_packets ?? 0) > 0) marks.first_outbound_rtp_at = payload.timestamp;
+    } else {
+      marks.terminate_received_at = payload.timestamp;
+    }
+    decision.patch["stage_timings"] = mergeCallTimings(
+      (data as { stage_timings?: unknown } | null)?.stage_timings,
+      marks,
+    );
   }
 
   // Compare-and-set: a session-id bind is only allowed while the column is NULL,
