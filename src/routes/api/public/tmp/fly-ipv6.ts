@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * TEMPORARY — one-shot infrastructure operation.
+ * TEMPORARY — one-shot infrastructure operation (deleted immediately after use).
+ *
  * Allocates a public IPv6 for the existing Fly.io app umraio-voice-gateway
- * using the FLY_API_TOKEN env secret, verifies state, and returns a
- * sanitized report. The token is read only from the environment and is
- * never logged, returned, or persisted. This file is deleted immediately
- * after the operation completes.
+ * using the FLY_API_TOKEN env secret, verifies app state, and returns a
+ * sanitized report. The token is read only from the environment and is never
+ * logged, returned, or persisted.
+ *
+ * Caller verification: a valid platform-owner Supabase bearer token.
  */
 
 const FLY_API = "https://api.machines.dev/v1";
@@ -27,12 +29,24 @@ export const Route = createFileRoute("/api/public/tmp/fly-ipv6")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        // Caller verification: platform cron secret must be presented.
-        const cronSecret = process.env["CRON_SECRET"];
+        // --- Verify caller is the platform owner ---
         const auth = request.headers.get("authorization") ?? "";
-        if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-          return new Response("Unauthorized", { status: 401 });
-        }
+        const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        if (!bearer) return new Response("Unauthorized", { status: 401 });
+
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(bearer);
+        if (userErr || !userData?.user) return new Response("Unauthorized", { status: 401 });
+
+        const { data: roles } = await supabaseAdmin
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userData.user.id)
+          .eq("role", "platform_owner")
+          .limit(1);
+        if (!roles || roles.length === 0) return new Response("Forbidden", { status: 403 });
+
+        // --- Fly operation ---
         const token = process.env["FLY_API_TOKEN"];
         if (!token) {
           return Response.json({ ok: false, error: "token_not_available" }, { status: 500 });
@@ -57,9 +71,7 @@ export const Route = createFileRoute("/api/public/tmp/fly-ipv6")({
           region: i["region"],
         }));
 
-        const hasV6 = before.some(
-          (i) => String(i["type"]).toLowerCase().includes("v6"),
-        );
+        const hasV6 = before.some((i) => String(i["type"]).toLowerCase().includes("v6"));
 
         // 2) Allocate public IPv6 if absent (idempotent)
         if (!hasV6) {
