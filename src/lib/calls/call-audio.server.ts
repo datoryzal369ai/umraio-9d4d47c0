@@ -22,6 +22,15 @@ export type CallSpeechResult =
   | { ok: true; bytes: Uint8Array; engine: string; fallbackUsed: boolean }
   | { ok: false; reason: string };
 
+/** Never throws: an unavailable OpenAI engine simply means no fallback. */
+function resolveOpenAiEngine(): VoiceEngine | null {
+  try {
+    return openAiVoiceEngine ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function synthesizeCallSpeech(
   input: VoiceSynthesisRequest & { callId?: string },
   deps: {
@@ -57,7 +66,7 @@ export async function synthesizeCallSpeech(
   // Exactly ONE fallback attempt, through the already-supported OpenAI engine.
   // Resolved lazily so a missing/stubbed OpenAI engine can never break the
   // primary path — it only affects the fallback attempt.
-  const fallbackEngine = deps.fallbackEngine ?? openAiVoiceEngine;
+  const fallbackEngine = deps.fallbackEngine ?? resolveOpenAiEngine();
   if (!fallbackEngine) {
     console.log(`[calls] voice_turn_tts_failed call_id=${callId} reason=${primaryReason} fallback=unavailable`);
     return { ok: false, reason: primaryReason };
