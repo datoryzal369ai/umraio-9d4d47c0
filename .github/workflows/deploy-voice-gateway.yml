@@ -85,7 +85,7 @@ jobs:
           BUILD_VERSION: ${{ github.sha }}
         run: |
           set -euo pipefail
-          fly deploy --config fly.toml --remote-only \
+          flyctl deploy --config fly.toml --remote-only \
             --build-arg BUILD_VERSION="${BUILD_VERSION}"
 
 
