@@ -94,10 +94,12 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(body).not.toContain("mm-tts-secret");
   });
 
-  it("MINIMAX_TTS_VOICE_ID env override still takes precedence", () => {
+  it("CANONICAL LOCK — MINIMAX_TTS_VOICE_ID env override is ignored", () => {
     process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
     process.env["MINIMAX_TTS_VOICE_ID"] = "English_Graceful_Lady";
-    expect(resolveMinimaxConfig()?.voiceId).toBe("English_Graceful_Lady");
+    process.env["MINIMAX_TTS_MODEL"] = "speech-01";
+    expect(resolveMinimaxConfig()?.voiceId).toBe("Malay_male_1_v1");
+    expect(resolveMinimaxConfig()?.model).toBe("speech-2.8-hd");
   });
 
   it("never sends an OpenAI persona voice to MiniMax — falls back to Malay_male_1_v1", async () => {
@@ -117,7 +119,7 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
     expect(body).not.toContain("coral");
   });
 
-  it("a custom MiniMax voice ID in MINIMAX_TTS_VOICE_ID wins over the persona voice", async () => {
+  it("CANONICAL LOCK — a custom MINIMAX_TTS_VOICE_ID never replaces the RAIO voice", async () => {
     process.env["MINIMAX_TTS_API_KEY"] = "mm-tts-secret";
     process.env["MINIMAX_TTS_VOICE_ID"] = "Custom_Designed_Voice_001";
     let body = "";
@@ -131,7 +133,8 @@ describe("MiniMax Speech 2.8 HD POC driver", () => {
 
     const result = await minimaxVoiceEngine.synthesize({ text: "Salam", voice: "coral" });
     expect(result.ok).toBe(true);
-    expect(body).toContain('"voice_id":"Custom_Designed_Voice_001"');
+    expect(body).toContain('"voice_id":"Malay_male_1_v1"');
+    expect(body).not.toContain("Custom_Designed_Voice_001");
     expect(body).not.toContain("coral");
   });
 

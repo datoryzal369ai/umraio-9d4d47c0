@@ -75,16 +75,33 @@ export type MinimaxConfig = {
   voiceId: string;
 };
 
-/** Null when the POC is not configured — the caller then fails over cleanly. */
+/**
+ * CANONICAL RAIŌ VOICE LOCK — model and voice identity are constants for every
+ * channel (WhatsApp text-to-voice notes and live calls). MINIMAX_TTS_MODEL /
+ * MINIMAX_TTS_VOICE_ID are IGNORED: one RAIŌ, one voice identity. A non
+ * canonical override is reported as a non-secret diagnostic only.
+ *
+ * Null when the POC is not configured — the caller then fails over cleanly.
+ */
 export function resolveMinimaxConfig(): MinimaxConfig | null {
   const apiKey = env("MINIMAX_TTS_API_KEY") ?? env("MINIMAX_API_KEY");
   if (!apiKey) return null;
+  const modelOverride = env("MINIMAX_TTS_MODEL");
+  const voiceOverride = env("MINIMAX_TTS_VOICE_ID");
+  if (
+    (modelOverride && modelOverride !== MINIMAX_DEFAULT_MODEL) ||
+    (voiceOverride && voiceOverride !== MINIMAX_DEFAULT_VOICE_ID)
+  ) {
+    console.error(
+      `[voice] minimax_identity_override_ignored model=${modelOverride ?? "-"} voice=${voiceOverride ?? "-"} canonical=${MINIMAX_DEFAULT_MODEL}/${MINIMAX_DEFAULT_VOICE_ID}`,
+    );
+  }
   return {
     baseUrl: (env("MINIMAX_BASE_URL") ?? MINIMAX_DEFAULT_BASE_URL).replace(/\/+$/, ""),
     apiKey,
     groupId: env("MINIMAX_GROUP_ID") ?? null,
-    model: env("MINIMAX_TTS_MODEL") ?? MINIMAX_DEFAULT_MODEL,
-    voiceId: env("MINIMAX_TTS_VOICE_ID") ?? MINIMAX_DEFAULT_VOICE_ID,
+    model: MINIMAX_DEFAULT_MODEL,
+    voiceId: MINIMAX_DEFAULT_VOICE_ID,
   };
 }
 
@@ -273,18 +290,16 @@ export const minimaxVoiceEngine: VoiceEngine = {
     }
 
     /**
-     * Voice resolution order:
-     * 1. MINIMAX_TTS_VOICE_ID env override (custom / voice-designed MiniMax voice).
-     * 2. An explicit caller voice — but ONLY if it is a real MiniMax voice ID.
-     *    Persona voices (alloy, coral, ...) are OpenAI system voices and must
-     *    never be sent to MiniMax; sending them silently falls back to a
-     *    robotic provider default.
-     * 3. MINIMAX_DEFAULT_VOICE_ID ("Malay_male_1_v1").
+     * CANONICAL VOICE LOCK — every channel (WhatsApp voice note AND live call)
+     * speaks with the single RAIŌ identity Malay_male_1_v1. Caller supplied
+     * voices (OpenAI persona voices or any custom MiniMax voice) are ignored,
+     * so a second calling persona cannot exist.
      */
-    // VOICE LOCK — a live WhatsApp call (requireOggOpus) may NEVER use a caller
-    // supplied voice: the configured UMRAIO voice is the only allowed identity.
-    const callerVoice =
-      !requireOggOpus && voice && !isSupportedTtsVoice(voice) ? voice : undefined;
+    if (voice && !isSupportedTtsVoice(voice) && voice !== config.voiceId) {
+      console.error(
+        `[voice] minimax_caller_voice_ignored canonical=${config.voiceId} channel=${requireOggOpus ? "call" : "note"}`,
+      );
+    }
 
     const requestBody = (format: "mp3" | "pcm") =>
       JSON.stringify({
@@ -294,7 +309,7 @@ export const minimaxVoiceEngine: VoiceEngine = {
         language_boost: languageBoostFor(language),
         output_format: "hex",
         voice_setting: {
-          voice_id: callerVoice ?? config.voiceId,
+          voice_id: config.voiceId,
           // Persona pace is deliberately NOT inherited here — see MINIMAX_FIXED_SPEED.
           speed: MINIMAX_FIXED_SPEED,
           vol: 1,

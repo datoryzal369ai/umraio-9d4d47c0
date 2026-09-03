@@ -45,6 +45,8 @@ var (
 	ErrNotConfigured = errors.New("tts: minimax not configured")
 	ErrProvider      = errors.New("tts: minimax provider error")
 	ErrEmptyAudio    = errors.New("tts: minimax returned no audio")
+	// ErrVoiceIdentity fails closed when a non-canonical voice is requested.
+	ErrVoiceIdentity = errors.New("tts: non-canonical voice identity rejected")
 )
 
 type Config struct {
@@ -70,13 +72,15 @@ func LoadConfig(lookup func(string) (string, bool)) (Config, bool) {
 	if key == "" {
 		return Config{}, false
 	}
+	// CANONICAL RAIŌ VOICE LOCK — model, voice and language boost are compiled
+	// constants. No environment override may create a second voice identity.
 	return Config{
 		BaseURL: strings.TrimRight(get("MINIMAX_BASE_URL", DefaultBaseURL), "/"),
 		APIKey:  key,
 		GroupID: get("MINIMAX_GROUP_ID", ""),
-		Model:   get("MINIMAX_TTS_MODEL", DefaultModel),
-		VoiceID: get("MINIMAX_TTS_VOICE_ID", DefaultVoiceID),
-		Boost:   get("MINIMAX_TTS_LANGUAGE_BOOST", DefaultBoost),
+		Model:   DefaultModel,
+		VoiceID: DefaultVoiceID,
+		Boost:   DefaultBoost,
 		Timeout: DefaultTimeout,
 	}, true
 }
@@ -122,15 +126,16 @@ type minimaxResponse struct {
 }
 
 // SynthesizePCM returns s16le / 24 kHz / mono PCM for one reply.
-// voiceID and boost override the configured identity only when non-empty; the
-// control plane sends the same locked values, so a mismatch cannot go unseen.
+// The canonical voice identity is NEVER overridden by the control plane: a
+// non-canonical voiceID fails closed instead of speaking with another voice.
 func (c *Client) SynthesizePCM(ctx context.Context, text, voiceID, boost string) ([]byte, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, ErrEmptyAudio
 	}
-	if voiceID == "" {
-		voiceID = c.cfg.VoiceID
+	if voiceID != "" && voiceID != c.cfg.VoiceID {
+		return nil, ErrVoiceIdentity
 	}
+	voiceID = c.cfg.VoiceID
 	if boost == "" {
 		boost = c.cfg.Boost
 	}
