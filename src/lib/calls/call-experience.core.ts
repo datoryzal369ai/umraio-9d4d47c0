@@ -182,6 +182,10 @@ export type TurnLatency = {
   tts_ms: number;
   total_ms: number;
   fast_path: boolean;
+  /** Routed cognitive complexity level (0-4) for this turn. */
+  level?: number;
+  /** True when the caller heard an acknowledgement before the reasoned answer. */
+  acknowledged?: boolean;
 };
 
 export function appendLatency(existing: unknown, entry: TurnLatency, max = 60): TurnLatency[] {

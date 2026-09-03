@@ -150,22 +150,49 @@ export async function hydrateCallerContext(
  * CALL → TEXT continuity. The structured call summary is written back into the
  * SAME WhatsApp thread so the next text or voice note already knows what was
  * discussed on the phone. Best-effort: a failure here never fails the call.
+ *
+ * INCREMENTAL by design: a dropped call must not lose the conversation. The
+ * summary is refreshed after every substantive turn, keyed by the call id, so
+ * exactly ONE memory row exists per call and it is always current — even when
+ * the caller hangs up mid-sentence and the end-of-call path never runs.
  */
+export function callMemoryMarker(callId: string): string {
+  return `[call ${callId}]`;
+}
+
 export async function persistCallMemory(
   db: Db,
   args: {
     agencyId: string;
     conversationId: string | null;
     summary: string;
+    /** When present, the summary row for this call is UPDATED, never duplicated. */
+    callId?: string | null;
   },
 ): Promise<void> {
   if (!args.conversationId || !args.summary.trim()) return;
+  const marker = args.callId ? callMemoryMarker(args.callId) : null;
+  const body = marker ? `${args.summary.trim()}\n${marker}` : args.summary.trim();
   try {
+    if (marker) {
+      const { data: existing } = await db
+        .from("messages")
+        .select("id")
+        .eq("conversation_id", args.conversationId)
+        .eq("modality", "call_summary")
+        .ilike("body", `%${marker}%`)
+        .limit(1)
+        .maybeSingle();
+      if (existing?.id) {
+        await db.from("messages").update({ body }).eq("id", existing.id);
+        return;
+      }
+    }
     await db.from("messages").insert({
       agency_id: args.agencyId,
       conversation_id: args.conversationId,
       sender: "ai",
-      body: args.summary.trim(),
+      body,
       modality: "call_summary",
       delivery_status: "internal",
     });
@@ -173,3 +200,31 @@ export async function persistCallMemory(
     // continuity is best-effort; the call session row remains authoritative
   }
 }
+
+/**
+ * Called when Meta reports the call ended (including a caller hang-up mid
+ * conversation). Flushes whatever RAIŌ already knows into the WhatsApp thread
+ * so the text brain can continue the SAME conversation immediately.
+ */
+export async function finalizeCallMemory(
+  db: Db,
+  args: { callId: string },
+): Promise<void> {
+  try {
+    const { data: session } = await db
+      .from("whatsapp_call_sessions")
+      .select("agency_id, conversation_id, call_summary, call_id")
+      .eq("call_id", args.callId)
+      .maybeSingle();
+    if (!session?.conversation_id || !session?.call_summary) return;
+    await persistCallMemory(db, {
+      agencyId: String(session.agency_id),
+      conversationId: String(session.conversation_id),
+      summary: String(session.call_summary),
+      callId: String(session.call_id ?? args.callId),
+    });
+  } catch {
+    // best-effort continuity only
+  }
+}
+

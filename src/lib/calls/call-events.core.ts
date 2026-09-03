@@ -70,7 +70,11 @@ export function shouldApplyCallStatus(
   if (!current) return true;
   const currentRank = RANK[current as CallSessionStatus];
   if (currentRank === undefined) return true;
-  if (isTerminalCallStatus(current) || current === "answered") return false;
+  if (isTerminalCallStatus(current)) return false;
+  // P0: an ANSWERED call must still accept Meta's TERMINATE. Ignoring it left
+  // the session "answered" forever — no ended_at, no call memory flush, and a
+  // gateway reaper closing it ~10 minutes later as a session timeout.
+  if (current === "answered") return isTerminalCallStatus(incoming);
   return RANK[incoming] > currentRank;
 }
 

@@ -33,6 +33,7 @@ import {
   terminateMediaSession,
 } from "./media-gateway.server";
 import { metaAcceptCall, metaPreAcceptCall } from "./meta-calls.server";
+import { finalizeCallMemory } from "./call-context.server";
 import { CallTimeline, mergeCallTimings, type CallTimings } from "./call-timings.core";
 
 type Db = { from: (table: string) => any };
@@ -146,7 +147,7 @@ export async function processCallEvent(args: {
   // A caller who hangs up mid-negotiation must not leave media running.
   if (terminal) {
     const gateway = resolveGatewayConfig(env);
-    if (gateway && NEGOTIATION_STATUSES.has(existing.status)) {
+    if (gateway && LIVE_STATUSES.has(existing.status)) {
       await terminateMediaSession({
         gatewayUrl: gateway.url,
         secret: gateway.secret,
@@ -158,6 +159,9 @@ export async function processCallEvent(args: {
         ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
       }).catch(() => undefined);
     }
+    // CALL → TEXT continuity: flush whatever RAIŌ learned into the SAME
+    // WhatsApp thread the moment the call ends, including a mid-call hang-up.
+    await finalizeCallMemory(db, { callId: event.callId }).catch(() => undefined);
   }
   return "state_updated";
 }
@@ -184,6 +188,13 @@ const NEGOTIATION_STATUSES = new Set([
   "media_negotiating",
   "meta_pre_accepted",
 ]);
+
+/**
+ * Every non-terminal state in which media may be running. A caller hang-up in
+ * ANY of these must tear the media session down — including "answered", which
+ * previously kept the gateway session alive until its 600s reaper.
+ */
+const LIVE_STATUSES = new Set([...NEGOTIATION_STATUSES, "answered"]);
 
 /**
  * Authoritative liveness re-check. Called immediately before and immediately
