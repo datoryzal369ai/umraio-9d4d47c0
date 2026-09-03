@@ -99,6 +99,8 @@ describe("P-2 voice configuration retrieval", () => {
       ok: true,
       bytes: OGG_BYTES,
       mimeType: "audio/ogg",
+      // Calls are locked to MiniMax — any other engine is rejected.
+      engine: "minimax",
     });
   });
 
