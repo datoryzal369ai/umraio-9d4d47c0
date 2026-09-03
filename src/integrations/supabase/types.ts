@@ -1634,33 +1634,6 @@ export type Database = {
           },
         ]
       }
-      ops_one_time_tokens: {
-        Row: {
-          created_at: string
-          expires_at: string
-          id: string
-          purpose: string
-          token_hash: string
-          used_at: string | null
-        }
-        Insert: {
-          created_at?: string
-          expires_at: string
-          id?: string
-          purpose: string
-          token_hash: string
-          used_at?: string | null
-        }
-        Update: {
-          created_at?: string
-          expires_at?: string
-          id?: string
-          purpose?: string
-          token_hash?: string
-          used_at?: string | null
-        }
-        Relationships: []
-      }
       owner_test_override_events: {
         Row: {
           action: string
