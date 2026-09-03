@@ -16,6 +16,8 @@ primary_region = "sin"
 [env]
   LISTEN_ADDR = ":8080"
   UDP_MEDIA_HOST = "fly-global-services"
+  # IPv6 UDP arrives on the wildcard address on Fly, not fly-global-services.
+  UDP_MEDIA_HOST6 = "::"
   UDP_MEDIA_PORT = "40000"
   MAX_CONCURRENT_CALLS = "25"
   MAX_CALL_DURATION_S = "600"
