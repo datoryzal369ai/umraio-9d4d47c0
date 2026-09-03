@@ -58,6 +58,7 @@ import { Route as ApiPublicHooksTaskEngineRouteImport } from './routes/api/publi
 import { Route as ApiPublicPaymentsStripeWebhookRouteImport } from './routes/api/public/payments/stripe-webhook'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicTmpEnvCheckRouteImport } from './routes/api/public/tmp/env-check'
+import { Route as ApiPublicTmpFlyAllocateV6RouteImport } from './routes/api/public/tmp/fly-allocate-v6'
 import { Route as ApiPublicTmpFlyIpv6RouteImport } from './routes/api/public/tmp/fly-ipv6'
 import { Route as ApiPublicTmpFlyVerifyRouteImport } from './routes/api/public/tmp/fly-verify'
 import { Route as ApiPublicVoiceEventsRouteImport } from './routes/api/public/voice/events'
@@ -330,6 +331,12 @@ const ApiPublicTmpEnvCheckRoute = ApiPublicTmpEnvCheckRouteImport.update({
   path: '/api/public/tmp/env-check',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTmpFlyAllocateV6Route =
+  ApiPublicTmpFlyAllocateV6RouteImport.update({
+    id: '/api/public/tmp/fly-allocate-v6',
+    path: '/api/public/tmp/fly-allocate-v6',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicTmpFlyIpv6Route = ApiPublicTmpFlyIpv6RouteImport.update({
   id: '/api/public/tmp/fly-ipv6',
   path: '/api/public/tmp/fly-ipv6',
@@ -400,6 +407,7 @@ export interface FileRoutesByFullPath {
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/tmp/env-check': typeof ApiPublicTmpEnvCheckRoute
+  '/api/public/tmp/fly-allocate-v6': typeof ApiPublicTmpFlyAllocateV6Route
   '/api/public/tmp/fly-ipv6': typeof ApiPublicTmpFlyIpv6Route
   '/api/public/tmp/fly-verify': typeof ApiPublicTmpFlyVerifyRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
@@ -453,6 +461,7 @@ export interface FileRoutesByTo {
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/tmp/env-check': typeof ApiPublicTmpEnvCheckRoute
+  '/api/public/tmp/fly-allocate-v6': typeof ApiPublicTmpFlyAllocateV6Route
   '/api/public/tmp/fly-ipv6': typeof ApiPublicTmpFlyIpv6Route
   '/api/public/tmp/fly-verify': typeof ApiPublicTmpFlyVerifyRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
@@ -509,6 +518,7 @@ export interface FileRoutesById {
   '/api/public/payments/stripe-webhook': typeof ApiPublicPaymentsStripeWebhookRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/tmp/env-check': typeof ApiPublicTmpEnvCheckRoute
+  '/api/public/tmp/fly-allocate-v6': typeof ApiPublicTmpFlyAllocateV6Route
   '/api/public/tmp/fly-ipv6': typeof ApiPublicTmpFlyIpv6Route
   '/api/public/tmp/fly-verify': typeof ApiPublicTmpFlyVerifyRoute
   '/api/public/voice/events': typeof ApiPublicVoiceEventsRoute
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
     | '/api/public/tmp/env-check'
+    | '/api/public/tmp/fly-allocate-v6'
     | '/api/public/tmp/fly-ipv6'
     | '/api/public/tmp/fly-verify'
     | '/api/public/voice/events'
@@ -618,6 +629,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
     | '/api/public/tmp/env-check'
+    | '/api/public/tmp/fly-allocate-v6'
     | '/api/public/tmp/fly-ipv6'
     | '/api/public/tmp/fly-verify'
     | '/api/public/voice/events'
@@ -673,6 +685,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/stripe-webhook'
     | '/api/public/payments/webhook'
     | '/api/public/tmp/env-check'
+    | '/api/public/tmp/fly-allocate-v6'
     | '/api/public/tmp/fly-ipv6'
     | '/api/public/tmp/fly-verify'
     | '/api/public/voice/events'
@@ -701,6 +714,7 @@ export interface RootRouteChildren {
   ApiPublicPaymentsStripeWebhookRoute: typeof ApiPublicPaymentsStripeWebhookRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicTmpEnvCheckRoute: typeof ApiPublicTmpEnvCheckRoute
+  ApiPublicTmpFlyAllocateV6Route: typeof ApiPublicTmpFlyAllocateV6Route
   ApiPublicTmpFlyIpv6Route: typeof ApiPublicTmpFlyIpv6Route
   ApiPublicTmpFlyVerifyRoute: typeof ApiPublicTmpFlyVerifyRoute
   ApiPublicVoiceEventsRoute: typeof ApiPublicVoiceEventsRoute
@@ -1052,6 +1066,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTmpEnvCheckRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/tmp/fly-allocate-v6': {
+      id: '/api/public/tmp/fly-allocate-v6'
+      path: '/api/public/tmp/fly-allocate-v6'
+      fullPath: '/api/public/tmp/fly-allocate-v6'
+      preLoaderRoute: typeof ApiPublicTmpFlyAllocateV6RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/tmp/fly-ipv6': {
       id: '/api/public/tmp/fly-ipv6'
       path: '/api/public/tmp/fly-ipv6'
@@ -1185,6 +1206,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicPaymentsStripeWebhookRoute: ApiPublicPaymentsStripeWebhookRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicTmpEnvCheckRoute: ApiPublicTmpEnvCheckRoute,
+  ApiPublicTmpFlyAllocateV6Route: ApiPublicTmpFlyAllocateV6Route,
   ApiPublicTmpFlyIpv6Route: ApiPublicTmpFlyIpv6Route,
   ApiPublicTmpFlyVerifyRoute: ApiPublicTmpFlyVerifyRoute,
   ApiPublicVoiceEventsRoute: ApiPublicVoiceEventsRoute,
