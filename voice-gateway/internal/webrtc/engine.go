@@ -164,7 +164,6 @@ func (e *Engine) Establish(
 		return "", nil, fmt.Errorf("add audio transceiver: %w", err)
 	}
 
-
 	log := e.cfg.Logger
 	if log == nil {
 		log = slog.Default()
@@ -239,8 +238,6 @@ func (e *Engine) Establish(
 			append([]any{"call_id", s.CallID, "session_id", s.ID}, pre.LogAttrs()...)...)
 	}
 
-
-
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
 		_ = pc.Close()
@@ -268,8 +265,11 @@ func (e *Engine) Establish(
 		_ = pc.Close()
 		return "", nil, errors.New("webrtc: no local description produced")
 	}
+	candV4, candV6 := CandidateFamilies(local.SDP)
 	log.Info("local answer generated",
-		append([]any{"call_id", s.CallID, "session_id", s.ID}, SummarizeAnswer(local.SDP).LogAttrs()...)...)
+		append([]any{"call_id", s.CallID, "session_id", s.ID,
+			"candidate_ipv4_count", candV4, "candidate_ipv6_count", candV6},
+			SummarizeAnswer(local.SDP).LogAttrs()...)...)
 
 	localAudio := SummarizeAudioSDP(local.SDP)
 	audit := AuditTransceivers(pc)

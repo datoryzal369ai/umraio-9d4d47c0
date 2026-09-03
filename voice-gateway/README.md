@@ -50,8 +50,9 @@ Public:
 | `UMRAIO_GATEWAY_SECRET` | yes (>= 32 chars) | — |
 | `UMRAIO_BACKEND_URL` | yes (https) | — |
 | `LISTEN_ADDR` | no | `:8080` |
-| `PUBLIC_IP` | prod | — |
+| `PUBLIC_IP` | prod | — (comma-separated; include the IPv6 literal to advertise an IPv6 host candidate) |
 | `UDP_MEDIA_HOST` / `UDP_MEDIA_PORT` | no | `fly-global-services` / `40000` (single muxed media port) |
+| `UDP_MEDIA_HOST6` | no | `::` (IPv6 media socket on the same port; best-effort) |
 | `MAX_CONCURRENT_CALLS` | no | `25` |
 | `MAX_CALL_DURATION_S` | no | `600` |
 | `MEDIA_NEGOTIATE_TIMEOUT_S` | no | `10` |
