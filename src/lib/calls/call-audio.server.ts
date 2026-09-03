@@ -42,6 +42,9 @@ export async function synthesizeCallSpeech(
   const callId = input.callId ?? "unknown";
   const request: VoiceSynthesisRequest = {
     text: input.text,
+    // The realtime call path can only transmit OGG/Opus — engines must not
+    // spend seconds producing a container that is discarded on arrival.
+    requireOggOpus: true,
     ...(input.voice ? { voice: input.voice } : {}),
     ...(typeof input.speed === "number" ? { speed: input.speed } : {}),
     ...(input.instructions ? { instructions: input.instructions } : {}),
