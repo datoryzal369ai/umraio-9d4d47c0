@@ -98,7 +98,7 @@ export const Route = createFileRoute("/api/public/ops/fly-tts-secret-sync")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!(await assertPlatformOwner(request))) {
+        if (!(await authorize(request))) {
           return json({ ok: false, reason: "forbidden" }, 403);
         }
 
