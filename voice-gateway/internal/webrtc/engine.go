@@ -355,9 +355,6 @@ func (ms *MediaSession) maybeFireMediaReady() {
 // IP address, ICE credential, DTLS fingerprint or SDP line.
 func (ms *MediaSession) logTransportDiagnostics() {
 	pairType, localFam, remoteFam := "unknown", "unknown", "unknown"
-	if stats := ms.pc.SCTP(); stats != nil {
-		_ = stats
-	}
 	if pair, err := selectedPair(ms.pc); err == nil && pair != nil {
 		pairType = string(pair.Local.Typ) + "/" + string(pair.Remote.Typ)
 		localFam = addressFamily(pair.Local.Address)
