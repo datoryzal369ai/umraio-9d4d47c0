@@ -207,3 +207,32 @@ export function resolveGatewayConfig(env: GatewayEnv): { url: string; secret: st
   if (!url || !secret) return null;
   return { url, secret };
 }
+
+/**
+ * SPEECH OWNERSHIP PROBE — public, unauthenticated capability check.
+ *
+ * The control plane cannot encode Opus in the Worker runtime, so RAIŌ speech
+ * is rendered by the media plane. A gateway build without the speech
+ * capability accepts calls and stays SILENT — the caller then sees
+ * "No answer". This probe makes that mismatch observable instead of silent.
+ * It never sends or receives credentials.
+ */
+export async function probeGatewaySpeech(args: {
+  gatewayUrl: string;
+  fetchImpl?: typeof fetch;
+}): Promise<"up" | "down" | "unknown"> {
+  const doFetch = args.fetchImpl ?? fetch;
+  try {
+    const response = await doFetch(`${args.gatewayUrl.replace(/\/$/, "")}/health`, {
+      method: "GET",
+    });
+    if (!response.ok) return "unknown";
+    const parsed = (await response.json().catch(() => null)) as { speech?: string } | null;
+    if (parsed?.speech === "up") return "up";
+    // A build that predates media-plane synthesis omits the field entirely.
+    return parsed && "speech" in parsed ? "down" : "down";
+  } catch {
+    return "unknown";
+  }
+}
+
