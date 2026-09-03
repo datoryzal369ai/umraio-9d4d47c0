@@ -305,7 +305,10 @@ describe("P0 — idempotency", () => {
     expect(shouldApplyCallStatus("meta_pre_accepted", "media_negotiating")).toBe(false);
     expect(shouldApplyCallStatus("meta_pre_accepted", "terminated")).toBe(true);
     expect(shouldApplyCallStatus("terminated", "meta_pre_accepted")).toBe(false);
-    expect(shouldApplyCallStatus("answered", "terminated")).toBe(false);
+    // A hang-up on an ANSWERED call must be applied (previously ignored, which
+    // left the session live until the media reaper closed it minutes later).
+    expect(shouldApplyCallStatus("answered", "terminated")).toBe(true);
+    expect(shouldApplyCallStatus("answered", "ringing")).toBe(false);
   });
 });
 
