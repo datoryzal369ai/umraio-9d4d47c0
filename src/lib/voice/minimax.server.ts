@@ -265,7 +265,7 @@ async function requestMinimaxAudio(
  */
 export const minimaxVoiceEngine: VoiceEngine = {
   name: "minimax",
-  async synthesize({ text, voice, language }): Promise<TtsResult> {
+  async synthesize({ text, voice, language, requireOggOpus }): Promise<TtsResult> {
     const config = resolveMinimaxConfig();
     if (!config) {
       console.error("[voice] tts_failed engine=minimax category=config");
