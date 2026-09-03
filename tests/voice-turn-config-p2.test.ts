@@ -20,7 +20,13 @@ vi.mock("@/lib/voice/tts.core", async (importOriginal) => {
 
 import { handleVoiceTurn } from "@/lib/calls/voice-turn.server";
 
-const OGG_BYTES = new Uint8Array([0x4f, 0x67, 0x67, 0x53, 1, 2, 3, 4]);
+// Minimal but VALID OGG page carrying an OpusHead identification header.
+const OGG_BYTES = (() => {
+  const bytes = new Uint8Array(40);
+  bytes.set([0x4f, 0x67, 0x67, 0x53], 0); // "OggS"
+  bytes.set([0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64], 28); // "OpusHead"
+  return bytes;
+})();
 const OGG_B64 = btoa(String.fromCharCode(...OGG_BYTES));
 
 const sessionRow = {
