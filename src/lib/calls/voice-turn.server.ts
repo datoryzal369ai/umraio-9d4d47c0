@@ -5,6 +5,15 @@
  * MiniMax TTS -> Opus back to the gateway. The media gateway holds no
  * credentials and no intelligence; every decision is made here.
  *
+ * REALTIME EXPERIENCE (P0/P1):
+ *  - RAIŌ speaks FIRST. The greeting + one-time recording disclosure is
+ *    deterministic (FAST PATH), so first audio never waits on an LLM.
+ *  - Cross-channel memory: the caller is resolved to the SAME lead and
+ *    WhatsApp thread before reasoning, hydrated CONCURRENTLY with ASR.
+ *  - Natural closing: a completion check and farewell come from the fast path
+ *    state machine, not from a silence timeout.
+ *  - Every turn records sanitized phase latency for the acceptance report.
+ *
  * FAIL CLOSED at every stage: a failed ASR returns no transcript, a failed
  * reasoning call returns no words, a failed TTS returns no audio. UMRAIO stays
  * silent rather than fabricating anything to a live caller.
@@ -16,6 +25,20 @@ import { resolveVoiceLanguage } from "@/lib/voice/language.core";
 import { prepareSpokenResponse } from "@/lib/voice/tts.core";
 import { languageBoostFor, MINIMAX_DEFAULT_VOICE_ID } from "@/lib/voice/minimax.server";
 import { synthesizeCallSpeech } from "./call-audio.server";
+import {
+  advanceClosing,
+  appendLatency,
+  buildCallOpening,
+  readClosingState,
+  summarizeLatency,
+  type TurnLatency,
+} from "./call-experience.core";
+import {
+  EMPTY_CALLER_CONTEXT,
+  hydrateCallerContext,
+  persistCallMemory,
+  type CallerContext,
+} from "./call-context.server";
 
 import {
   appendTranscript,
@@ -27,7 +50,7 @@ import {
   gateVoiceTurn,
   mergeIntents,
   readTranscript,
-  shouldEndCall,
+  MAX_STORED_TURNS,
   type VoiceIntentKey,
   type VoiceTranscriptTurn,
   type VoiceTurnRequest,
@@ -60,9 +83,8 @@ function synthesizeInWorker(): boolean {
   return process.env["CALL_TTS_IN_WORKER"] === "1";
 }
 
-
 const SESSION_COLUMNS =
-  "id, agency_id, call_id, caller_phone, status, meta_accepted_at, transcript, turn_count, detected_language, voice_intents";
+  "id, agency_id, call_id, caller_phone, status, meta_accepted_at, transcript, turn_count, detected_language, voice_intents, lead_id, conversation_id, closing_state, disclosure_spoken, voice_latency";
 
 function base64ToBytes(value: string): Uint8Array | null {
   try {
@@ -92,6 +114,8 @@ async function reason(args: {
   history: VoiceTranscriptTurn[];
   transcript: string;
   language: string;
+  contextLines: string[];
+  contextFacts: Record<string, unknown>;
 }): Promise<string | null> {
   const gateway = createIntelligenceGateway();
   const messages = args.history.slice(-8).map((turn) => ({
@@ -100,29 +124,68 @@ async function reason(args: {
   }));
   if (args.transcript) messages.push({ role: "user", content: args.transcript });
 
-  const result = await gateway.generate({
-    taskType: "customer_reply",
-    system: buildVoiceSystemPrompt({
+  const systemLines = [
+    buildVoiceSystemPrompt({
       agencyName: args.agencyName,
       preferredLanguage: args.preferredLanguage,
       isGreeting: args.isGreeting,
       callerPhone: args.callerPhone,
     }),
-    prompt: args.isGreeting
-      ? "Open the call now with your greeting."
-      : args.transcript,
+    // AI SALES ELITE on the phone — a conversational move, never a script.
+    "Sales behaviour: listen, qualify gently, build trust, address the concern actually raised,",
+    "recommend only what the agency's real catalogue supports, and move to one clear next step.",
+    "Never deliver a monologue and never repeat the caller's sentence back to them.",
+    "Vary your openers — do not begin every turn with the same word.",
+    "If the caller asks whether you are human, say plainly that you are RAIŌ, the UMRAIO AI executive.",
+  ];
+  if (args.contextLines.length) {
+    systemLines.push("", "CUSTOMER RELATIONSHIP MEMORY (authoritative, never invent beyond it):", ...args.contextLines);
+  }
+
+  const result = await gateway.generate({
+    taskType: "customer_reply",
+    system: systemLines.join("\n"),
+    prompt: args.isGreeting ? "Open the call now with your greeting." : args.transcript,
     ...(messages.length > 0 ? { messages } : {}),
     context: {
       agencyId: args.agencyId,
       correlationId: `voice:${args.callId}`,
       locale: args.language,
       now: new Date().toISOString(),
-      facts: { channel: "whatsapp_voice_call", spoken: true, language: args.language },
+      facts: {
+        channel: "whatsapp_voice_call",
+        spoken: true,
+        language: args.language,
+        ...args.contextFacts,
+      },
       allowedTools: [],
     },
   });
   const text = result.ok ? (result.data ?? "").trim() : "";
   return text.length > 0 ? text : null;
+}
+
+/** Compact post-call memory written back into the WhatsApp thread. */
+function buildCallSummary(args: {
+  turns: VoiceTranscriptTurn[];
+  intents: VoiceIntentKey[];
+  outcome: string;
+  language: string;
+}): string {
+  const asked = args.turns
+    .filter((t) => t.role === "customer")
+    .slice(-4)
+    .map((t) => `• ${t.text}`)
+    .join("\n");
+  return [
+    "[Ringkasan panggilan RAIŌ]",
+    `Bahasa: ${args.language}`,
+    `Hasil: ${args.outcome}`,
+    args.intents.length ? `Niat: ${args.intents.join(", ")}` : "",
+    asked ? `Perkara dibincang:\n${asked}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -137,6 +200,7 @@ export async function handleVoiceTurn(args: {
 }): Promise<VoiceTurnResult> {
   const { db, payload } = args;
   const now = args.now ?? (() => new Date());
+  const startedAt = Date.now();
 
   const { data } = await db
     .from("whatsapp_call_sessions")
@@ -166,6 +230,7 @@ export async function handleVoiceTurn(args: {
     .eq("id", row.agency_id)
     .maybeSingle();
   const agencyLanguage = resolveVoiceLanguage((settings as any)?.voice_language ?? null);
+  const agencyName = ((agency as any)?.name as string | null) ?? null;
   const voicePersona = {
     persona: ((settings as any)?.voice_persona as string | null) ?? null,
     controls: ((settings as any)?.voice_controls as Record<string, unknown> | null) ?? null,
@@ -175,6 +240,24 @@ export async function handleVoiceTurn(args: {
   const history = readTranscript(row.transcript);
   let transcript = "";
   let language = row.detected_language ?? agencyLanguage;
+  let asrMs = 0;
+  let contextMs = 0;
+  let reasoningMs = 0;
+  let ttsMs = 0;
+  let fastPath = false;
+
+  // PRE-CALL / PARALLEL HYDRATION — cross-channel relationship memory is
+  // fetched CONCURRENTLY with ASR so it never adds serial latency.
+  const contextStartedAt = Date.now();
+  const contextPromise: Promise<CallerContext> = hydrateCallerContext(db, {
+    agencyId: row.agency_id,
+    callerPhone: row.caller_phone,
+  })
+    .catch(() => EMPTY_CALLER_CONTEXT)
+    .then((ctx) => {
+      contextMs = Date.now() - contextStartedAt;
+      return ctx;
+    });
 
   // 1. ASR — the caller's real words, or nothing at all.
   if (payload.kind === "utterance") {
@@ -184,7 +267,9 @@ export async function handleVoiceTurn(args: {
     // LOCALE LOCK — without an explicit hint the model auto-detected short
     // Malay utterances as Japanese/Spanish on the live call (transcript
     // evidence: "が。", "Sí."), so the agency voice locale is always sent.
+    const asrStartedAt = Date.now();
     const asr = await transcribeAudio({ bytes, mimeType: "audio/ogg", language: agencyLanguage });
+    asrMs = Date.now() - asrStartedAt;
     if (!asr.ok) {
       console.log(`[calls] voice_turn_asr_failed call_id=${payload.call_id} kind=${asr.kind}`);
       return { ok: false, reason: `asr_${asr.kind}` };
@@ -194,18 +279,57 @@ export async function handleVoiceTurn(args: {
     language = detectSpokenLanguage(transcript, agencyLanguage);
   }
 
-  // 2. REASONING — existing intelligence layer. No answer means no speech.
-  const replyText = await reason({
-    agencyId: row.agency_id,
-    callId: row.call_id,
-    agencyName: ((agency as any)?.name as string | null) ?? null,
-    preferredLanguage: agencyLanguage,
-    callerPhone: row.caller_phone,
-    isGreeting: payload.kind === "greeting",
-    history,
-    transcript,
-    language,
-  });
+  const context = await contextPromise;
+
+  // 2. RESPONSE. Greeting and closing come from the FAST PATH (deterministic,
+  //    no model round-trip); everything else goes to RÉNAIO.CORE™.
+  const closingState = readClosingState(row.closing_state);
+  let nextClosingState = closingState;
+  let endCall = false;
+  let replyText: string | null = null;
+
+  if (payload.kind === "greeting") {
+    const opening = buildCallOpening({
+      agencyName,
+      language,
+      disclosureAlreadySpoken: row.disclosure_spoken === true,
+      knownName: context.knownName,
+    });
+    replyText = opening.text;
+    fastPath = true;
+  } else {
+    const closing = advanceClosing({
+      state: closingState,
+      transcript,
+      language,
+      turnCount: history.length,
+      maxTurns: MAX_STORED_TURNS,
+    });
+    nextClosingState = closing.state;
+    if (closing.action !== "continue") {
+      replyText = closing.text;
+      fastPath = true;
+      endCall = closing.action === "farewell";
+    }
+  }
+
+  if (!replyText) {
+    const reasoningStartedAt = Date.now();
+    replyText = await reason({
+      agencyId: row.agency_id,
+      callId: row.call_id,
+      agencyName,
+      preferredLanguage: agencyLanguage,
+      callerPhone: row.caller_phone,
+      isGreeting: false,
+      history,
+      transcript,
+      language,
+      contextLines: context.promptLines,
+      contextFacts: context.facts,
+    });
+    reasoningMs = Date.now() - reasoningStartedAt;
+  }
   if (!replyText) {
     console.log(`[calls] voice_turn_reasoning_failed call_id=${payload.call_id}`);
     return { ok: false, reason: "reasoning_failed" };
@@ -217,6 +341,7 @@ export async function handleVoiceTurn(args: {
   const speech = spoken.spokenText.trim() || replyText;
   let replyOggBase64: string | null = null;
   if (synthesizeInWorker()) {
+    const ttsStartedAt = Date.now();
     const tts = await synthesizeCallSpeech({
       callId: payload.call_id,
       text: speech,
@@ -225,14 +350,14 @@ export async function handleVoiceTurn(args: {
       speed: spoken.speed,
       instructions: spoken.instructions,
     });
+    ttsMs = Date.now() - ttsStartedAt;
     if (!tts.ok) {
       return { ok: false, reason: tts.reason };
     }
     replyOggBase64 = bytesToBase64(tts.bytes);
   }
 
-
-  // 4. CALL MEMORY — transcript, language, intents, outcome.
+  // 4. CALL MEMORY — transcript, language, intents, outcome, latency.
   const additions: VoiceTranscriptTurn[] = [];
   if (transcript) {
     additions.push({
@@ -247,7 +372,23 @@ export async function handleVoiceTurn(args: {
   const turns = appendTranscript(history, additions);
   const intents: VoiceIntentKey[] = mergeIntents(row.voice_intents, classifyVoiceIntents(transcript));
   const travellers = transcript ? detectTravellerCount(transcript) : null;
-  const endCall = shouldEndCall(transcript, turns.length);
+  if (turns.length >= MAX_STORED_TURNS) endCall = true;
+
+  const latencyEntry: TurnLatency = {
+    seq: payload.sequence,
+    kind: payload.kind,
+    asr_ms: asrMs,
+    context_ms: contextMs,
+    reasoning_ms: reasoningMs,
+    tts_ms: ttsMs,
+    total_ms: Date.now() - startedAt,
+    fast_path: fastPath,
+  };
+  const latency = appendLatency(row.voice_latency, latencyEntry);
+  const outcome = deriveCallOutcome(intents, turns);
+  const summary = endCall
+    ? buildCallSummary({ turns, intents, outcome, language })
+    : null;
 
   await db
     .from("whatsapp_call_sessions")
@@ -256,13 +397,32 @@ export async function handleVoiceTurn(args: {
       turn_count: (row.turn_count ?? 0) + 1,
       detected_language: language,
       voice_intents: intents,
-      voice_outcome: deriveCallOutcome(intents, turns),
+      voice_outcome: outcome,
+      closing_state: endCall ? "farewell" : nextClosingState,
+      disclosure_spoken: row.disclosure_spoken === true || payload.kind === "greeting",
+      voice_latency: latency,
+      lead_id: row.lead_id ?? context.leadId,
+      conversation_id: row.conversation_id ?? context.conversationId,
+      ...(summary ? { call_summary: summary } : {}),
       ...(travellers ? { voice_traveller_count: travellers } : {}),
     })
     .eq("id", row.id);
 
+  // CALL → TEXT continuity, written once at the natural end of the call.
+  if (summary) {
+    await persistCallMemory(db, {
+      agencyId: row.agency_id,
+      conversationId: row.conversation_id ?? context.conversationId,
+      summary,
+    });
+  }
+
+  const stats = summarizeLatency(latency);
   console.log(
-    `[calls] voice_turn_ok call_id=${payload.call_id} kind=${payload.kind} lang=${language} intents=${intents.join("|") || "none"} end=${endCall}`,
+    `[calls] voice_turn_ok call_id=${payload.call_id} kind=${payload.kind} lang=${language} fast=${fastPath} ` +
+      `asr=${asrMs}ms ctx=${contextMs}ms reason=${reasoningMs}ms tts=${ttsMs}ms total=${latencyEntry.total_ms}ms ` +
+      `p50=${stats["p50_total_ms"]}ms p95=${stats["p95_total_ms"]}ms known_customer=${context.leadId ? "yes" : "no"} ` +
+      `closing=${nextClosingState} intents=${intents.join("|") || "none"} end=${endCall}`,
   );
 
   return {
@@ -276,5 +436,4 @@ export async function handleVoiceTurn(args: {
     endCall,
     ...(endCall ? { reason: "conversation_complete" } : {}),
   };
-
 }
