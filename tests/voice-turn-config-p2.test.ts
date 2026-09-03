@@ -6,7 +6,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const asrMock = vi.hoisted(() => ({ transcribeAudio: vi.fn() }));
-const ttsMock = vi.hoisted(() => ({ synthesizeSpeech: vi.fn() }));
+const ttsMock = vi.hoisted(() => ({
+  synthesizeSpeech: vi.fn(),
+  // The call path pins the MiniMax engine explicitly (voice lock).
+  lazyMinimaxEngine: { name: "minimax", synthesize: vi.fn() },
+}));
 const gatewayMock = vi.hoisted(() => ({ createIntelligenceGateway: vi.fn() }));
 const presentationMock = vi.hoisted(() => ({ prepareSpokenResponse: vi.fn() }));
 
