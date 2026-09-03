@@ -1,6 +1,6 @@
 module github.com/umraio/voice-gateway
 
-go 1.25.7
+go 1.26.7
 
 require (
 	github.com/pion/ice/v4 v4.4.0
