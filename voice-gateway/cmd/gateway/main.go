@@ -49,15 +49,29 @@ func main() {
 		})
 	}
 
-	// Single fixed UDP media port, bound to Fly's special services address.
-	// Fails closed: no wildcard fallback.
-	udpMux, udpConn, err := gwrtc.NewUDPMux(cfg.UDPMediaHost, cfg.UDPMediaPort)
+	// Single fixed UDP media port, dual-stack. IPv4 binds Fly's special
+	// services address and fails closed; IPv6 binds the wildcard and is
+	// best-effort so a v6-less host still serves media.
+	udpMux, udpConns, v6Err := gwrtc.NewDualStackUDPMux(cfg.UDPMediaHost, cfg.UDPMediaHost6, cfg.UDPMediaPort)
 	if err != nil {
 		logger.Error("udp media listener failed to bind", "error_class", "udp_mux",
 			"host", cfg.UDPMediaHost, "port", cfg.UDPMediaPort, "error", err.Error())
 		os.Exit(1)
 	}
-	defer func() { _ = udpConn.Close() }()
+	if v6Err != nil {
+		logger.Warn("ipv6 media listener unavailable", "error_class", "udp_mux_v6",
+			"host6", cfg.UDPMediaHost6, "port", cfg.UDPMediaPort)
+	}
+	natV4, natV6 := gwrtc.IPFamilies(cfg.PublicIPs)
+	logger.Info("media sockets bound",
+		"udp_socket_count", len(udpConns),
+		"ipv6_socket_bound", v6Err == nil && cfg.UDPMediaHost6 != "",
+		"nat_1to1_ipv4_count", natV4, "nat_1to1_ipv6_count", natV6)
+	defer func() {
+		for _, c := range udpConns {
+			_ = c.Close()
+		}
+	}()
 
 	engine, err := gwrtc.NewEngine(gwrtc.Config{
 		UDPMux:      udpMux,
