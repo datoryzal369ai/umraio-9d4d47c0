@@ -27,6 +27,7 @@ import {
 } from "./gateway-callback.core";
 import {
   notifyCallAccepted,
+  probeGatewaySpeech,
   requestMediaSession,
   resolveGatewayConfig,
   terminateMediaSession,
