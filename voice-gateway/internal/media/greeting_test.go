@@ -15,7 +15,7 @@ import (
 func attachedPipeline(t *testing.T, cfg ConversationConfig) (*ConversationPipeline, *fakeTurns, *fakeTransport) {
 	t.Helper()
 	turns := &fakeTurns{reply: func(TurnRequest) (*TurnResponse, error) {
-		return &TurnResponse{AudioBase64: oggReply(3), Format: "ogg_opus"}, nil
+		return &TurnResponse{ReplyOggBase64: oggReply(3)}, nil
 	}}
 	p := NewConversationPipeline("wacid_greet", turns, cfg, slog.Default())
 	tr := &fakeTransport{}
