@@ -33,10 +33,10 @@ func NewUDPMux(host string, port int) (ice.UDPMux, *net.UDPConn, error) {
 //
 // On Fly.io, forwarded IPv6 UDP arrives on the wildcard "::" address, not on
 // fly-global-services (which resolves to IPv4 only).
-func NewDualStackUDPMux(host string, host6 string, port int) (mux ice.UDPMux, conns []*net.UDPConn, v6Err error) {
+func NewDualStackUDPMux(host string, host6 string, port int) (mux ice.UDPMux, conns []*net.UDPConn, v6Err error, err error) {
 	conn4, err := listenUDP("udp4", host, port)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	conns = append(conns, conn4)
 	muxes := []ice.UDPMux{pion.NewICEUDPMux(nil, conn4)}
