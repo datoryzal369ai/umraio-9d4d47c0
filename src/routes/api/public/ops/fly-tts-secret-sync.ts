@@ -75,23 +75,36 @@ async function authorize(request: Request): Promise<boolean> {
   return !roles.error && Array.isArray(roles.data) && roles.data.length > 0;
 }
 
+/**
+ * Fly accepts either a raw personal token or a "FlyV1 …" deploy token. Both
+ * header shapes are attempted; the token value itself is never returned.
+ */
 async function flyGraphql(flyToken: string, query: string, variables: unknown) {
-  const res = await fetch(FLY_GRAPHQL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      Authorization: `Bearer ${flyToken}`,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const text = await res.text();
-  let parsed: any = null;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = null;
+  const candidates = flyToken.startsWith("FlyV1")
+    ? [flyToken, flyToken.replace(/^FlyV1\s+/, "")]
+    : [flyToken, `FlyV1 ${flyToken}`];
+
+  let last: { status: number; parsed: any } = { status: 0, parsed: null };
+  for (const candidate of candidates) {
+    const res = await fetch(FLY_GRAPHQL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${candidate}`,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const text = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    last = { status: res.status, parsed };
+    if (res.status === 200 && parsed?.data && !parsed?.errors) return last;
   }
-  return { status: res.status, parsed };
+  return last;
 }
 
 export const Route = createFileRoute("/api/public/ops/fly-tts-secret-sync")({
