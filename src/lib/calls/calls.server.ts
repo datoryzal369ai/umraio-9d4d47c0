@@ -381,7 +381,7 @@ export async function processGatewayCallback(args: {
 
   const { data } = await db
     .from("whatsapp_call_sessions")
-    .select("id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces")
+    .select("id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces, stage_timings")
     .eq("call_id", payload.call_id)
     .maybeSingle();
 
@@ -393,6 +393,22 @@ export async function processGatewayCallback(args: {
       `[calls] gateway_callback_rejected call_id=${payload.call_id} event=${payload.event} reason=${decision.rejection}`,
     );
     return { applied: false, rejection: decision.rejection };
+  }
+
+  // Safe timing telemetry from the media plane (no SDP, no candidates).
+  if (decision.outcome === "answered" || decision.outcome === "terminated" || decision.outcome === "failed") {
+    const marks: CallTimings = {};
+    if (decision.outcome === "answered") {
+      marks.media_ready_at = decision.patch["media_ready_at"] as string;
+      if ((payload.inbound_packets ?? 0) > 0) marks.first_inbound_rtp_at = payload.timestamp;
+      if ((payload.outbound_packets ?? 0) > 0) marks.first_outbound_rtp_at = payload.timestamp;
+    } else {
+      marks.terminate_received_at = payload.timestamp;
+    }
+    decision.patch["stage_timings"] = mergeCallTimings(
+      (data as { stage_timings?: unknown } | null)?.stage_timings,
+      marks,
+    );
   }
 
   // Compare-and-set: a session-id bind is only allowed while the column is NULL,
