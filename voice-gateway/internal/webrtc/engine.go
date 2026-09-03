@@ -356,7 +356,7 @@ func (ms *MediaSession) maybeFireMediaReady() {
 func (ms *MediaSession) logTransportDiagnostics() {
 	pairType, localFam, remoteFam := "unknown", "unknown", "unknown"
 	if pair, err := selectedPair(ms.pc); err == nil && pair != nil {
-		pairType = string(pair.Local.Typ) + "/" + string(pair.Remote.Typ)
+		pairType = pair.Local.Typ.String() + "/" + pair.Remote.Typ.String()
 		localFam = addressFamily(pair.Local.Address)
 		remoteFam = addressFamily(pair.Remote.Address)
 	}
