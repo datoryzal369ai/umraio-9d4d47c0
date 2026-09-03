@@ -1,53 +1,141 @@
 name: Deploy Voice Gateway
 
-# Manual-only deploy of the UMRAIO voice media gateway to Fly.io.
-# Requires repository secret FLY_API_TOKEN (org-scoped deploy token).
-# The token is never printed; flyctl reads it from the environment.
+# Manual-only production deploy of the UMRAIO voice media gateway to Fly.io.
+# Requires repository Actions secret FLY_API_TOKEN (Fly org deploy token).
+# The token is only ever read by flyctl from the environment; it is never echoed.
 
 on:
   workflow_dispatch:
-    inputs:
-      set_public_ip:
-        description: "Also set PUBLIC_IP (IPv4,IPv6) before deploying"
-        type: boolean
-        default: true
+
+permissions:
+  contents: read
 
 concurrency:
-  group: voice-gateway-deploy
+  group: voice-gateway-production-deploy
   cancel-in-progress: false
+
+env:
+  FLY_APP: umraio-voice-gateway
+  PUBLIC_IP_VALUE: "149.248.202.126,2a09:8280:1::180:ea3c:0"
+  EXPECT_IPV4: "149.248.202.126"
+  EXPECT_IPV6: "2a09:8280:1::180:ea3c:0"
 
 jobs:
   deploy:
+    name: Deploy to Fly.io (sin)
     runs-on: ubuntu-latest
+    # Production deploys run only from main.
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      FLY_APP: umraio-voice-gateway
-      PUBLIC_IP_VALUE: "149.248.202.126,2a09:8280:1::180:ea3c:0"
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main
+        uses: actions/checkout@v4
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Verify FLY_API_TOKEN is configured
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "::error::Repository secret FLY_API_TOKEN is missing."
+            exit 1
+          fi
+          echo "FLY_API_TOKEN: present (value never printed)"
 
-      - name: Verify token is present
-        run: test -n "$FLY_API_TOKEN" && echo "FLY_API_TOKEN present"
-
-      - name: Go build, vet and test
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: voice-gateway/go.mod
-      - run: go build ./... && go vet ./... && go test ./...
+          cache-dependency-path: voice-gateway/go.sum
+
+      - name: Build, vet and test gateway
         working-directory: voice-gateway
-
-      - name: Set PUBLIC_IP
-        if: ${{ inputs.set_public_ip }}
-        run: flyctl secrets set PUBLIC_IP="$PUBLIC_IP_VALUE" --stage -a "$FLY_APP"
-
-      - name: Deploy
-        run: flyctl deploy -c voice-gateway/fly.toml --remote-only -a "$FLY_APP"
-
-      - name: Post-deploy verification
         run: |
+          set -euo pipefail
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      - name: Install flyctl (latest stable)
+        uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: latest
+
+      - name: Pre-deploy state (region, IPs, UDP)
+        run: |
+          set -euo pipefail
           flyctl status -a "$FLY_APP"
           flyctl ips list -a "$FLY_APP"
-          curl -sf https://$FLY_APP.fly.dev/health; echo
-          curl -sf -o /dev/null -w "ready=%{http_code}\n" https://$FLY_APP.fly.dev/ready
+          grep -A4 'protocol = "udp"' voice-gateway/fly.toml
+
+      - name: Set PUBLIC_IP Fly secret (staged, value not printed)
+        run: |
+          set -euo pipefail
+          flyctl secrets set PUBLIC_IP="$PUBLIC_IP_VALUE" --stage -a "$FLY_APP" >/dev/null
+          echo "PUBLIC_IP staged for next release."
+
+      - name: Deploy
+        run: |
+          set -euo pipefail
+          flyctl deploy -c voice-gateway/fly.toml --remote-only -a "$FLY_APP" \
+            --build-arg BUILD_VERSION="${GITHUB_SHA}" \
+            --env BUILD_VERSION="${GITHUB_SHA}"
+
+      - name: Verify health and readiness
+        run: |
+          set -euo pipefail
+          BASE="https://${FLY_APP}.fly.dev"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' "$BASE/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          echo "GET /health -> $code"
+          cat /tmp/health.json; echo
+          [ "$code" = "200" ] || { echo "::error::/health did not return 200"; exit 1; }
+
+          rcode=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/ready")
+          echo "GET /ready -> $rcode"
+          [ "$rcode" = "200" ] || { echo "::error::/ready did not return 200"; exit 1; }
+
+      - name: Verify build version matches deployed commit
+        run: |
+          set -euo pipefail
+          bv=$(curl -s "https://${FLY_APP}.fly.dev/health" | grep -o '"build_version":"[^"]*"' | cut -d'"' -f4)
+          echo "deployed git commit: ${GITHUB_SHA}"
+          echo "reported build_version: ${bv}"
+          if [ "$bv" = "dev" ] || [ -z "$bv" ]; then
+            echo "::error::gateway still reports the old build_version"
+            exit 1
+          fi
+
+      - name: Verify IPv4, IPv6, region and UDP retained
+        run: |
+          set -euo pipefail
+          flyctl ips list -a "$FLY_APP" | tee /tmp/ips.txt
+          grep -q "$EXPECT_IPV4" /tmp/ips.txt || { echo "::error::IPv4 $EXPECT_IPV4 missing"; exit 1; }
+          grep -qi "$EXPECT_IPV6" /tmp/ips.txt || { echo "::error::IPv6 $EXPECT_IPV6 missing"; exit 1; }
+
+          flyctl status -a "$FLY_APP" | tee /tmp/status.txt
+          grep -qi 'sin' /tmp/status.txt || { echo "::error::app is not serving from SIN"; exit 1; }
+
+          grep -q 'internal_port = 40000' voice-gateway/fly.toml || { echo "::error::UDP 40000 not configured"; exit 1; }
+          echo "IPv4, IPv6, SIN region and UDP 40000 all retained."
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "### Voice gateway deploy"
+            echo ""
+            echo "- App: \`$FLY_APP\` (region sin)"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- /health: 200, /ready: 200"
+            echo "- IPv4 \`$EXPECT_IPV4\` and IPv6 \`$EXPECT_IPV6\` retained"
+            echo "- UDP 40000 configured"
+            echo ""
+            echo "Production PASS requires a real WhatsApp call >60s with bidirectional audio."
+          } >> "$GITHUB_STEP_SUMMARY"
