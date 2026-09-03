@@ -14,7 +14,7 @@ import { createIntelligenceGateway } from "@/lib/ai/gateway.server";
 import { transcribeAudio } from "@/lib/voice/asr.server";
 import { resolveVoiceLanguage } from "@/lib/voice/language.core";
 import { prepareSpokenResponse } from "@/lib/voice/tts.core";
-import { synthesizeSpeech } from "@/lib/voice/tts.server";
+import { synthesizeCallSpeech } from "./call-audio.server";
 
 import {
   appendTranscript,
