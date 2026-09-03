@@ -124,15 +124,16 @@ type minimaxResponse struct {
 }
 
 // SynthesizePCM returns s16le / 24 kHz / mono PCM for one reply.
-// voiceID and boost override the configured identity only when non-empty; the
-// control plane sends the same locked values, so a mismatch cannot go unseen.
+// The canonical voice identity is NEVER overridden by the control plane: a
+// non-canonical voiceID fails closed instead of speaking with another voice.
 func (c *Client) SynthesizePCM(ctx context.Context, text, voiceID, boost string) ([]byte, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, ErrEmptyAudio
 	}
-	if voiceID == "" {
-		voiceID = c.cfg.VoiceID
+	if voiceID != "" && voiceID != c.cfg.VoiceID {
+		return nil, ErrVoiceIdentity
 	}
+	voiceID = c.cfg.VoiceID
 	if boost == "" {
 		boost = c.cfg.Boost
 	}
