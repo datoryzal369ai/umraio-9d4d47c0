@@ -2133,6 +2133,7 @@ export type Database = {
           meta_pre_accepted_at: string | null
           phone_number_id: string
           received_at: string
+          renagi_signals: Json
           stage_timings: Json
           status: string
           termination_reason: string | null
@@ -2169,6 +2170,7 @@ export type Database = {
           meta_pre_accepted_at?: string | null
           phone_number_id: string
           received_at?: string
+          renagi_signals?: Json
           stage_timings?: Json
           status?: string
           termination_reason?: string | null
@@ -2205,6 +2207,7 @@ export type Database = {
           meta_pre_accepted_at?: string | null
           phone_number_id?: string
           received_at?: string
+          renagi_signals?: Json
           stage_timings?: Json
           status?: string
           termination_reason?: string | null
