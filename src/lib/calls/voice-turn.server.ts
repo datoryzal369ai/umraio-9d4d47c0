@@ -189,7 +189,8 @@ export async function handleVoiceTurn(args: {
   // 3. RAIŌ™ voice presentation + MiniMax TTS. No audio means silence.
   const spoken = prepareSpokenResponse({ replyText, language, persona: voicePersona });
   const speech = spoken.spokenText.trim() || replyText;
-  const tts = await synthesizeSpeech({
+  const tts = await synthesizeCallSpeech({
+    callId: payload.call_id,
     text: speech,
     language,
     voice: spoken.voice,
@@ -197,12 +198,7 @@ export async function handleVoiceTurn(args: {
     instructions: spoken.instructions,
   });
   if (!tts.ok) {
-    console.log(`[calls] voice_turn_tts_failed call_id=${payload.call_id} kind=${tts.kind}`);
-    return { ok: false, reason: `tts_${tts.kind}` };
-  }
-  if (!tts.mimeType.startsWith("audio/ogg")) {
-    console.log(`[calls] voice_turn_tts_container_unsupported call_id=${payload.call_id}`);
-    return { ok: false, reason: "tts_container_unsupported" };
+    return { ok: false, reason: tts.reason };
   }
 
   // 4. CALL MEMORY — transcript, language, intents, outcome.
