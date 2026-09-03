@@ -381,6 +381,21 @@ async function maybeRequestAnswer(args: {
   console.log(
     `[calls] post_accept_notify call_id=${event.callId} ok=${notified.ok} greeting=${notified.greeting ?? notified.reason ?? "unknown"}`,
   );
+  // Speech ownership guard: the Worker control plane cannot encode Opus, so a
+  // media plane without the speech capability produces a SILENT accepted call
+  // (the caller sees "No answer"). Make that deployment mismatch loud.
+  if (env["CALL_TTS_IN_WORKER"] !== "1") {
+    const speech = await probeGatewaySpeech({
+      gatewayUrl: gateway.url,
+      ...fetchOpt,
+    });
+    if (speech !== "up") {
+      console.log(
+        `[calls] gateway_speech_unavailable call_id=${event.callId} speech=${speech} action=redeploy_media_plane`,
+      );
+    }
+  }
+
   await db
     .from("whatsapp_call_sessions")
     .update({
