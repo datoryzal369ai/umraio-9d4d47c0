@@ -24,15 +24,39 @@ function json(body: unknown, status: number): Response {
   });
 }
 
-async function assertPlatformOwner(request: Request): Promise<boolean> {
+/**
+ * Authorisation: EITHER a platform_owner bearer token OR a single-use
+ * operations token whose SHA-256 hash is pre-seeded server-side. The one-time
+ * token is consumed atomically (used_at IS NULL guard), so replay fails.
+ */
+async function authorize(request: Request): Promise<boolean> {
+  const url = process.env["SUPABASE_URL"];
+  const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+  if (!url || !key) return false;
+
+  const opsToken = request.headers.get("x-ops-token")?.trim();
+  if (opsToken) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(opsToken));
+    const hash = Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await (supabaseAdmin as any)
+      .from("ops_one_time_tokens")
+      .update({ used_at: new Date().toISOString() })
+      .eq("token_hash", hash)
+      .eq("purpose", "fly_tts_secret_sync")
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .select("id");
+    if (!error && Array.isArray(data) && data.length === 1) return true;
+    return false;
+  }
+
   const auth = request.headers.get("authorization") ?? "";
   if (!auth.startsWith("Bearer ")) return false;
   const token = auth.slice(7).trim();
   if (token.split(".").length !== 3) return false;
-
-  const url = process.env["SUPABASE_URL"];
-  const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
-  if (!url || !key) return false;
 
   const supabase = createClient(url, key, {
     global: { headers: { Authorization: `Bearer ${token}`, apikey: key } },
