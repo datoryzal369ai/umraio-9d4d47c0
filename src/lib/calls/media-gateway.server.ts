@@ -89,8 +89,13 @@ export async function requestMediaSession(args: MediaSessionRequest): Promise<Me
     | { session_id?: string; sdp_answer?: string; state?: string }
     | null;
   const sessionId = parsed?.session_id?.trim();
-  const sdpAnswer = parsed?.sdp_answer?.trim();
-  if (!sessionId || !sdpAnswer) return { ok: false, reason: "gateway_invalid_response" };
+  // Forward the answer byte-for-byte: RFC 4566 requires the final line to keep
+  // its terminator, and Meta rejects an accept whose SDP differs from the
+  // pre_accept SDP. Validate on a trimmed COPY only.
+  const sdpAnswer = parsed?.sdp_answer;
+  if (!sessionId || !sdpAnswer || !sdpAnswer.trim()) {
+    return { ok: false, reason: "gateway_invalid_response" };
+  }
 
   return { ok: true, sessionId, sdpAnswer, state: parsed?.state?.trim() || "media_negotiating" };
 }
