@@ -1,16 +1,14 @@
 /**
- * UMRAIO® — WhatsApp Calling audio container repair.
+ * UMRAIO® — WhatsApp Calling audio container + LOCKED VOICE contract.
  *
- * Proves the voice-turn path only ever emits real OGG/Opus, falls back to
- * OpenAI exactly once for an unsupported container, and never returns silent
- * success when both providers fail.
+ * Proves the voice-turn path only ever emits real OGG/Opus produced by
+ * MiniMax, and that NO substitute voice or provider can ever be used.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { isOggOpusAudio } from "@/lib/calls/call-audio.core";
-import { synthesizeCallSpeech } from "@/lib/calls/call-audio.server";
-import { resolveMinimaxContainer } from "@/lib/voice/minimax.server";
-import type { VoiceEngine } from "@/lib/voice/tts.server";
+import { synthesizeCallSpeech, requiredCallVoice } from "@/lib/calls/call-audio.server";
+import { resolveMinimaxContainer, MINIMAX_DEFAULT_MODEL } from "@/lib/voice/minimax.server";
 
 function oggOpusBytes(): Uint8Array {
   const bytes = new Uint8Array(64);
@@ -22,8 +20,6 @@ function oggOpusBytes(): Uint8Array {
 function mp3Bytes(): Uint8Array {
   return new Uint8Array([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00]);
 }
-
-const fallbackEngine = { name: "openai", synthesize: vi.fn() } as unknown as VoiceEngine;
 
 describe("call audio container validation", () => {
   it("accepts only OGG with an Opus stream", () => {
@@ -47,10 +43,17 @@ describe("MINIMAX_TTS_CONTAINER production value", () => {
   });
 });
 
-describe("synthesizeCallSpeech", () => {
+describe("synthesizeCallSpeech — locked voice", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns MiniMax OGG/Opus audio without a fallback", async () => {
+  it("requires MiniMax speech-2.8-hd / Malay_male_1_v1", () => {
+    const required = requiredCallVoice();
+    expect(required.model).toBe(MINIMAX_DEFAULT_MODEL);
+    expect(MINIMAX_DEFAULT_MODEL).toBe("speech-2.8-hd");
+    expect(required.voiceId).toBe("Malay_male_1_v1");
+  });
+
+  it("returns MiniMax OGG/Opus audio and pins the MiniMax engine only", async () => {
     const synthesize = vi.fn().mockResolvedValue({
       ok: true,
       bytes: oggOpusBytes(),
@@ -58,65 +61,50 @@ describe("synthesizeCallSpeech", () => {
       engine: "minimax",
     });
     const result = await synthesizeCallSpeech(
-      { callId: "c1", text: "Assalamualaikum" },
-      { synthesize: synthesize as never, fallbackEngine },
+      { callId: "c1", text: "Assalamualaikum", voice: "marin", language: "ms-MY" },
+      { synthesize: synthesize as never },
     );
     expect(result).toMatchObject({ ok: true, engine: "minimax", fallbackUsed: false });
     expect(synthesize).toHaveBeenCalledTimes(1);
+    const request = synthesize.mock.calls[0]![0];
+    expect(request.requireOggOpus).toBe(true);
+    // A persona voice must never reach the provider.
+    expect(request.voice).toBeUndefined();
+    expect(request.engine.name).toBe("minimax");
   });
 
-  it("falls back to OpenAI exactly once on an unsupported container", async () => {
+  it("never substitutes another provider's voice, even with valid OGG/Opus", async () => {
     const synthesize = vi
       .fn()
-      .mockResolvedValueOnce({ ok: true, bytes: mp3Bytes(), mimeType: "audio/mpeg", engine: "minimax" })
-      .mockResolvedValueOnce({ ok: true, bytes: oggOpusBytes(), mimeType: "audio/ogg", engine: "openai" });
-
+      .mockResolvedValue({ ok: true, bytes: oggOpusBytes(), mimeType: "audio/ogg", engine: "openai" });
     const result = await synthesizeCallSpeech(
       { callId: "c2", text: "hai" },
-      { synthesize: synthesize as never, fallbackEngine },
+      { synthesize: synthesize as never },
     );
-    expect(result).toMatchObject({ ok: true, engine: "openai", fallbackUsed: true });
-    expect(synthesize).toHaveBeenCalledTimes(2);
-    expect(synthesize.mock.calls[1]![0].engine).toBe(fallbackEngine);
+    expect(result).toEqual({ ok: false, reason: "voice_substitution_blocked" });
+    expect(synthesize).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back when MiniMax returns invalid OGG/Opus bytes", async () => {
-    const synthesize = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, bytes: mp3Bytes(), mimeType: "audio/ogg", engine: "minimax" })
-      .mockResolvedValueOnce({ ok: true, bytes: oggOpusBytes(), mimeType: "audio/ogg", engine: "openai" });
-
-    const result = await synthesizeCallSpeech(
-      { callId: "c3", text: "hai" },
-      { synthesize: synthesize as never, fallbackEngine },
-    );
-    expect(result).toMatchObject({ ok: true, fallbackUsed: true });
-  });
-
-  it("returns an explicit error — never silent success — when both providers fail", async () => {
-    const synthesize = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, kind: "provider", engine: "minimax" })
-      .mockResolvedValueOnce({ ok: false, kind: "timeout", engine: "openai" });
-
-    const result = await synthesizeCallSpeech(
-      { callId: "c4", text: "hai" },
-      { synthesize: synthesize as never, fallbackEngine },
-    );
-    expect(result).toEqual({ ok: false, reason: "tts_timeout" });
-    expect(synthesize).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not attempt a third provider when the fallback container is still unsupported", async () => {
+  it("fails explicitly — one attempt only — on an unsupported container", async () => {
     const synthesize = vi
       .fn()
       .mockResolvedValue({ ok: true, bytes: mp3Bytes(), mimeType: "audio/mpeg", engine: "minimax" });
-
     const result = await synthesizeCallSpeech(
-      { callId: "c5", text: "hai" },
-      { synthesize: synthesize as never, fallbackEngine },
+      { callId: "c3", text: "hai" },
+      { synthesize: synthesize as never },
     );
-    expect(result).toEqual({ ok: false, reason: "tts_container_unsupported" });
-    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ ok: false, reason: "container_audio_mpeg" });
+    expect(synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an explicit error — never silent success — when MiniMax fails", async () => {
+    const synthesize = vi.fn().mockResolvedValue({ ok: false, kind: "provider", engine: "minimax" });
+    const result = await synthesizeCallSpeech(
+      { callId: "c4", text: "hai" },
+      { synthesize: synthesize as never },
+    );
+    expect(result).toEqual({ ok: false, reason: "tts_provider" });
+    expect(synthesize).toHaveBeenCalledTimes(1);
   });
 });
+

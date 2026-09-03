@@ -1,90 +1,77 @@
 /**
- * UMRAIO® — WhatsApp Calling speech synthesis with a narrow OGG/Opus guarantee.
+ * UMRAIO® — WhatsApp Calling speech synthesis. LOCKED VOICE, NO SUBSTITUTES.
  *
- * PRIMARY: the configured provider chain (MiniMax with
- * MINIMAX_TTS_CONTAINER=ogg_opus in production).
- * FALLBACK: exactly ONE retry through the OpenAI TTS engine when the primary
- * returns an unsupported container, invalid OGG/Opus, or fails outright.
+ * SPECIFICATION (non-negotiable):
+ *   provider       = minimax
+ *   model          = speech-2.8-hd
+ *   voice_id       = Malay_male_1_v1   (MINIMAX_TTS_VOICE_ID may override)
+ *   language_boost = Malay
+ *   locale         = ms-MY
+ *   container      = OGG/Opus (the only container the RTP path can transmit)
  *
- * Never returns silent success: the result is either verified OGG/Opus bytes
- * or an explicit failure reason. Logs carry provider/container/fallback status
- * only — never audio, credentials or customer PII.
+ * There is NO fallback engine. A previous OpenAI fallback silently replaced the
+ * Malaysian voice with an OpenAI voice on every live turn (evidence: call
+ * ms_317c3396926af52a1f46a5aa, `voice_turn_tts_primary_rejected ...
+ * fallback=openai`). Substituting a voice is now a hard, reported failure:
+ * the caller hears nothing rather than the wrong identity.
+ *
+ * Logs carry provider/voice/container/reason only — never audio or PII.
  */
 import { isOggOpusAudio } from "./call-audio.core";
-import {
-  openAiVoiceEngine,
-  synthesizeSpeech,
-  type VoiceSynthesisRequest,
-  type VoiceEngine,
-} from "@/lib/voice/tts.server";
+import { MINIMAX_DEFAULT_MODEL, resolveMinimaxConfig } from "@/lib/voice/minimax.server";
+import { lazyMinimaxEngine, synthesizeSpeech, type VoiceSynthesisRequest } from "@/lib/voice/tts.server";
 
 export type CallSpeechResult =
-  | { ok: true; bytes: Uint8Array; engine: string; fallbackUsed: boolean }
+  | { ok: true; bytes: Uint8Array; engine: string; voiceId: string; fallbackUsed: false }
   | { ok: false; reason: string };
 
-/** Never throws: an unavailable OpenAI engine simply means no fallback. */
-function resolveOpenAiEngine(): VoiceEngine | null {
-  try {
-    return openAiVoiceEngine ?? null;
-  } catch {
-    return null;
-  }
+/** The voice identity a call turn MUST be spoken with. */
+export function requiredCallVoice(): { model: string; voiceId: string } {
+  const config = resolveMinimaxConfig();
+  return {
+    model: config?.model ?? MINIMAX_DEFAULT_MODEL,
+    voiceId: config?.voiceId ?? "Malay_male_1_v1",
+  };
 }
 
 export async function synthesizeCallSpeech(
   input: VoiceSynthesisRequest & { callId?: string },
-  deps: {
-    synthesize?: typeof synthesizeSpeech;
-    fallbackEngine?: VoiceEngine;
-  } = {},
+  deps: { synthesize?: typeof synthesizeSpeech } = {},
 ): Promise<CallSpeechResult> {
   const synth = deps.synthesize ?? synthesizeSpeech;
   const callId = input.callId ?? "unknown";
-  const request: VoiceSynthesisRequest = {
+  const { model, voiceId } = requiredCallVoice();
+
+  const request: VoiceSynthesisRequest & { engine: typeof lazyMinimaxEngine } = {
     text: input.text,
-    // The realtime call path can only transmit OGG/Opus — engines must not
-    // spend seconds producing a container that is discarded on arrival.
+    // The realtime call path can only transmit OGG/Opus — no MP3 round trip.
     requireOggOpus: true,
-    ...(input.voice ? { voice: input.voice } : {}),
+    // Voice identity is LOCKED: a persona voice must never reach MiniMax.
+    engine: lazyMinimaxEngine,
     ...(typeof input.speed === "number" ? { speed: input.speed } : {}),
     ...(input.instructions ? { instructions: input.instructions } : {}),
     ...(input.language ? { language: input.language } : {}),
   };
 
-  const primary = await synth(request);
-  if (primary.ok && isOggOpusAudio(primary.mimeType, primary.bytes)) {
+  const result = await synth(request);
+  if (result.ok && isOggOpusAudio(result.mimeType, result.bytes)) {
+    if (result.engine !== "minimax") {
+      console.log(
+        `[calls] voice_turn_tts_failed call_id=${callId} reason=voice_substitution_blocked provider=${result.engine}`,
+      );
+      return { ok: false, reason: "voice_substitution_blocked" };
+    }
     console.log(
-      `[calls] voice_turn_tts_ok call_id=${callId} provider=${primary.engine} container=ogg_opus fallback=none`,
+      `[calls] voice_turn_tts_ok call_id=${callId} provider=minimax model=${model} voice=${voiceId} container=ogg_opus fallback=none`,
     );
-    return { ok: true, bytes: primary.bytes, engine: primary.engine, fallbackUsed: false };
+    return { ok: true, bytes: result.bytes, engine: result.engine, voiceId, fallbackUsed: false };
   }
 
-  const primaryReason = primary.ok
-    ? `container_${(primary.mimeType || "unknown").split(";")[0]!.replace("/", "_")}`
-    : `tts_${primary.kind}`;
+  const reason = result.ok
+    ? `container_${(result.mimeType || "unknown").split(";")[0]!.replace("/", "_")}`
+    : `tts_${result.kind}`;
   console.log(
-    `[calls] voice_turn_tts_primary_rejected call_id=${callId} provider=${primary.engine} reason=${primaryReason} fallback=openai`,
+    `[calls] voice_turn_tts_failed call_id=${callId} provider=minimax model=${model} voice=${voiceId} reason=${reason} fallback=none`,
   );
-
-  // Exactly ONE fallback attempt, through the already-supported OpenAI engine.
-  // Resolved lazily so a missing/stubbed OpenAI engine can never break the
-  // primary path — it only affects the fallback attempt.
-  const fallbackEngine = deps.fallbackEngine ?? resolveOpenAiEngine();
-  if (!fallbackEngine) {
-    console.log(`[calls] voice_turn_tts_failed call_id=${callId} reason=${primaryReason} fallback=unavailable`);
-    return { ok: false, reason: primaryReason };
-  }
-  const fallback = await synth({ ...request, engine: fallbackEngine });
-  if (fallback.ok && isOggOpusAudio(fallback.mimeType, fallback.bytes)) {
-    console.log(
-      `[calls] voice_turn_tts_ok call_id=${callId} provider=${fallback.engine} container=ogg_opus fallback=used`,
-    );
-    return { ok: true, bytes: fallback.bytes, engine: fallback.engine, fallbackUsed: true };
-  }
-
-  const fallbackReason = fallback.ok ? "tts_container_unsupported" : `tts_${fallback.kind}`;
-  console.log(
-    `[calls] voice_turn_tts_failed call_id=${callId} provider=${fallback.engine} reason=${fallbackReason} fallback=exhausted`,
-  );
-  return { ok: false, reason: fallbackReason };
+  return { ok: false, reason };
 }
