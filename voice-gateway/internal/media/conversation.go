@@ -143,22 +143,26 @@ const (
 // after Close, so a TERMINATE that races the accept notification cancels it.
 func (p *ConversationPipeline) StartGreeting() GreetingOutcome {
 	p.mu.Lock()
-	switch {
-	case p.closed:
+	if p.closed {
 		p.mu.Unlock()
 		return GreetingClosed
+	}
+	if p.transport == nil {
+		p.mu.Unlock()
+		return GreetingDetached
+	}
+	// Accept is recorded even when greeting is disabled: caller utterances are
+	// only forwarded once Meta has accepted the call.
+	p.accepted = true
+	switch {
 	case !p.cfg.Greet || p.client == nil:
 		p.mu.Unlock()
 		return GreetingDisabled
-	case p.transport == nil:
-		p.mu.Unlock()
-		return GreetingDetached
 	case p.greeted:
 		p.mu.Unlock()
 		return GreetingDuplicate
 	}
 	p.greeted = true
-	p.accepted = true
 	p.mu.Unlock()
 	p.logger.Info("greeting_started", "call_id", p.callID)
 	p.startTurn(TurnRequest{CallID: p.callID, Kind: TurnKindGreeting})
