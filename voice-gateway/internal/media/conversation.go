@@ -31,10 +31,21 @@ type TurnRequest struct {
 	DurationMs     int    `json:"duration_ms"`
 }
 
-// TurnResponse is the control plane's answer. Absent audio is a hard "say
-// nothing" — the gateway never substitutes audio of its own.
+// TurnResponse is the control plane's answer.
+//
+// Two shapes are supported, in this order:
+//  1. SpeechText — the control plane decided WHAT to say; the media plane
+//     synthesises it with the LOCKED MiniMax voice and encodes native Opus.
+//     This is the production path: the Worker cannot produce Opus at all.
+//  2. ReplyOggBase64 — pre-rendered OGG/Opus (legacy / self-hosted runtimes).
+//
+// Neither present is a hard "say nothing": the gateway never substitutes audio
+// or a voice of its own.
 type TurnResponse struct {
 	ReplyOggBase64 string `json:"reply_ogg_base64"`
+	SpeechText     string `json:"speech_text,omitempty"`
+	VoiceID        string `json:"voice_id,omitempty"`
+	LanguageBoost  string `json:"language_boost,omitempty"`
 	EndCall        bool   `json:"end_call"`
 	Reason         string `json:"reason,omitempty"`
 }
@@ -43,6 +54,13 @@ type TurnResponse struct {
 type TurnClient interface {
 	Turn(ctx context.Context, req TurnRequest) (*TurnResponse, error)
 }
+
+// Synthesizer turns reply text into ready-to-send Opus packets. Implemented by
+// tts.Speaker (MiniMax + libopus). Nil means the media plane cannot speak.
+type Synthesizer interface {
+	Speak(ctx context.Context, callID, text, voiceID, boost string) ([][]byte, error)
+}
+
 
 // ConversationConfig bounds the loop. Every value is configurable.
 type ConversationConfig struct {
@@ -76,6 +94,7 @@ var ErrNoTransport = errors.New("media: conversation not attached")
 type ConversationPipeline struct {
 	callID string
 	client TurnClient
+	synth  Synthesizer
 	cfg    ConversationConfig
 	logger *slog.Logger
 
@@ -106,6 +125,14 @@ func NewConversationPipeline(callID string, client TurnClient, cfg ConversationC
 		seg: NewSegmenter(n.VAD),
 	}
 }
+
+// WithSynthesizer installs the media-plane voice. Without it the pipeline can
+// only play pre-rendered OGG/Opus; it never invents a substitute voice.
+func (p *ConversationPipeline) WithSynthesizer(s Synthesizer) *ConversationPipeline {
+	p.synth = s
+	return p
+}
+
 
 // Mode identifies this pipeline in diagnostics as the real-time AI loop.
 func (p *ConversationPipeline) Mode() string { return ModeRealtimeAI }
@@ -252,7 +279,22 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest) {
 	if resp == nil {
 		return
 	}
-	if resp.ReplyOggBase64 != "" {
+	switch {
+	case resp.SpeechText != "":
+		// PRODUCTION PATH — the media plane owns MiniMax synthesis and Opus
+		// encoding, because the Worker runtime cannot produce Opus at all.
+		if p.synth == nil {
+			p.logger.Warn("turn_reply_no_synthesizer", "call_id", p.callID)
+			break
+		}
+		packets, ttsErr := p.synth.Speak(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
+		if ttsErr != nil {
+			// FAIL CLOSED: silence, never a substitute provider or voice.
+			p.logger.Warn("turn_reply_tts_failed", "call_id", p.callID)
+			break
+		}
+		p.play(packets)
+	case resp.ReplyOggBase64 != "":
 		raw, decErr := base64.StdEncoding.DecodeString(resp.ReplyOggBase64)
 		if decErr != nil {
 			p.logger.Warn("turn_reply_undecodable", "call_id", p.callID)
@@ -265,6 +307,7 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest) {
 		}
 		p.play(packets)
 	}
+
 	if resp.EndCall {
 		p.mu.Lock()
 		t := p.transport

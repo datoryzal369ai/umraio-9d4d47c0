@@ -14,6 +14,7 @@ import { createIntelligenceGateway } from "@/lib/ai/gateway.server";
 import { transcribeAudio } from "@/lib/voice/asr.server";
 import { resolveVoiceLanguage } from "@/lib/voice/language.core";
 import { prepareSpokenResponse } from "@/lib/voice/tts.core";
+import { languageBoostFor, MINIMAX_DEFAULT_VOICE_ID } from "@/lib/voice/minimax.server";
 import { synthesizeCallSpeech } from "./call-audio.server";
 
 import {
@@ -36,8 +37,29 @@ import {
 type Db = { from: (table: string) => any };
 
 export type VoiceTurnResult =
-  | { ok: true; replyOggBase64: string | null; text: string; endCall: boolean; reason?: string }
+  | {
+      ok: true;
+      replyOggBase64: string | null;
+      text: string;
+      /** Locked MiniMax identity the media plane must speak with. */
+      voiceId?: string;
+      languageBoost?: string;
+      endCall: boolean;
+      reason?: string;
+    }
   | { ok: false; reason: string };
+
+/**
+ * SPEECH OWNERSHIP — the serverless control plane cannot compile an Opus
+ * encoder (Worker runtime forbids runtime WASM: probe `wasm_unavailable`), so
+ * by default it returns TEXT and the media gateway performs MiniMax synthesis
+ * + native libopus encoding next to the RTP sender. Set CALL_TTS_IN_WORKER=1
+ * only on a Node-capable runtime that can actually encode Opus.
+ */
+function synthesizeInWorker(): boolean {
+  return process.env["CALL_TTS_IN_WORKER"] === "1";
+}
+
 
 const SESSION_COLUMNS =
   "id, agency_id, call_id, caller_phone, status, meta_accepted_at, transcript, turn_count, detected_language, voice_intents";
@@ -189,20 +211,26 @@ export async function handleVoiceTurn(args: {
     return { ok: false, reason: "reasoning_failed" };
   }
 
-  // 3. RAIŌ™ voice presentation + MiniMax TTS. No audio means silence.
+  // 3. RAIŌ™ voice presentation. Speech is rendered by the media plane with
+  //    the LOCKED MiniMax identity unless a Node-capable runtime opts in.
   const spoken = prepareSpokenResponse({ replyText, language, persona: voicePersona });
   const speech = spoken.spokenText.trim() || replyText;
-  const tts = await synthesizeCallSpeech({
-    callId: payload.call_id,
-    text: speech,
-    language,
-    voice: spoken.voice,
-    speed: spoken.speed,
-    instructions: spoken.instructions,
-  });
-  if (!tts.ok) {
-    return { ok: false, reason: tts.reason };
+  let replyOggBase64: string | null = null;
+  if (synthesizeInWorker()) {
+    const tts = await synthesizeCallSpeech({
+      callId: payload.call_id,
+      text: speech,
+      language,
+      voice: spoken.voice,
+      speed: spoken.speed,
+      instructions: spoken.instructions,
+    });
+    if (!tts.ok) {
+      return { ok: false, reason: tts.reason };
+    }
+    replyOggBase64 = bytesToBase64(tts.bytes);
   }
+
 
   // 4. CALL MEMORY — transcript, language, intents, outcome.
   const additions: VoiceTranscriptTurn[] = [];
@@ -239,9 +267,14 @@ export async function handleVoiceTurn(args: {
 
   return {
     ok: true,
-    replyOggBase64: bytesToBase64(tts.bytes),
+    replyOggBase64,
     text: speech,
+    // Voice identity travels with every reply so the media plane can never
+    // speak with a substitute voice or a provider default.
+    voiceId: MINIMAX_DEFAULT_VOICE_ID,
+    languageBoost: languageBoostFor(language),
     endCall,
     ...(endCall ? { reason: "conversation_complete" } : {}),
   };
+
 }

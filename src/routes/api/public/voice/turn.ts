@@ -55,11 +55,22 @@ export const Route = createFileRoute("/api/public/voice/turn")({
             result.ok
               ? {
                   reply_ogg_base64: result.replyOggBase64 ?? "",
+                  // Text + LOCKED voice identity: the media plane owns Opus
+                  // encoding because this Worker runtime cannot compile one.
+                  speech_text: result.replyOggBase64 ? "" : result.text,
+                  voice_id: result.voiceId ?? "",
+                  language_boost: result.languageBoost ?? "",
                   end_call: result.endCall,
                   reason: result.reason ?? "",
                 }
-              : { reply_ogg_base64: "", end_call: false, reason: result.reason },
+              : {
+                  reply_ogg_base64: "",
+                  speech_text: "",
+                  end_call: false,
+                  reason: result.reason,
+                },
           );
+
         } catch (error) {
           console.error(
             `[calls] voice_turn_failed call_id=${payload.call_id} reason=${error instanceof Error ? error.name : "unknown"}`,
