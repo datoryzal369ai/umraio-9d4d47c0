@@ -52,13 +52,28 @@ jobs:
           go-version-file: voice-gateway/go.mod
           cache-dependency-path: voice-gateway/go.sum
 
+      # CGO is REQUIRED: gopkg.in/hraban/opus.v2 links native libopus/libopusfile
+      # through pkg-config. The Ubuntu runner has neither by default.
+      - name: Install native Opus build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libopus-dev libopusfile-dev libogg-dev
+          pkg-config --exists opus || { echo "::error::pkg-config cannot resolve opus"; exit 1; }
+          pkg-config --exists opusfile || { echo "::error::pkg-config cannot resolve opusfile"; exit 1; }
+          echo "opus $(pkg-config --modversion opus) / opusfile $(pkg-config --modversion opusfile)"
+
       - name: Build, vet and test gateway
         working-directory: voice-gateway
+        env:
+          CGO_ENABLED: "1"
         run: |
           set -euo pipefail
           go build ./...
           go vet ./...
           go test ./...
+
 
       - name: Install flyctl (latest stable)
         uses: superfly/flyctl-actions/setup-flyctl@master
