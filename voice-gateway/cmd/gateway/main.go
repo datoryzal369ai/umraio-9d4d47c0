@@ -2,8 +2,9 @@
 //
 // It terminates WebRTC/ICE/DTLS-SRTP/RTP/Opus for inbound WhatsApp calls and
 // reports media lifecycle to the UMRAIO control plane over signed HTTP.
-// It holds no Meta, Supabase, ASR or TTS credentials and makes no business
-// decisions. It never asserts that a call was answered — only that media is
+// It holds no Meta, Supabase or ASR credentials and makes no business
+// decisions. Its ONLY provider credential is MINIMAX_TTS_API_KEY, because
+// Opus encoding is impossible in the serverless control plane. It never asserts that a call was answered — only that media is
 // genuinely flowing.
 package main
 
@@ -27,6 +28,7 @@ import (
 	"github.com/umraio/voice-gateway/internal/health"
 	umedia "github.com/umraio/voice-gateway/internal/media"
 	"github.com/umraio/voice-gateway/internal/session"
+	"github.com/umraio/voice-gateway/internal/tts"
 	gwrtc "github.com/umraio/voice-gateway/internal/webrtc"
 )
 
@@ -86,9 +88,20 @@ func main() {
 	}
 
 	registry := session.NewRegistry(cfg.MaxConcurrent)
-	// Phase 3: real conversation loop. ASR, reasoning and TTS stay in the
-	// control plane; the gateway only segments, ships and plays audio.
+	// Phase 3: real conversation loop. ASR and reasoning stay in the control
+	// plane. SPEECH lives here: the serverless Worker cannot compile an Opus
+	// encoder, so MiniMax synthesis + libopus encoding run next to the RTP
+	// sender. MINIMAX_TTS_API_KEY is the ONLY provider credential this plane
+	// is allowed to hold; every other credential stays forbidden.
 	turns := callback.NewTurnClient(cfg.BackendURL, cfg.Secret, 20*time.Second)
+	var speaker *tts.Speaker
+	if ttsCfg, ok := tts.EnvConfig(); ok {
+		speaker = tts.NewSpeaker(ttsCfg, logger)
+	}
+	logger.Info("tts_capability",
+		"configured", speaker != nil,
+		"encoder", tts.EncoderAvailable(),
+		"model", tts.DefaultModel, "voice", tts.DefaultVoiceID)
 	srv := &api.Server{
 		Secret:   cfg.Secret,
 		Engine:   engine,
@@ -97,11 +110,16 @@ func main() {
 		Events:   callback.New(cfg.BackendURL, cfg.Secret, cfg.CallbackTimeout, cfg.CallbackRetryMax, cfg.CallbackRetryBase),
 		Logger:   logger,
 		NewPipeline: func(callID string) umedia.Pipeline {
-			return umedia.NewConversationPipeline(callID, turns, umedia.ConversationConfig{
+			p := umedia.NewConversationPipeline(callID, turns, umedia.ConversationConfig{
 				Greet: true,
 			}, logger)
+			if speaker != nil {
+				p = p.WithSynthesizer(speaker)
+			}
+			return p
 		},
 	}
+
 
 	var webrtcReady, draining atomic.Bool
 	webrtcReady.Store(true)
