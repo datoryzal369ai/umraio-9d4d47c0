@@ -30,7 +30,6 @@ export async function synthesizeCallSpeech(
   } = {},
 ): Promise<CallSpeechResult> {
   const synth = deps.synthesize ?? synthesizeSpeech;
-  const fallbackEngine = deps.fallbackEngine ?? openAiVoiceEngine;
   const callId = input.callId ?? "unknown";
   const request: VoiceSynthesisRequest = {
     text: input.text,
@@ -56,6 +55,13 @@ export async function synthesizeCallSpeech(
   );
 
   // Exactly ONE fallback attempt, through the already-supported OpenAI engine.
+  // Resolved lazily so a missing/stubbed OpenAI engine can never break the
+  // primary path — it only affects the fallback attempt.
+  const fallbackEngine = deps.fallbackEngine ?? openAiVoiceEngine;
+  if (!fallbackEngine) {
+    console.log(`[calls] voice_turn_tts_failed call_id=${callId} reason=${primaryReason} fallback=unavailable`);
+    return { ok: false, reason: primaryReason };
+  }
   const fallback = await synth({ ...request, engine: fallbackEngine });
   if (fallback.ok && isOggOpusAudio(fallback.mimeType, fallback.bytes)) {
     console.log(
