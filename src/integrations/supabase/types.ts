@@ -2114,14 +2114,19 @@ export type Database = {
           answer_requested_at: string | null
           answered_at: string | null
           call_id: string
+          call_summary: string | null
           callback_nonces: string[]
           caller_phone: string
+          closing_state: string
+          conversation_id: string | null
           created_at: string
           detected_language: string | null
           direction: string
+          disclosure_spoken: boolean
           ended_at: string | null
           gateway_session_id: string | null
           id: string
+          lead_id: string | null
           media_negotiated_at: string | null
           media_ready_at: string | null
           meta_accepted_at: string | null
@@ -2135,6 +2140,7 @@ export type Database = {
           turn_count: number
           updated_at: string
           voice_intents: Json
+          voice_latency: Json
           voice_outcome: string | null
           voice_traveller_count: number | null
         }
@@ -2144,14 +2150,19 @@ export type Database = {
           answer_requested_at?: string | null
           answered_at?: string | null
           call_id: string
+          call_summary?: string | null
           callback_nonces?: string[]
           caller_phone: string
+          closing_state?: string
+          conversation_id?: string | null
           created_at?: string
           detected_language?: string | null
           direction?: string
+          disclosure_spoken?: boolean
           ended_at?: string | null
           gateway_session_id?: string | null
           id?: string
+          lead_id?: string | null
           media_negotiated_at?: string | null
           media_ready_at?: string | null
           meta_accepted_at?: string | null
@@ -2165,6 +2176,7 @@ export type Database = {
           turn_count?: number
           updated_at?: string
           voice_intents?: Json
+          voice_latency?: Json
           voice_outcome?: string | null
           voice_traveller_count?: number | null
         }
@@ -2174,14 +2186,19 @@ export type Database = {
           answer_requested_at?: string | null
           answered_at?: string | null
           call_id?: string
+          call_summary?: string | null
           callback_nonces?: string[]
           caller_phone?: string
+          closing_state?: string
+          conversation_id?: string | null
           created_at?: string
           detected_language?: string | null
           direction?: string
+          disclosure_spoken?: boolean
           ended_at?: string | null
           gateway_session_id?: string | null
           id?: string
+          lead_id?: string | null
           media_negotiated_at?: string | null
           media_ready_at?: string | null
           meta_accepted_at?: string | null
@@ -2195,6 +2212,7 @@ export type Database = {
           turn_count?: number
           updated_at?: string
           voice_intents?: Json
+          voice_latency?: Json
           voice_outcome?: string | null
           voice_traveller_count?: number | null
         }

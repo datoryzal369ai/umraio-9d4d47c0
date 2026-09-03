@@ -56,7 +56,13 @@ export type VoiceTurnSessionRow = {
   turn_count: number | null;
   detected_language: string | null;
   voice_intents: unknown;
+  lead_id?: string | null;
+  conversation_id?: string | null;
+  closing_state?: string | null;
+  disclosure_spoken?: boolean | null;
+  voice_latency?: unknown;
 };
+
 
 export type TurnGate =
   | { allow: true }
