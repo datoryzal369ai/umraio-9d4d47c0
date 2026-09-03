@@ -4,25 +4,65 @@ import { createFileRoute } from "@tanstack/react-router";
  * TEMPORARY — one-shot infrastructure operation (deleted immediately after use).
  *
  * Allocates a public IPv6 for the existing Fly.io app umraio-voice-gateway
- * using the FLY_API_TOKEN env secret, verifies app state, and returns a
- * sanitized report. The token is read only from the environment and is never
- * logged, returned, or persisted.
+ * using the FLY_API_TOKEN env secret (Fly GraphQL API — the same API flyctl
+ * `ips allocate-v6` uses), verifies app state, and returns a sanitized report.
+ * The token is read only from the environment and is never logged, returned,
+ * or persisted.
  *
  * Caller verification: a valid platform-owner Supabase bearer token.
  */
 
+const FLY_GQL = "https://api.fly.io/graphql";
 const FLY_API = "https://api.machines.dev/v1";
 const APP = "umraio-voice-gateway";
 
-function fly(token: string, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${FLY_API}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+async function gql(
+  token: string,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(FLY_GQL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
   });
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text.slice(0, 300);
+  }
+  return { status: res.status, body };
+}
+
+const LIST_QUERY = `query($name: String!) {
+  app(name: $name) {
+    name
+    ipAddresses { nodes { id address type region createdAt } }
+  }
+}`;
+
+const ALLOCATE_V6 = `mutation($input: AllocateIPAddressInput!) {
+  allocateIpAddress(input: $input) {
+    ipAddress { id address type region }
+    clientMutationId
+  }
+}`;
+
+type IpNode = { id?: string; address?: string; type?: string; region?: string };
+
+function extractIps(body: unknown): IpNode[] {
+  const b = body as {
+    data?: { app?: { ipAddresses?: { nodes?: IpNode[] } } };
+    errors?: Array<{ message?: string }>;
+  } | null;
+  return b?.data?.app?.ipAddresses?.nodes ?? [];
+}
+
+function extractErrors(body: unknown): string[] {
+  const b = body as { errors?: Array<{ message?: string }> } | null;
+  return (b?.errors ?? []).map((e) => String(e.message ?? "unknown")).slice(0, 3);
 }
 
 export const Route = createFileRoute("/api/public/tmp/fly-ipv6")({
@@ -55,52 +95,41 @@ export const Route = createFileRoute("/api/public/tmp/fly-ipv6")({
         const report: Record<string, unknown> = { ok: true, steps: [] as string[] };
         const steps = report["steps"] as string[];
 
-        // 0) App visibility probe (distinguishes 404 causes)
-        const appProbe = await fly(token, `/apps/${APP}`);
-        report["app_probe_status"] = appProbe.status;
-        if (appProbe.ok) {
-          const a = (await appProbe.json()) as Record<string, unknown>;
-          report["app"] = { name: a["name"], status: a["status"], network: a["network"] };
-        }
-
-        // 1) Current IPs
-        const listBefore = await fly(token, `/apps/${APP}/ips`);
-        if (!listBefore.ok) {
-          const detail = await listBefore.text().catch(() => "");
+        // 1) List current IPs (GraphQL — same call as `fly ips list`)
+        const before = await gql(token, LIST_QUERY, { name: APP });
+        if (before.status !== 200) {
           return Response.json(
-            {
-              ok: false,
-              error: `list_ips_http_${listBefore.status}`,
-              detail: detail.slice(0, 300),
-              app_probe_status: report["app_probe_status"],
-            },
+            { ok: false, error: `fly_gql_http_${before.status}` },
             { status: 502 },
           );
         }
-        const before = (await listBefore.json()) as Array<Record<string, unknown>>;
-        report["ips_before"] = before.map((i) => ({
-          id: i["id"],
-          type: i["type"],
-          address: i["address"],
-          region: i["region"],
-        }));
+        const beforeErrs = extractErrors(before.body);
+        if (beforeErrs.length > 0) {
+          return Response.json(
+            { ok: false, error: "fly_gql_error", detail: beforeErrs },
+            { status: 502 },
+          );
+        }
+        const ipsBefore = extractIps(before.body);
+        report["ips_before"] = ipsBefore;
 
-        const hasV6 = before.some((i) => String(i["type"]).toLowerCase().includes("v6"));
+        const hasV6 = ipsBefore.some((i) =>
+          String(i.type ?? "").toLowerCase().includes("v6"),
+        );
 
         // 2) Allocate public IPv6 if absent (idempotent)
         if (!hasV6) {
-          const alloc = await fly(token, `/apps/${APP}/ips`, {
-            method: "POST",
-            body: JSON.stringify({ type: "v6" }),
+          const alloc = await gql(token, ALLOCATE_V6, {
+            input: { appId: APP, type: "v6" },
           });
-          if (!alloc.ok) {
-            const body = await alloc.text().catch(() => "");
+          const allocErrs = extractErrors(alloc.body);
+          if (alloc.status !== 200 || allocErrs.length > 0) {
             return Response.json(
               {
                 ok: false,
-                error: `allocate_v6_http_${alloc.status}`,
-                detail: body.slice(0, 300),
-                ips_before: report["ips_before"],
+                error: allocErrs.length > 0 ? "fly_allocate_error" : `fly_gql_http_${alloc.status}`,
+                detail: allocErrs,
+                ips_before: ipsBefore,
               },
               { status: 502 },
             );
@@ -111,19 +140,14 @@ export const Route = createFileRoute("/api/public/tmp/fly-ipv6")({
         }
 
         // 3) Verify: list IPs after
-        const listAfter = await fly(token, `/apps/${APP}/ips`);
-        const after = listAfter.ok
-          ? ((await listAfter.json()) as Array<Record<string, unknown>>)
-          : [];
-        report["ips_after"] = after.map((i) => ({
-          id: i["id"],
-          type: i["type"],
-          address: i["address"],
-          region: i["region"],
-        }));
+        const after = await gql(token, LIST_QUERY, { name: APP });
+        report["ips_after"] = extractIps(after.body);
 
-        // 4) Verify machines/region
-        const machines = await fly(token, `/apps/${APP}/machines`);
+        // 4) Machines/region via Machines API (best effort)
+        const machines = await fetch(`${FLY_API}/apps/${APP}/machines`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        report["machines_status"] = machines.status;
         if (machines.ok) {
           const list = (await machines.json()) as Array<Record<string, unknown>>;
           report["machines"] = list.map((m) => ({
