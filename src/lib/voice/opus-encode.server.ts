@@ -59,6 +59,23 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
+/**
+ * STARTUP COMPILATION — the serverless Worker runtime forbids compiling
+ * WebAssembly from a buffer while handling a request ("wasm code generation
+ * disallowed"), which is exactly why the live call logged
+ * `minimax_opus_encode_failed reason=wasm_unavailable`. Compiling at module
+ * evaluation is permitted, and instantiating an ALREADY compiled module is
+ * permitted at any time — so the module is built once, here.
+ */
+let compiledModule: WebAssembly.Module | null = null;
+try {
+  compiledModule = new WebAssembly.Module(base64ToBytes(OPUS_WASM_BASE64));
+} catch (error) {
+  compiledModule = null;
+  console.error(
+    `[voice] opus_wasm_compile_failed stage=startup reason=${(error as Error)?.name ?? "unknown"}`,
+  );
+}
 
 /**
  * WASI/env stubs required by the embedded libopus build. None of these
@@ -76,12 +93,34 @@ const OPUS_IMPORTS: WebAssembly.Imports = {
 
 async function loadOpusExports(): Promise<OpusExports | null> {
   try {
+    // Preferred: instantiate the module compiled at startup (Worker-safe).
+    if (compiledModule) {
+      const instance = new WebAssembly.Instance(compiledModule, OPUS_IMPORTS);
+      const exports = instance.exports as unknown as OpusExports & { _initialize?: () => void };
+      // WASI reactor builds initialise their heap here; absent on plain builds.
+      try {
+        exports._initialize?.();
+      } catch {
+        /* already initialised */
+      }
+      return exports;
+    }
+    // Fallback for runtimes that allow runtime compilation (dev/node/tests).
     const { instance } = await WebAssembly.instantiate(
       base64ToBytes(OPUS_WASM_BASE64),
       OPUS_IMPORTS,
     );
-    return instance.exports as unknown as OpusExports;
-  } catch {
+    const exports = instance.exports as unknown as OpusExports & { _initialize?: () => void };
+    try {
+      exports._initialize?.();
+    } catch {
+      /* already initialised */
+    }
+    return exports;
+  } catch (error) {
+    console.error(
+      `[voice] opus_wasm_instantiate_failed reason=${(error as Error)?.name ?? "unknown"}`,
+    );
     return null;
   }
 }

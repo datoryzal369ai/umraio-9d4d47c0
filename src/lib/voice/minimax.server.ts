@@ -265,7 +265,7 @@ async function requestMinimaxAudio(
  */
 export const minimaxVoiceEngine: VoiceEngine = {
   name: "minimax",
-  async synthesize({ text, voice, language }): Promise<TtsResult> {
+  async synthesize({ text, voice, language, requireOggOpus }): Promise<TtsResult> {
     const config = resolveMinimaxConfig();
     if (!config) {
       console.error("[voice] tts_failed engine=minimax category=config");
@@ -305,7 +305,9 @@ export const minimaxVoiceEngine: VoiceEngine = {
         },
       });
 
-    if (resolveMinimaxContainer() === "ogg_opus") {
+    // WhatsApp Calling can transmit nothing but OGG/Opus, so it always takes
+    // the PCM→Opus path regardless of the WhatsApp-message container flag.
+    if (requireOggOpus || resolveMinimaxContainer() === "ogg_opus") {
       const pcm = await requestMinimaxAudio(config, requestBody("pcm"));
       if (pcm.ok) {
         const { encodePcmToOggOpus } = await import("./opus-encode.server");
@@ -319,9 +321,17 @@ export const minimaxVoiceEngine: VoiceEngine = {
           };
         }
         // The PCM call already succeeded — the ONLY retry is the MP3 container.
-        console.error(`[voice] minimax_opus_encode_failed reason=${encoded.reason} fallback=mp3`);
+        console.error(
+          `[voice] minimax_opus_encode_failed reason=${encoded.reason} fallback=${requireOggOpus ? "none" : "mp3"}`,
+        );
+        // A live call cannot use MP3: retrying it only adds seconds of latency
+        // before the caller-audible fallback engine runs.
+        if (requireOggOpus) return { ok: false, kind: "invalid_audio", engine: "minimax" };
       } else {
-        console.error(`[voice] minimax_pcm_failed kind=${pcm.kind} fallback=mp3`);
+        console.error(
+          `[voice] minimax_pcm_failed kind=${pcm.kind} fallback=${requireOggOpus ? "none" : "mp3"}`,
+        );
+        if (requireOggOpus) return { ok: false, kind: pcm.kind, engine: "minimax" };
       }
     }
 

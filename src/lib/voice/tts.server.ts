@@ -55,6 +55,12 @@ export type VoiceSynthesisRequest = {
    * it. Missing/unknown → the engine's default (Malay).
    */
   language?: string;
+  /**
+   * WhatsApp CALLING only: the realtime media path can transmit nothing but
+   * OGG/Opus, so an engine must not spend seconds producing a container that
+   * will be discarded. Engines that cannot honour it fail fast instead.
+   */
+  requireOggOpus?: boolean;
 };
 
 export type VoiceEngine = {
@@ -407,6 +413,7 @@ export async function synthesizeSpeech(
       ...(typeof input.speed === "number" ? { speed: input.speed } : {}),
       ...(input.instructions ? { instructions: input.instructions } : {}),
       ...(input.language ? { language: input.language } : {}),
+      ...(input.requireOggOpus ? { requireOggOpus: true } : {}),
     });
     const latency = Date.now() - started;
     if (result.ok) {
