@@ -57,6 +57,10 @@ func (h *Handler) write(w http.ResponseWriter, code int) {
 	if h.ActiveSessions != nil {
 		r.ActiveSessions = h.ActiveSessions()
 	}
+	r.Speech = "down"
+	if h.SpeechReady != nil && h.SpeechReady() {
+		r.Speech = "up"
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(r)
