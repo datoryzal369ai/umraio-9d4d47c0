@@ -75,16 +75,33 @@ export type MinimaxConfig = {
   voiceId: string;
 };
 
-/** Null when the POC is not configured — the caller then fails over cleanly. */
+/**
+ * CANONICAL RAIŌ VOICE LOCK — model and voice identity are constants for every
+ * channel (WhatsApp text-to-voice notes and live calls). MINIMAX_TTS_MODEL /
+ * MINIMAX_TTS_VOICE_ID are IGNORED: one RAIŌ, one voice identity. A non
+ * canonical override is reported as a non-secret diagnostic only.
+ *
+ * Null when the POC is not configured — the caller then fails over cleanly.
+ */
 export function resolveMinimaxConfig(): MinimaxConfig | null {
   const apiKey = env("MINIMAX_TTS_API_KEY") ?? env("MINIMAX_API_KEY");
   if (!apiKey) return null;
+  const modelOverride = env("MINIMAX_TTS_MODEL");
+  const voiceOverride = env("MINIMAX_TTS_VOICE_ID");
+  if (
+    (modelOverride && modelOverride !== MINIMAX_DEFAULT_MODEL) ||
+    (voiceOverride && voiceOverride !== MINIMAX_DEFAULT_VOICE_ID)
+  ) {
+    console.error(
+      `[voice] minimax_identity_override_ignored model=${modelOverride ?? "-"} voice=${voiceOverride ?? "-"} canonical=${MINIMAX_DEFAULT_MODEL}/${MINIMAX_DEFAULT_VOICE_ID}`,
+    );
+  }
   return {
     baseUrl: (env("MINIMAX_BASE_URL") ?? MINIMAX_DEFAULT_BASE_URL).replace(/\/+$/, ""),
     apiKey,
     groupId: env("MINIMAX_GROUP_ID") ?? null,
-    model: env("MINIMAX_TTS_MODEL") ?? MINIMAX_DEFAULT_MODEL,
-    voiceId: env("MINIMAX_TTS_VOICE_ID") ?? MINIMAX_DEFAULT_VOICE_ID,
+    model: MINIMAX_DEFAULT_MODEL,
+    voiceId: MINIMAX_DEFAULT_VOICE_ID,
   };
 }
 
