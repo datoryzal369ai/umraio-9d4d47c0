@@ -195,9 +195,16 @@ func (e *Engine) Establish(
 		case pion.PeerConnectionStateFailed:
 			_ = s.Advance(session.StateFailed, "ice_failed", time.Now())
 			ms.Terminate("ice_failed")
-		case pion.PeerConnectionStateDisconnected, pion.PeerConnectionStateClosed:
-			ms.Terminate("peer_disconnected")
+		case pion.PeerConnectionStateDisconnected:
+			// RECOVERABLE: ICE may re-establish after a transient network blip.
+			// Terminating here kills otherwise healthy calls. Only Failed/Closed
+			// are terminal.
+			log.Warn("peer connection disconnected (recoverable)",
+				"call_id", s.CallID, "session_id", s.ID)
+		case pion.PeerConnectionStateClosed:
+			ms.Terminate("peer_closed")
 		}
+
 	})
 
 	pc.OnICEConnectionStateChange(func(st pion.ICEConnectionState) {
