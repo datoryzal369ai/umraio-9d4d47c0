@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 import {
   buildAgencySummaries,
+  buildChannelActivity,
   buildAgencyUsers,
   buildPlatformStats,
   isUuid,
@@ -16,6 +17,10 @@ import {
   type HqLoginEventRow,
   type HqProfileRow,
   type HqRoleRow,
+  type HqMessageRow,
+  type HqConversationRow,
+  type HqLeadRow,
+  type HqCallSessionRow,
 } from "./hq.core";
 
 /**
@@ -199,5 +204,73 @@ export const getHqPlatform = createServerFn({ method: "GET" })
         entityId: a.entity_id,
       })),
       security: HQ_SECURITY_CHECKS,
+    };
+  });
+
+/**
+ * Founder HQ Channel Activity v1 — read-only unified feed across WhatsApp
+ * text, voice notes and live calls. Consumes existing production telemetry
+ * only; nothing here writes. Platform owner only.
+ */
+export const getHqChannelActivity = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    await assertPlatformOwner(supabase as never, userId);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const [messagesRes, callsRes, agenciesRes] = await Promise.all([
+      supabaseAdmin
+        .from("messages")
+        .select("id, agency_id, conversation_id, sender, modality, delivery_status, created_at")
+        .order("created_at", { ascending: false })
+        .limit(200),
+      supabaseAdmin
+        .from("whatsapp_call_sessions")
+        .select(
+          "id, agency_id, lead_id, caller_phone, direction, status, termination_reason, received_at, answered_at, ended_at, turn_count",
+        )
+        .order("received_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin.from("agencies").select("id, name").limit(500),
+    ]);
+
+    const messages = (messagesRes.data ?? []) as HqMessageRow[];
+    const calls = (callsRes.data ?? []) as HqCallSessionRow[];
+
+    const conversationIds = [...new Set(messages.map((m) => m.conversation_id))];
+    const convRes = conversationIds.length
+      ? await supabaseAdmin
+          .from("conversations")
+          .select("id, lead_id, channel, human_attention_required")
+          .in("id", conversationIds)
+      : { data: [] as HqConversationRow[] };
+
+    const conversations = (convRes.data ?? []) as HqConversationRow[];
+    const leadIds = [
+      ...new Set(
+        [...conversations.map((c) => c.lead_id), ...calls.map((c) => c.lead_id)].filter(
+          Boolean,
+        ) as string[],
+      ),
+    ];
+    const leadsRes = leadIds.length
+      ? await supabaseAdmin.from("leads").select("id, full_name, phone, do_not_contact").in("id", leadIds)
+      : { data: [] as HqLeadRow[] };
+
+    const agencyNames = new Map(
+      ((agenciesRes.data ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]),
+    );
+
+    return {
+      items: buildChannelActivity({
+        messages,
+        conversations,
+        calls,
+        leads: (leadsRes.data ?? []) as HqLeadRow[],
+        agencyNames,
+        limit: 200,
+      }),
     };
   });
