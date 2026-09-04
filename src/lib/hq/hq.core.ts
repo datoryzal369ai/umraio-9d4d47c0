@@ -186,8 +186,7 @@ export function buildPlatformStats(
     totalUsers: profiles.length,
     activeAgencies: agencies.filter((a) => activeAgencyIds.has(a.id)).length,
     trialAgencies: agencies.filter((a) => (a.plan ?? "").toLowerCase() === "trial").length,
-    activeSubscriptions: agencies.filter((a) => paidPlans.has((a.plan ?? "").toLowerCase()))
-      .length,
+    activeSubscriptions: agencies.filter((a) => paidPlans.has((a.plan ?? "").toLowerCase())).length,
     recentlyActiveUsers: profiles.filter(
       (p) => p.last_seen_at && new Date(p.last_seen_at).getTime() >= since,
     ).length,
@@ -263,3 +262,197 @@ export const HQ_SECURITY_CHECKS: HqSecurityCheck[] = [
     status: "audited",
   },
 ];
+
+/* ── Founder HQ Channel Activity v1 ───────────────────────────────────── */
+
+export type HqChannel = "WHATSAPP_TEXT" | "VOICE_NOTE" | "LIVE_CALL";
+export type HqInteractionStatus =
+  "SUCCESS" | "FAILED" | "PARTIAL" | "PENDING" | "BLOCKED" | "HUMAN_REQUIRED" | "UNKNOWN";
+
+export type HqChannelActivityItem = {
+  id: string;
+  occurredAt: string;
+  channel: HqChannel;
+  direction: "inbound" | "outbound" | "unknown";
+  agencyId: string | null;
+  agencyName: string;
+  contactPhone: string;
+  contactName: string;
+  leadId: string | null;
+  interactionStatus: HqInteractionStatus;
+  /** Metadata-only description. Never a customer message body. */
+  summary: string;
+  sourceType: "message" | "call_session";
+  sourceId: string;
+};
+
+export type HqMessageRow = {
+  id: string;
+  agency_id: string;
+  conversation_id: string;
+  sender: string;
+  modality: string | null;
+  delivery_status: string | null;
+  created_at: string;
+};
+
+export type HqConversationRow = {
+  id: string;
+  lead_id: string | null;
+  channel: string | null;
+  human_attention_required: boolean | null;
+};
+
+export type HqLeadRow = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  do_not_contact: boolean | null;
+};
+
+export type HqCallSessionRow = {
+  id: string;
+  agency_id: string;
+  lead_id: string | null;
+  caller_phone: string | null;
+  direction: string | null;
+  status: string | null;
+  termination_reason: string | null;
+  received_at: string;
+  answered_at: string | null;
+  ended_at: string | null;
+  turn_count: number | null;
+};
+
+const UNKNOWN_LABEL = "Unresolved";
+
+/** Only the last 4 digits of a customer phone are ever shown in Founder HQ. */
+export function maskPhone(phone: string | null | undefined): string {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  if (!digits) return UNKNOWN_LABEL;
+  if (digits.length <= 4) return `••${digits.slice(-2)}`;
+  return `••••${digits.slice(-4)}`;
+}
+
+export function normalizeMessageChannel(modality: string | null | undefined): HqChannel | null {
+  if (modality === "audio") return "VOICE_NOTE";
+  if (!modality || modality === "text") return "WHATSAPP_TEXT";
+  // image / document / unsupported / call_summary are out of scope for Phase 1.
+  return null;
+}
+
+export function normalizeMessageStatus(
+  deliveryStatus: string | null | undefined,
+  humanAttentionRequired: boolean | null | undefined,
+): HqInteractionStatus {
+  if (humanAttentionRequired) return "HUMAN_REQUIRED";
+  switch (deliveryStatus) {
+    case "read":
+    case "delivered":
+    case "sent":
+      return "SUCCESS";
+    case "failed":
+      return "FAILED";
+    case "pending":
+    case "queued":
+      return "PENDING";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+export function normalizeCallStatus(row: {
+  status: string | null | undefined;
+  termination_reason: string | null | undefined;
+  answered_at: string | null | undefined;
+}): HqInteractionStatus {
+  const status = row.status ?? "";
+  if (status === "failed") return "FAILED";
+  if (status === "terminated") {
+    if (row.termination_reason === "completed") return row.answered_at ? "SUCCESS" : "PARTIAL";
+    if (!row.answered_at) return "FAILED";
+    return "PARTIAL";
+  }
+  if (status === "answered") return row.answered_at ? "PARTIAL" : "PENDING";
+  if (status === "ringing" || status === "connecting" || status === "received") return "PENDING";
+  return "UNKNOWN";
+}
+
+function messageDirection(sender: string): HqChannelActivityItem["direction"] {
+  if (sender === "customer") return "inbound";
+  if (sender === "ai" || sender === "human") return "outbound";
+  return "unknown";
+}
+
+/** Metadata-only summaries. Message bodies are never surfaced. */
+function messageSummary(sender: string, channel: HqChannel): string {
+  const who = sender === "customer" ? "Customer" : sender === "ai" ? "RAIŌ" : "Agent";
+  return channel === "VOICE_NOTE" ? `${who} voice note` : `${who} WhatsApp message`;
+}
+
+export function buildChannelActivity(input: {
+  messages: HqMessageRow[];
+  conversations: HqConversationRow[];
+  calls: HqCallSessionRow[];
+  leads: HqLeadRow[];
+  agencyNames: Map<string, string>;
+  limit?: number;
+}): HqChannelActivityItem[] {
+  const convById = new Map(input.conversations.map((c) => [c.id, c]));
+  const leadById = new Map(input.leads.map((l) => [l.id, l]));
+  const agencyName = (id: string | null) =>
+    (id ? input.agencyNames.get(id) : null) ?? UNKNOWN_LABEL;
+
+  const items: HqChannelActivityItem[] = [];
+
+  for (const m of input.messages) {
+    const channel = normalizeMessageChannel(m.modality);
+    if (!channel) continue;
+    const conv = convById.get(m.conversation_id) ?? null;
+    const lead = conv?.lead_id ? (leadById.get(conv.lead_id) ?? null) : null;
+    const blocked = lead?.do_not_contact === true && m.sender !== "customer";
+    items.push({
+      id: `msg:${m.id}`,
+      occurredAt: m.created_at,
+      channel,
+      direction: messageDirection(m.sender),
+      agencyId: m.agency_id,
+      agencyName: agencyName(m.agency_id),
+      contactPhone: maskPhone(lead?.phone),
+      contactName: lead?.full_name?.trim() || UNKNOWN_LABEL,
+      leadId: lead?.id ?? null,
+      interactionStatus: blocked
+        ? "BLOCKED"
+        : normalizeMessageStatus(m.delivery_status, conv?.human_attention_required),
+      summary: messageSummary(m.sender, channel),
+      sourceType: "message",
+      sourceId: m.id,
+    });
+  }
+
+  for (const c of input.calls) {
+    const lead = c.lead_id ? (leadById.get(c.lead_id) ?? null) : null;
+    const turns = c.turn_count ?? 0;
+    items.push({
+      id: `call:${c.id}`,
+      occurredAt: c.received_at,
+      channel: "LIVE_CALL",
+      direction: c.direction === "inbound" || c.direction === "outbound" ? c.direction : "unknown",
+      agencyId: c.agency_id,
+      agencyName: agencyName(c.agency_id),
+      contactPhone: maskPhone(c.caller_phone ?? lead?.phone),
+      contactName: lead?.full_name?.trim() || UNKNOWN_LABEL,
+      leadId: lead?.id ?? null,
+      interactionStatus: normalizeCallStatus(c),
+      summary: `Live call · ${turns} turn${turns === 1 ? "" : "s"}${
+        c.termination_reason ? ` · ${c.termination_reason}` : ""
+      }`,
+      sourceType: "call_session",
+      sourceId: c.id,
+    });
+  }
+
+  return items
+    .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+    .slice(0, input.limit ?? 200);
+}

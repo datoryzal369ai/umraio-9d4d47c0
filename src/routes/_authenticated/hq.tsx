@@ -10,6 +10,9 @@ import {
   Users,
   Gauge,
   ScrollText,
+  MessageSquare,
+  Mic,
+  PhoneCall,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/PageHeader";
@@ -19,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getHqAgencyDetail, getHqPlatform } from "@/lib/hq/hq.functions";
+import { getHqAgencyDetail, getHqChannelActivity, getHqPlatform } from "@/lib/hq/hq.functions";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/hq")({
@@ -74,6 +77,11 @@ function HqPage() {
   const [userFilter, setUserFilter] = useState("");
   const fetchPlatform = useServerFn(getHqPlatform);
   const fetchDetail = useServerFn(getHqAgencyDetail);
+  const fetchChannels = useServerFn(getHqChannelActivity);
+  const [channelFilter, setChannelFilter] = useState<
+    "ALL" | "WHATSAPP_TEXT" | "VOICE_NOTE" | "LIVE_CALL"
+  >("ALL");
+  const [channelSearch, setChannelSearch] = useState("");
 
   const platform = useQuery({
     queryKey: ["hq-platform"],
@@ -88,17 +96,33 @@ function HqPage() {
     retry: false,
   });
 
+  const channels = useQuery({
+    queryKey: ["hq-channel-activity"],
+    queryFn: () => fetchChannels(),
+    retry: false,
+  });
+
   const data = platform.data;
+
+  const channelItems = useMemo(() => {
+    const list = channels.data?.items ?? [];
+    const q = channelSearch.trim().toLowerCase();
+    return list.filter((i) => {
+      if (channelFilter !== "ALL" && i.channel !== channelFilter) return false;
+      if (!q) return true;
+      return [i.agencyName, i.contactName, i.contactPhone, i.interactionStatus, i.summary]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [channels.data?.items, channelFilter, channelSearch]);
 
   const filteredUsers = useMemo(() => {
     const q = userFilter.trim().toLowerCase();
     const list = data?.users ?? [];
     if (!q) return list;
     return list.filter((u) =>
-      [u.name, u.email ?? "", u.agencyName, u.roles.join(" ")]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
+      [u.name, u.email ?? "", u.agencyName, u.roles.join(" ")].join(" ").toLowerCase().includes(q),
     );
   }, [data?.users, userFilter]);
 
@@ -138,18 +162,37 @@ function HqPage() {
       ) : (
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="flex w-full flex-nowrap justify-start gap-2 overflow-x-auto px-1 py-1 sm:flex-wrap sm:gap-1 sm:overflow-visible">
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="overview">Overview</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="agencies">Agencies</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="users">Users</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="logins">Login activity</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="audit">Activity audit</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="security">Security</TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="overview">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="agencies">
+              Agencies
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="users">
+              Users
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="channels">
+              Channel activity
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="logins">
+              Login activity
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="audit">
+              Activity audit
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="security">
+              Security
+            </TabsTrigger>
           </TabsList>
 
           {/* ── OVERVIEW ─────────────────────────────────────────────── */}
           <TabsContent value="overview" className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard icon={Building2} label="Total agencies" value={String(data.stats.totalAgencies)} />
+              <KpiCard
+                icon={Building2}
+                label="Total agencies"
+                value={String(data.stats.totalAgencies)}
+              />
               <KpiCard icon={Users} label="Total users" value={String(data.stats.totalUsers)} />
               <KpiCard
                 icon={Gauge}
@@ -157,7 +200,11 @@ function HqPage() {
                 value={String(data.stats.activeAgencies)}
                 hint="Presence in the last 7 days"
               />
-              <KpiCard icon={Building2} label="Trial agencies" value={String(data.stats.trialAgencies)} />
+              <KpiCard
+                icon={Building2}
+                label="Trial agencies"
+                value={String(data.stats.trialAgencies)}
+              />
               <KpiCard
                 icon={KeyRound}
                 label="Active subscriptions"
@@ -198,7 +245,10 @@ function HqPage() {
                   {data.agencies.map((a) => (
                     <tr
                       key={a.id}
-                      className={cn("border-t border-border/60", selected === a.id && "bg-muted/40")}
+                      className={cn(
+                        "border-t border-border/60",
+                        selected === a.id && "bg-muted/40",
+                      )}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 font-medium">
@@ -347,6 +397,120 @@ function HqPage() {
                 </tbody>
               </table>
             </Panel>
+          </TabsContent>
+
+          {/* ── CHANNEL ACTIVITY ─────────────────────────────────────── */}
+          <TabsContent value="channels" className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Read-only unified feed of WhatsApp text, voice notes and live calls across all
+              agencies. Metadata only — customer message content is never shown and phone numbers
+              are masked.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["ALL", "All channels"],
+                    ["WHATSAPP_TEXT", "WhatsApp text"],
+                    ["VOICE_NOTE", "Voice note"],
+                    ["LIVE_CALL", "Live calling"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    size="sm"
+                    variant={channelFilter === value ? "secondary" : "outline"}
+                    onClick={() => setChannelFilter(value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              <Input
+                value={channelSearch}
+                onChange={(e) => setChannelSearch(e.target.value)}
+                placeholder="Filter by agency, customer or status"
+                className="sm:max-w-xs"
+              />
+            </div>
+
+            {channels.isLoading ? (
+              <Skeleton className="h-56 w-full" />
+            ) : channels.isError ? (
+              <p className="text-sm text-muted-foreground">Channel activity is unavailable.</p>
+            ) : (
+              <Panel title={`Recent interactions (${channelItems.length})`}>
+                <table className="w-full min-w-[900px] text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3">Time</th>
+                      <th className="px-4 py-3">Channel</th>
+                      <th className="px-4 py-3">Agency</th>
+                      <th className="px-4 py-3">Customer</th>
+                      <th className="px-4 py-3">Direction</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Activity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {channelItems.map((i) => {
+                      const Icon =
+                        i.channel === "LIVE_CALL"
+                          ? PhoneCall
+                          : i.channel === "VOICE_NOTE"
+                            ? Mic
+                            : MessageSquare;
+                      return (
+                        <tr key={i.id} className="border-t border-border/60">
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {fmtDate(i.occurredAt)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="flex items-center gap-2">
+                              <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
+                              {i.channel === "WHATSAPP_TEXT"
+                                ? "WhatsApp text"
+                                : i.channel === "VOICE_NOTE"
+                                  ? "Voice note"
+                                  : "Live call"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">{i.agencyName}</td>
+                          <td className="px-4 py-3">
+                            <div className="font-medium">{i.contactName}</div>
+                            <p className="font-mono text-[11px] text-muted-foreground">
+                              {i.contactPhone}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{i.direction}</td>
+                          <td className="px-4 py-3">
+                            <Badge
+                              variant={
+                                i.interactionStatus === "SUCCESS"
+                                  ? "default"
+                                  : i.interactionStatus === "FAILED"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                            >
+                              {i.interactionStatus}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{i.summary}</td>
+                        </tr>
+                      );
+                    })}
+                    {channelItems.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
+                          No channel activity recorded yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </Panel>
+            )}
           </TabsContent>
 
           {/* ── LOGIN ACTIVITY ───────────────────────────────────────── */}
