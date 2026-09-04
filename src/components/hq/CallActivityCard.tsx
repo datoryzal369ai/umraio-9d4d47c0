@@ -4,7 +4,6 @@ import {
   Check,
   ChevronDown,
   Circle,
-  Clock3,
   Link2,
   MemoryStick,
   PhoneCall,
