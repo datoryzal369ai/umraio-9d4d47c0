@@ -356,3 +356,28 @@ func (p *ConversationPipeline) busyNow() bool {
 	defer p.mu.Unlock()
 	return p.busy
 }
+
+// Per-turn latency telemetry is observable in the media plane for a caller
+// utterance answered with control-plane OGG audio.
+func TestTurnTimingTelemetryRecorded(t *testing.T) {
+	client := &fakeTurns{reply: func(TurnRequest) (*TurnResponse, error) {
+		return &TurnResponse{ReplyOggBase64: oggReply(2)}, nil
+	}}
+	p, tr := newPipeline(t, client, fastCfg())
+	defer p.Close("test")
+
+	pushSpeech(p, 10)
+	pushSilence(p, 10)
+	waitFor(t, "reply playback", func() bool { return tr.count() > 0 })
+
+	timing := p.LastTiming()
+	if timing.AudioSource != "control_plane_ogg" {
+		t.Fatalf("audio_source = %q", timing.AudioSource)
+	}
+	if timing.VADFinalizeMs < 0 || timing.ControlPlaneMs < 0 {
+		t.Fatal("negative timing values")
+	}
+	if timing.PlaybackStartMs < 0 || timing.SpeechEndToFirstAudioMs < 0 {
+		t.Fatal("negative playback timing values")
+	}
+}

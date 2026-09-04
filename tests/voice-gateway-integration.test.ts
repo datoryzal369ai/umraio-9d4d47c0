@@ -626,6 +626,66 @@ describe("processGatewayCallback", () => {
     });
   });
 
+  it("terminates the WhatsApp call at Meta when the conversation completes naturally", async () => {
+    const { db } = makeDb({
+      config: { agency_id: AGENCY, access_token: "tenant-token" },
+      session: { ...baseSession, agency_id: AGENCY, phone_number_id: PHONE_ID, status: "answered" },
+    });
+    const calls: { url: string; body: any }[] = [];
+    const fetchImpl = (async (url: any, init: any) => {
+      calls.push({ url: String(url), body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const r = await processGatewayCallback({
+      db,
+      payload: { ...readyEvent, event: "media_terminated", nonce: "n9", reason: "conversation_complete" },
+      fetchImpl,
+    });
+    expect(r).toEqual({ applied: true, outcome: "terminated" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain(`/${PHONE_ID}/calls`);
+    expect(calls[0]!.body).toMatchObject({ action: "terminate", call_id: CALL_ID });
+    expect(calls[0]!.body.session).toBeUndefined();
+  });
+
+  it("does not terminate at Meta for a non-graceful media termination", async () => {
+    const { db } = makeDb({
+      config: { agency_id: AGENCY, access_token: "tenant-token" },
+      session: { ...baseSession, agency_id: AGENCY, phone_number_id: PHONE_ID, status: "answered" },
+    });
+    const calls: string[] = [];
+    const fetchImpl = (async (url: any) => {
+      calls.push(String(url));
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    const r = await processGatewayCallback({
+      db,
+      payload: { ...readyEvent, event: "media_terminated", nonce: "n8", reason: "caller_terminated" },
+      fetchImpl,
+    });
+    expect(r).toEqual({ applied: true, outcome: "terminated" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("is duplicate-safe: a replayed completion never terminates at Meta twice", async () => {
+    const { db } = makeDb({
+      config: { agency_id: AGENCY, access_token: "tenant-token" },
+      session: { ...baseSession, agency_id: AGENCY, phone_number_id: PHONE_ID, status: "answered" },
+    });
+    let n = 0;
+    const fetchImpl = (async () => {
+      n += 1;
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const payload = {
+      ...readyEvent, event: "media_terminated" as const, nonce: "n7", reason: "conversation_complete",
+    };
+    await processGatewayCallback({ db, payload, fetchImpl });
+    await processGatewayCallback({ db, payload, fetchImpl });
+    expect(n).toBe(1);
+  });
+
   it("does not log customer identifiers beyond the call id", async () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     const { db } = makeDb({ session: { ...baseSession } });

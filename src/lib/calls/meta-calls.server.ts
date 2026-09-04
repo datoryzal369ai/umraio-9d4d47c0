@@ -13,14 +13,15 @@ export type MetaAcceptResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-export type MetaCallAction = "pre_accept" | "accept";
+export type MetaCallAction = "pre_accept" | "accept" | "terminate";
 
 type MetaCallActionArgs = {
   action: MetaCallAction;
   phoneNumberId: string;
   accessToken: string;
   callId: string;
-  sdpAnswer: string;
+  /** Required for pre_accept/accept; unused (and omitted) for terminate. */
+  sdpAnswer?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -34,7 +35,8 @@ type MetaCallActionArgs = {
 export async function metaCallAction(args: MetaCallActionArgs): Promise<MetaAcceptResult> {
   const doFetch = args.fetchImpl ?? fetch;
   if (!args.accessToken) return { ok: false, reason: "meta_token_missing" };
-  if (!args.sdpAnswer?.trim()) return { ok: false, reason: "missing_sdp_answer" };
+  const isTerminate = args.action === "terminate";
+  if (!isTerminate && !args.sdpAnswer?.trim()) return { ok: false, reason: "missing_sdp_answer" };
 
   const timeoutSignal = AbortSignal.timeout(args.timeoutMs ?? 10_000);
   const signal =
@@ -54,7 +56,8 @@ export async function metaCallAction(args: MetaCallActionArgs): Promise<MetaAcce
         messaging_product: "whatsapp",
         call_id: args.callId,
         action: args.action,
-        session: { sdp_type: "answer", sdp: args.sdpAnswer },
+        // `terminate` carries no session: it is a pure control action.
+        ...(isTerminate ? {} : { session: { sdp_type: "answer", sdp: args.sdpAnswer } }),
       }),
       signal,
     });
@@ -84,4 +87,15 @@ export function metaPreAcceptCall(args: Omit<MetaCallActionArgs, "action">): Pro
 /** Final accept. Must carry the SAME SDP answer used for pre_accept. */
 export function metaAcceptCall(args: Omit<MetaCallActionArgs, "action">): Promise<MetaAcceptResult> {
   return metaCallAction({ ...args, action: "accept" });
+}
+
+/**
+ * Graceful hang-up. Sent when the conversation completes naturally so the
+ * WhatsApp call ends on Meta's side instead of lingering until a timeout.
+ * Best-effort by contract: a failure never changes persisted call truth.
+ */
+export function metaTerminateCall(
+  args: Omit<MetaCallActionArgs, "action" | "sdpAnswer">,
+): Promise<MetaAcceptResult> {
+  return metaCallAction({ ...args, action: "terminate" });
 }
