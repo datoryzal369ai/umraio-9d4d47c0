@@ -78,7 +78,9 @@ function HqPage() {
   const fetchPlatform = useServerFn(getHqPlatform);
   const fetchDetail = useServerFn(getHqAgencyDetail);
   const fetchChannels = useServerFn(getHqChannelActivity);
-  const [channelFilter, setChannelFilter] = useState<"ALL" | "WHATSAPP_TEXT" | "VOICE_NOTE" | "LIVE_CALL">("ALL");
+  const [channelFilter, setChannelFilter] = useState<
+    "ALL" | "WHATSAPP_TEXT" | "VOICE_NOTE" | "LIVE_CALL"
+  >("ALL");
   const [channelSearch, setChannelSearch] = useState("");
 
   const platform = useQuery({
@@ -120,10 +122,7 @@ function HqPage() {
     const list = data?.users ?? [];
     if (!q) return list;
     return list.filter((u) =>
-      [u.name, u.email ?? "", u.agencyName, u.roles.join(" ")]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
+      [u.name, u.email ?? "", u.agencyName, u.roles.join(" ")].join(" ").toLowerCase().includes(q),
     );
   }, [data?.users, userFilter]);
 
@@ -163,19 +162,37 @@ function HqPage() {
       ) : (
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="flex w-full flex-nowrap justify-start gap-2 overflow-x-auto px-1 py-1 sm:flex-wrap sm:gap-1 sm:overflow-visible">
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="overview">Overview</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="agencies">Agencies</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="users">Users</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="channels">Channel activity</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="logins">Login activity</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="audit">Activity audit</TabsTrigger>
-            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="security">Security</TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="overview">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="agencies">
+              Agencies
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="users">
+              Users
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="channels">
+              Channel activity
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="logins">
+              Login activity
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="audit">
+              Activity audit
+            </TabsTrigger>
+            <TabsTrigger className="shrink-0 px-4 py-2 sm:px-3 sm:py-1" value="security">
+              Security
+            </TabsTrigger>
           </TabsList>
 
           {/* ── OVERVIEW ─────────────────────────────────────────────── */}
           <TabsContent value="overview" className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard icon={Building2} label="Total agencies" value={String(data.stats.totalAgencies)} />
+              <KpiCard
+                icon={Building2}
+                label="Total agencies"
+                value={String(data.stats.totalAgencies)}
+              />
               <KpiCard icon={Users} label="Total users" value={String(data.stats.totalUsers)} />
               <KpiCard
                 icon={Gauge}
@@ -183,7 +200,11 @@ function HqPage() {
                 value={String(data.stats.activeAgencies)}
                 hint="Presence in the last 7 days"
               />
-              <KpiCard icon={Building2} label="Trial agencies" value={String(data.stats.trialAgencies)} />
+              <KpiCard
+                icon={Building2}
+                label="Trial agencies"
+                value={String(data.stats.trialAgencies)}
+              />
               <KpiCard
                 icon={KeyRound}
                 label="Active subscriptions"
@@ -224,7 +245,10 @@ function HqPage() {
                   {data.agencies.map((a) => (
                     <tr
                       key={a.id}
-                      className={cn("border-t border-border/60", selected === a.id && "bg-muted/40")}
+                      className={cn(
+                        "border-t border-border/60",
+                        selected === a.id && "bg-muted/40",
+                      )}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 font-medium">
@@ -438,7 +462,9 @@ function HqPage() {
                             : MessageSquare;
                       return (
                         <tr key={i.id} className="border-t border-border/60">
-                          <td className="px-4 py-3 text-muted-foreground">{fmtDate(i.occurredAt)}</td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {fmtDate(i.occurredAt)}
+                          </td>
                           <td className="px-4 py-3">
                             <span className="flex items-center gap-2">
                               <Icon aria-hidden="true" className="size-4 text-muted-foreground" />

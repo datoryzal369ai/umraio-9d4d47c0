@@ -58,9 +58,15 @@ export const getHqOverview = createServerFn({ method: "GET" })
         .select("id, name, plan, created_at")
         .order("created_at", { ascending: false })
         .limit(500),
-      supabaseAdmin.from("profiles").select("id, agency_id, full_name, email, last_seen_at").limit(2000),
+      supabaseAdmin
+        .from("profiles")
+        .select("id, agency_id, full_name, email, last_seen_at")
+        .limit(2000),
       supabaseAdmin.from("user_roles").select("user_id, agency_id, role").limit(4000),
-      supabaseAdmin.from("agency_entitlements").select("agency_id, effective_plan, source").limit(500),
+      supabaseAdmin
+        .from("agency_entitlements")
+        .select("agency_id, effective_plan, source")
+        .limit(500),
     ]);
 
     const agencies = buildAgencySummaries(
@@ -93,7 +99,11 @@ export const getHqAgencyDetail = createServerFn({ method: "POST" })
         .select("id, agency_id, full_name, email, last_seen_at")
         .eq("agency_id", data.agencyId)
         .limit(500),
-      supabaseAdmin.from("user_roles").select("user_id, agency_id, role").eq("agency_id", data.agencyId).limit(1000),
+      supabaseAdmin
+        .from("user_roles")
+        .select("user_id, agency_id, role")
+        .eq("agency_id", data.agencyId)
+        .limit(1000),
       supabaseAdmin
         .from("login_events")
         .select("id, user_id, event_type, occurred_at")
@@ -130,33 +140,32 @@ export const getHqPlatform = createServerFn({ method: "GET" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const [agenciesRes, profilesRes, rolesRes, entRes, loginsRes, activityRes] =
-      await Promise.all([
-        supabaseAdmin
-          .from("agencies")
-          .select("id, name, plan, created_at")
-          .order("created_at", { ascending: false })
-          .limit(500),
-        supabaseAdmin
-          .from("profiles")
-          .select("id, agency_id, full_name, email, last_seen_at")
-          .limit(2000),
-        supabaseAdmin.from("user_roles").select("user_id, agency_id, role").limit(4000),
-        supabaseAdmin
-          .from("agency_entitlements")
-          .select("agency_id, effective_plan, source")
-          .limit(500),
-        supabaseAdmin
-          .from("login_events")
-          .select("id, user_id, agency_id, event_type, session_key, occurred_at")
-          .order("occurred_at", { ascending: false })
-          .limit(200),
-        supabaseAdmin
-          .from("activity_log")
-          .select("id, agency_id, actor, actor_user_id, action, entity, entity_id, created_at")
-          .order("created_at", { ascending: false })
-          .limit(200),
-      ]);
+    const [agenciesRes, profilesRes, rolesRes, entRes, loginsRes, activityRes] = await Promise.all([
+      supabaseAdmin
+        .from("agencies")
+        .select("id, name, plan, created_at")
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabaseAdmin
+        .from("profiles")
+        .select("id, agency_id, full_name, email, last_seen_at")
+        .limit(2000),
+      supabaseAdmin.from("user_roles").select("user_id, agency_id, role").limit(4000),
+      supabaseAdmin
+        .from("agency_entitlements")
+        .select("agency_id, effective_plan, source")
+        .limit(500),
+      supabaseAdmin
+        .from("login_events")
+        .select("id, user_id, agency_id, event_type, session_key, occurred_at")
+        .order("occurred_at", { ascending: false })
+        .limit(200),
+      supabaseAdmin
+        .from("activity_log")
+        .select("id, agency_id, actor, actor_user_id, action, entity, entity_id, created_at")
+        .order("created_at", { ascending: false })
+        .limit(200),
+    ]);
 
     const profiles = (profilesRes.data ?? []) as HqProfileRow[];
     const roles = (rolesRes.data ?? []) as HqRoleRow[];
@@ -256,7 +265,10 @@ export const getHqChannelActivity = createServerFn({ method: "GET" })
       ),
     ];
     const leadsRes = leadIds.length
-      ? await supabaseAdmin.from("leads").select("id, full_name, phone, do_not_contact").in("id", leadIds)
+      ? await supabaseAdmin
+          .from("leads")
+          .select("id, full_name, phone, do_not_contact")
+          .in("id", leadIds)
       : { data: [] as HqLeadRow[] };
 
     const agencyNames = new Map(

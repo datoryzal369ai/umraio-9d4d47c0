@@ -186,8 +186,7 @@ export function buildPlatformStats(
     totalUsers: profiles.length,
     activeAgencies: agencies.filter((a) => activeAgencyIds.has(a.id)).length,
     trialAgencies: agencies.filter((a) => (a.plan ?? "").toLowerCase() === "trial").length,
-    activeSubscriptions: agencies.filter((a) => paidPlans.has((a.plan ?? "").toLowerCase()))
-      .length,
+    activeSubscriptions: agencies.filter((a) => paidPlans.has((a.plan ?? "").toLowerCase())).length,
     recentlyActiveUsers: profiles.filter(
       (p) => p.last_seen_at && new Date(p.last_seen_at).getTime() >= since,
     ).length,
@@ -268,13 +267,7 @@ export const HQ_SECURITY_CHECKS: HqSecurityCheck[] = [
 
 export type HqChannel = "WHATSAPP_TEXT" | "VOICE_NOTE" | "LIVE_CALL";
 export type HqInteractionStatus =
-  | "SUCCESS"
-  | "FAILED"
-  | "PARTIAL"
-  | "PENDING"
-  | "BLOCKED"
-  | "HUMAN_REQUIRED"
-  | "UNKNOWN";
+  "SUCCESS" | "FAILED" | "PARTIAL" | "PENDING" | "BLOCKED" | "HUMAN_REQUIRED" | "UNKNOWN";
 
 export type HqChannelActivityItem = {
   id: string;
@@ -444,8 +437,7 @@ export function buildChannelActivity(input: {
       id: `call:${c.id}`,
       occurredAt: c.received_at,
       channel: "LIVE_CALL",
-      direction:
-        c.direction === "inbound" || c.direction === "outbound" ? c.direction : "unknown",
+      direction: c.direction === "inbound" || c.direction === "outbound" ? c.direction : "unknown",
       agencyId: c.agency_id,
       agencyName: agencyName(c.agency_id),
       contactPhone: maskPhone(c.caller_phone ?? lead?.phone),
