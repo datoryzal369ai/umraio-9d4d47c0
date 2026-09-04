@@ -421,9 +421,10 @@ export function buildChannelActivity(input: {
       contactPhone: maskPhone(lead?.phone),
       contactName: lead?.full_name?.trim() || UNKNOWN_LABEL,
       leadId: lead?.id ?? null,
-      interactionStatus: blocked
-        ? "BLOCKED"
-        : normalizeMessageStatus(m.delivery_status, conv?.human_attention_required),
+      // No event-level blocked/escalation evidence exists in the current read
+      // model, so historical status is delivery-derived only. Current lead DNC
+      // and conversation human-attention flags are never applied retroactively.
+      interactionStatus: normalizeMessageStatus(m.delivery_status),
       summary: messageSummary(m.sender, channel),
       sourceType: "message",
       sourceId: m.id,
