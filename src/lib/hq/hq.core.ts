@@ -411,7 +411,6 @@ export function buildChannelActivity(input: {
     if (!channel) continue;
     const conv = convById.get(m.conversation_id) ?? null;
     const lead = conv?.lead_id ? (leadById.get(conv.lead_id) ?? null) : null;
-    const blocked = lead?.do_not_contact === true && m.sender !== "customer";
     items.push({
       id: `msg:${m.id}`,
       occurredAt: m.created_at,
