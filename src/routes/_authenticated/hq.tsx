@@ -496,7 +496,17 @@ function HqPage() {
                               {i.interactionStatus}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">{i.summary}</td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            <div>{i.summary}</div>
+                            {i.callObservability && (
+                              <details className="mt-2 max-w-xl text-xs">
+                                <summary className="cursor-pointer font-medium text-foreground">
+                                  Operational evidence · {i.callObservability.operationalState}
+                                </summary>
+                                <CallEvidence call={i.callObservability} />
+                              </details>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
@@ -633,6 +643,72 @@ function HqPage() {
           </TabsContent>
         </Tabs>
       )}
+    </div>
+  );
+}
+
+function CallEvidence({
+  call,
+}: {
+  call: NonNullable<import("@/lib/hq/hq.core").HqChannelActivityItem["callObservability"]>;
+}) {
+  const timing = [
+    ["Received", call.receivedAt],
+    ["Answer requested", call.answerRequestedAt],
+    ["Meta accepted", call.metaAcceptedAt],
+    ["Media negotiated", call.mediaNegotiatedAt],
+    ["Media ready", call.mediaReadyAt],
+    ["Answered", call.answeredAt],
+    ["Ended", call.endedAt],
+  ] as const;
+  const latency = Object.entries(call.latency);
+  return (
+    <div className="mt-2 grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-3 sm:grid-cols-2">
+      <div>
+        <p className="font-mono text-[11px]">Record {call.recordId}</p>
+        <p>
+          Lead {call.leadLinked ? "LINKED" : "NOT LINKED"} · Conversation{" "}
+          {call.conversationLinked ? "LINKED" : "NOT LINKED"}
+        </p>
+        <p>
+          Summary {call.callSummaryPresent ? "PRESENT" : "ABSENT"} · Memory{" "}
+          {call.memoryContinuity}
+        </p>
+        <p>
+          Turns {call.turnCount} · Language {call.detectedLanguage ?? "UNKNOWN"}
+        </p>
+        <p>
+          Outcome {call.voiceOutcome ?? "UNKNOWN"} · Closing {call.closingState ?? "UNKNOWN"}
+        </p>
+        <p>
+          Duration {call.durationSeconds === null ? "UNKNOWN" : `${call.durationSeconds}s`} · End{" "}
+          {call.terminationReason ?? "UNKNOWN"}
+        </p>
+      </div>
+      <div>
+        {timing.map(
+          ([label, value]) =>
+            value && (
+              <p key={label}>
+                {label}: {fmtDate(value)}
+              </p>
+            ),
+        )}
+        <p>Source state: {call.sourceStatus}</p>
+        <p className="mt-1 font-medium text-foreground">Turn latency</p>
+        {latency.every(([, value]) => value === null) ? (
+          <p>NO DATA</p>
+        ) : (
+          latency.map(([key, value]) => (
+            <p key={key}>
+              {key.toUpperCase()}:{" "}
+              {value
+                ? `P50 ${value.p50}ms · P95 ${value.p95}ms (${value.samples})`
+                : "NO DATA"}
+            </p>
+          ))
+        )}
+      </div>
     </div>
   );
 }
