@@ -61,7 +61,6 @@ type Synthesizer interface {
 	Speak(ctx context.Context, callID, text, voiceID, boost string) ([][]byte, error)
 }
 
-
 // ConversationConfig bounds the loop. Every value is configurable.
 type ConversationConfig struct {
 	VAD VADConfig
@@ -135,7 +134,6 @@ func (p *ConversationPipeline) WithSynthesizer(s Synthesizer) *ConversationPipel
 	p.synth = s
 	return p
 }
-
 
 // Mode identifies this pipeline in diagnostics as the real-time AI loop.
 func (p *ConversationPipeline) Mode() string { return ModeRealtimeAI }
