@@ -197,12 +197,12 @@ func (e *Engine) Establish(
 			ms.Terminate("ice_failed")
 		case pion.PeerConnectionStateDisconnected:
 			// RECOVERABLE: ICE may re-establish after a transient network blip.
-			// Terminating here kills otherwise healthy calls. Only Failed/Closed
-			// are terminal.
+			// Terminating here kills otherwise healthy calls. Only Failed and
+			// Closed are terminal.
 			log.Warn("peer connection disconnected (recoverable)",
 				"call_id", s.CallID, "session_id", s.ID)
 		case pion.PeerConnectionStateClosed:
-			ms.Terminate("peer_closed")
+			ms.Terminate(terminalPeerReason(st))
 		}
 
 	})
@@ -485,6 +485,20 @@ func (ms *MediaSession) Terminate(reason string) {
 			go ms.hooks.OnTerminated(ms.sess, reason)
 		}
 	})
+}
+
+// IsTerminalPeerState reports whether a peer-connection state ends the call.
+// Disconnected is deliberately NOT terminal: it is recoverable.
+func IsTerminalPeerState(st pion.PeerConnectionState) bool {
+	return st == pion.PeerConnectionStateFailed || st == pion.PeerConnectionStateClosed
+}
+
+// terminalPeerReason is the termination reason for a terminal peer state.
+func terminalPeerReason(st pion.PeerConnectionState) string {
+	if st == pion.PeerConnectionStateFailed {
+		return "ice_failed"
+	}
+	return "peer_closed"
 }
 
 // ConnectionState exposes the raw peer state for health reporting.
