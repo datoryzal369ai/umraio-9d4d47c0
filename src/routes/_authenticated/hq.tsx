@@ -17,6 +17,7 @@ import {
 
 import { PageHeader } from "@/components/app/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
+import { CallActivityCard } from "@/components/hq/CallActivityCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -440,85 +441,62 @@ function HqPage() {
               <p className="text-sm text-muted-foreground">Channel activity is unavailable.</p>
             ) : (
               <Panel title={`Recent interactions (${channelItems.length})`}>
-                <table className="w-full min-w-[900px] text-left text-sm">
-                  <thead className="text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Channel</th>
-                      <th className="px-4 py-3">Agency</th>
-                      <th className="px-4 py-3">Customer</th>
-                      <th className="px-4 py-3">Direction</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Activity</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {channelItems.map((i) => {
-                      const Icon =
-                        i.channel === "LIVE_CALL"
-                          ? PhoneCall
-                          : i.channel === "VOICE_NOTE"
-                            ? Mic
-                            : MessageSquare;
+                <div className="space-y-3 p-3 sm:p-4">
+                  {channelItems.map((i) => {
+                    if (i.callObservability) {
                       return (
-                        <tr key={i.id} className="border-t border-border/60">
-                          <td className="px-4 py-3 text-muted-foreground">
-                            {fmtDate(i.occurredAt)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="flex items-center gap-2">
-                              <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
-                              {i.channel === "WHATSAPP_TEXT"
-                                ? "WhatsApp text"
-                                : i.channel === "VOICE_NOTE"
-                                  ? "Voice note"
-                                  : "Live call"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">{i.agencyName}</td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium">{i.contactName}</div>
-                            <p className="font-mono text-[11px] text-muted-foreground">
-                              {i.contactPhone}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{i.direction}</td>
-                          <td className="px-4 py-3">
-                            <Badge
-                              variant={
-                                i.interactionStatus === "SUCCESS"
-                                  ? "default"
-                                  : i.interactionStatus === "FAILED"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                            >
-                              {i.interactionStatus}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">
-                            <div>{i.summary}</div>
-                            {i.callObservability && (
-                              <details className="mt-2 max-w-xl text-xs">
-                                <summary className="cursor-pointer font-medium text-foreground">
-                                  Operational evidence · {i.callObservability.operationalState}
-                                </summary>
-                                <CallEvidence call={i.callObservability} />
-                              </details>
-                            )}
-                          </td>
-                        </tr>
+                        <CallActivityCard
+                          key={i.id}
+                          item={{ ...i, callObservability: i.callObservability }}
+                        />
                       );
-                    })}
-                    {channelItems.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
-                          No channel activity recorded yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                    }
+                    const Icon = i.channel === "VOICE_NOTE" ? Mic : MessageSquare;
+                    return (
+                      <article
+                        key={i.id}
+                        className="grid gap-3 rounded-lg border border-border/70 bg-background/25 p-3 sm:grid-cols-[9rem_9rem_minmax(0,1fr)_auto] sm:items-center"
+                      >
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Icon
+                            aria-hidden="true"
+                            className="size-4 shrink-0 text-muted-foreground"
+                          />
+                          {i.channel === "VOICE_NOTE" ? "Voice note" : "WhatsApp text"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{i.contactName}</p>
+                          <p className="truncate font-mono text-[11px] text-muted-foreground">
+                            {i.contactPhone}
+                          </p>
+                        </div>
+                        <div className="min-w-0 text-xs text-muted-foreground">
+                          <p className="truncate">{i.agencyName}</p>
+                          <p className="truncate">
+                            {i.summary} · {fmtDate(i.occurredAt)}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            i.interactionStatus === "SUCCESS"
+                              ? "default"
+                              : i.interactionStatus === "FAILED"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                          className="w-fit"
+                        >
+                          {i.interactionStatus}
+                        </Badge>
+                      </article>
+                    );
+                  })}
+                  {channelItems.length === 0 && (
+                    <p className="px-1 py-6 text-sm text-muted-foreground">
+                      No channel activity recorded yet.
+                    </p>
+                  )}
+                </div>
               </Panel>
             )}
           </TabsContent>
@@ -643,72 +621,6 @@ function HqPage() {
           </TabsContent>
         </Tabs>
       )}
-    </div>
-  );
-}
-
-function CallEvidence({
-  call,
-}: {
-  call: NonNullable<import("@/lib/hq/hq.core").HqChannelActivityItem["callObservability"]>;
-}) {
-  const timing = [
-    ["Received", call.receivedAt],
-    ["Answer requested", call.answerRequestedAt],
-    ["Meta accepted", call.metaAcceptedAt],
-    ["Media negotiated", call.mediaNegotiatedAt],
-    ["Media ready", call.mediaReadyAt],
-    ["Answered", call.answeredAt],
-    ["Ended", call.endedAt],
-  ] as const;
-  const latency = Object.entries(call.latency);
-  return (
-    <div className="mt-2 grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-3 sm:grid-cols-2">
-      <div>
-        <p className="font-mono text-[11px]">Record {call.recordId}</p>
-        <p>
-          Lead {call.leadLinked ? "LINKED" : "NOT LINKED"} · Conversation{" "}
-          {call.conversationLinked ? "LINKED" : "NOT LINKED"}
-        </p>
-        <p>
-          Summary {call.callSummaryPresent ? "PRESENT" : "ABSENT"} · Memory{" "}
-          {call.memoryContinuity}
-        </p>
-        <p>
-          Turns {call.turnCount} · Language {call.detectedLanguage ?? "UNKNOWN"}
-        </p>
-        <p>
-          Outcome {call.voiceOutcome ?? "UNKNOWN"} · Closing {call.closingState ?? "UNKNOWN"}
-        </p>
-        <p>
-          Duration {call.durationSeconds === null ? "UNKNOWN" : `${call.durationSeconds}s`} · End{" "}
-          {call.terminationReason ?? "UNKNOWN"}
-        </p>
-      </div>
-      <div>
-        {timing.map(
-          ([label, value]) =>
-            value && (
-              <p key={label}>
-                {label}: {fmtDate(value)}
-              </p>
-            ),
-        )}
-        <p>Source state: {call.sourceStatus}</p>
-        <p className="mt-1 font-medium text-foreground">Turn latency</p>
-        {latency.every(([, value]) => value === null) ? (
-          <p>NO DATA</p>
-        ) : (
-          latency.map(([key, value]) => (
-            <p key={key}>
-              {key.toUpperCase()}:{" "}
-              {value
-                ? `P50 ${value.p50}ms · P95 ${value.p95}ms (${value.samples})`
-                : "NO DATA"}
-            </p>
-          ))
-        )}
-      </div>
     </div>
   );
 }
