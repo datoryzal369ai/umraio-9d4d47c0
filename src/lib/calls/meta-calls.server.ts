@@ -13,7 +13,7 @@ export type MetaAcceptResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-export type MetaCallAction = "pre_accept" | "accept";
+export type MetaCallAction = "pre_accept" | "accept" | "terminate";
 
 type MetaCallActionArgs = {
   action: MetaCallAction;
