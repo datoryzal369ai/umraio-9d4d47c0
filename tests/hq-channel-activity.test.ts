@@ -93,11 +93,15 @@ describe("HQ channel normalization", () => {
     expect(normalizeMessageChannel("image")).toBeNull();
   });
 
-  it("derives message status from delivery evidence only", () => {
-    expect(normalizeMessageStatus("sent", false)).toBe("SUCCESS");
-    expect(normalizeMessageStatus("failed", false)).toBe("FAILED");
-    expect(normalizeMessageStatus(null, false)).toBe("UNKNOWN");
-    expect(normalizeMessageStatus("sent", true)).toBe("HUMAN_REQUIRED");
+  it("derives message status from event-level delivery evidence only", () => {
+    // sent proves provider send/accept only — never SUCCESS.
+    expect(normalizeMessageStatus("sent")).toBe("PARTIAL");
+    expect(normalizeMessageStatus("read")).toBe("SUCCESS");
+    expect(normalizeMessageStatus("delivered")).toBe("SUCCESS");
+    expect(normalizeMessageStatus("failed")).toBe("FAILED");
+    expect(normalizeMessageStatus("pending")).toBe("PENDING");
+    expect(normalizeMessageStatus("queued")).toBe("PENDING");
+    expect(normalizeMessageStatus(null)).toBe("UNKNOWN");
   });
 
   it("derives call status from lifecycle evidence", () => {
@@ -161,14 +165,36 @@ describe("HQ channel activity feed", () => {
     ).toHaveLength(2);
   });
 
-  it("marks outbound activity to DNC leads as blocked", () => {
-    const blocked = buildChannelActivity({
-      messages: [{ ...messages[0]!, id: "m9", sender: "ai" }],
+  it("keeps delivery-derived status even if the lead is currently do_not_contact", () => {
+    const result = buildChannelActivity({
+      messages: [{ ...messages[0]!, id: "m9", sender: "ai", delivery_status: "delivered" }],
       conversations,
       calls: [],
       leads: [{ ...leads[0]!, do_not_contact: true }],
       agencyNames,
     });
-    expect(blocked[0]!.interactionStatus).toBe("BLOCKED");
+    // No event-level blocked evidence exists, so current DNC must not
+    // retroactively rewrite history.
+    expect(result[0]!.interactionStatus).toBe("SUCCESS");
+    expect(result[0]!.interactionStatus).not.toBe("BLOCKED");
+  });
+
+  it("does not retroactively apply conversation human_attention_required to old messages", () => {
+    const result = buildChannelActivity({
+      messages: [
+        {
+          ...messages[0]!,
+          id: "m10",
+          conversation_id: "c2", // human_attention_required = true (current state)
+          delivery_status: "read",
+        },
+      ],
+      conversations,
+      calls: [],
+      leads,
+      agencyNames,
+    });
+    expect(result[0]!.interactionStatus).toBe("SUCCESS");
+    expect(result[0]!.interactionStatus).not.toBe("HUMAN_REQUIRED");
   });
 });

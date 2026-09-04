@@ -343,14 +343,15 @@ export function normalizeMessageChannel(modality: string | null | undefined): Hq
 
 export function normalizeMessageStatus(
   deliveryStatus: string | null | undefined,
-  humanAttentionRequired: boolean | null | undefined,
 ): HqInteractionStatus {
-  if (humanAttentionRequired) return "HUMAN_REQUIRED";
+  // Historical status is derived from event-level delivery evidence only.
+  // "sent" proves provider send/accept stage, not delivery/read.
   switch (deliveryStatus) {
     case "read":
     case "delivered":
-    case "sent":
       return "SUCCESS";
+    case "sent":
+      return "PARTIAL";
     case "failed":
       return "FAILED";
     case "pending":
@@ -410,7 +411,6 @@ export function buildChannelActivity(input: {
     if (!channel) continue;
     const conv = convById.get(m.conversation_id) ?? null;
     const lead = conv?.lead_id ? (leadById.get(conv.lead_id) ?? null) : null;
-    const blocked = lead?.do_not_contact === true && m.sender !== "customer";
     items.push({
       id: `msg:${m.id}`,
       occurredAt: m.created_at,
@@ -421,9 +421,10 @@ export function buildChannelActivity(input: {
       contactPhone: maskPhone(lead?.phone),
       contactName: lead?.full_name?.trim() || UNKNOWN_LABEL,
       leadId: lead?.id ?? null,
-      interactionStatus: blocked
-        ? "BLOCKED"
-        : normalizeMessageStatus(m.delivery_status, conv?.human_attention_required),
+      // No event-level blocked/escalation evidence exists in the current read
+      // model, so historical status is delivery-derived only. Current lead DNC
+      // and conversation human-attention flags are never applied retroactively.
+      interactionStatus: normalizeMessageStatus(m.delivery_status),
       summary: messageSummary(m.sender, channel),
       sourceType: "message",
       sourceId: m.id,
