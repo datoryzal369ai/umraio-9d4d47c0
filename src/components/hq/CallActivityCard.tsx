@@ -14,7 +14,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import type { HqCallObservability, HqChannelActivityItem, HqLatencySummary } from "@/lib/hq/hq.core";
+import type {
+  HqCallObservability,
+  HqChannelActivityItem,
+  HqLatencySummary,
+} from "@/lib/hq/hq.core";
 import { cn } from "@/lib/utils";
 
 type LiveCallItem = HqChannelActivityItem & { callObservability: HqCallObservability };
@@ -33,7 +37,9 @@ const formatDuration = (seconds: number | null) => {
 };
 
 const formatLatency = (milliseconds: number) =>
-  milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(milliseconds % 1000 === 0 ? 0 : 1)}s` : `${milliseconds}ms`;
+  milliseconds >= 1000
+    ? `${(milliseconds / 1000).toFixed(milliseconds % 1000 === 0 ? 0 : 1)}s`
+    : `${milliseconds}ms`;
 
 function StatusBadge({ status }: { status: HqChannelActivityItem["interactionStatus"] }) {
   return (
@@ -41,7 +47,11 @@ function StatusBadge({ status }: { status: HqChannelActivityItem["interactionSta
       variant={status === "SUCCESS" ? "default" : status === "FAILED" ? "destructive" : "secondary"}
       className="shrink-0 gap-1.5"
     >
-      {status === "FAILED" ? <AlertTriangle aria-hidden="true" className="size-3" /> : <Circle aria-hidden="true" className="size-2 fill-current" />}
+      {status === "FAILED" ? (
+        <AlertTriangle aria-hidden="true" className="size-3" />
+      ) : (
+        <Circle aria-hidden="true" className="size-2 fill-current" />
+      )}
       {status}
     </Badge>
   );
@@ -60,10 +70,20 @@ function EvidenceBadge({
   const unknown = state === "UNKNOWN";
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-md border border-border/70 bg-background/35 px-2.5 py-2">
-      <Icon aria-hidden="true" className={cn("size-3.5 shrink-0", positive ? "text-primary" : "text-muted-foreground")} />
+      <Icon
+        aria-hidden="true"
+        className={cn("size-3.5 shrink-0", positive ? "text-primary" : "text-muted-foreground")}
+      />
       <div className="min-w-0">
         <p className="truncate text-[10px] uppercase text-muted-foreground">{label}</p>
-        <p className={cn("truncate text-xs font-semibold", unknown ? "text-muted-foreground" : "text-foreground")}>{state}</p>
+        <p
+          className={cn(
+            "truncate text-xs font-semibold",
+            unknown ? "text-muted-foreground" : "text-foreground",
+          )}
+        >
+          {state}
+        </p>
       </div>
     </div>
   );
@@ -85,16 +105,45 @@ function Journey({ call }: { call: HqCallObservability }) {
         {stages.map(([label, value], index) => {
           const complete = Boolean(value);
           return (
-            <li key={label} className="relative grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2 pb-3 sm:block sm:pb-0">
+            <li
+              key={label}
+              className="relative grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2 pb-3 sm:block sm:pb-0"
+            >
               {index < stages.length - 1 && (
-                <span aria-hidden="true" className={cn("absolute left-[11px] top-6 h-[calc(100%-1.25rem)] w-px sm:left-6 sm:top-3 sm:h-px sm:w-[calc(100%-1.5rem)]", complete && stages[index + 1]?.[1] ? "bg-primary/70" : "bg-border")} />
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute left-[11px] top-6 h-[calc(100%-1.25rem)] w-px sm:left-6 sm:top-3 sm:h-px sm:w-[calc(100%-1.5rem)]",
+                    complete && stages[index + 1]?.[1] ? "bg-primary/70" : "bg-border",
+                  )}
+                />
               )}
-              <span className={cn("relative z-10 grid size-6 place-items-center rounded-full border", complete ? "border-primary bg-primary text-primary-foreground" : "border-border bg-surface text-muted-foreground")}>
-                {complete ? <Check aria-hidden="true" className="size-3.5" /> : <Circle aria-hidden="true" className="size-2.5" />}
+              <span
+                className={cn(
+                  "relative z-10 grid size-6 place-items-center rounded-full border",
+                  complete
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-surface text-muted-foreground",
+                )}
+              >
+                {complete ? (
+                  <Check aria-hidden="true" className="size-3.5" />
+                ) : (
+                  <Circle aria-hidden="true" className="size-2.5" />
+                )}
               </span>
               <div className="min-w-0 sm:mt-2 sm:pr-2">
-                <p className={cn("text-xs font-semibold", complete ? "text-foreground" : "text-muted-foreground")}>{label}</p>
-                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{complete ? formatDate(value) : "Unavailable"}</p>
+                <p
+                  className={cn(
+                    "text-xs font-semibold",
+                    complete ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {label}
+                </p>
+                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                  {complete ? formatDate(value) : "Unavailable"}
+                </p>
               </div>
             </li>
           );
@@ -105,14 +154,26 @@ function Journey({ call }: { call: HqCallObservability }) {
 }
 
 function LatencyMetric({ label, value }: { label: string; value: HqLatencySummary | null }) {
-  const valid = value && Number.isFinite(value.p50) && Number.isFinite(value.p95) && value.p50 >= 0 && value.p95 >= 0;
+  const valid =
+    value &&
+    Number.isFinite(value.p50) &&
+    Number.isFinite(value.p95) &&
+    value.p50 >= 0 &&
+    value.p95 >= 0;
   return (
-    <div className={cn("rounded-md border p-3", label === "Total" ? "border-primary/45 bg-primary/5" : "border-border/70 bg-background/35")}>
+    <div
+      className={cn(
+        "rounded-md border p-3",
+        label === "Total" ? "border-primary/45 bg-primary/5" : "border-border/70 bg-background/35",
+      )}
+    >
       <p className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</p>
       {valid ? (
         <>
           <p className="mt-1 text-lg font-semibold text-foreground">{formatLatency(value.p50)}</p>
-          <p className="text-[10px] text-muted-foreground">P95 {formatLatency(value.p95)} · {value.samples} samples</p>
+          <p className="text-[10px] text-muted-foreground">
+            P95 {formatLatency(value.p95)} · {value.samples} samples
+          </p>
         </>
       ) : value === null ? (
         <p className="mt-2 text-xs font-semibold text-muted-foreground">NO DATA</p>
@@ -141,7 +202,9 @@ export function CallActivityCard({ item }: { item: LiveCallItem }) {
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase text-primary">Live call</p>
               <h3 className="truncate text-base font-semibold">{item.contactName}</h3>
-              <p className="truncate font-mono text-xs text-muted-foreground">{item.contactPhone}</p>
+              <p className="truncate font-mono text-xs text-muted-foreground">
+                {item.contactPhone}
+              </p>
             </div>
           </div>
           <StatusBadge status={item.interactionStatus} />
@@ -167,8 +230,16 @@ export function CallActivityCard({ item }: { item: LiveCallItem }) {
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <EvidenceBadge label="Customer" state={call.leadLinked ? "LINKED" : "NOT LINKED"} icon={call.leadLinked ? Link2 : Unlink} />
-          <EvidenceBadge label="Conversation" state={call.conversationLinked ? "LINKED" : "NOT LINKED"} icon={call.conversationLinked ? Link2 : Unlink} />
+          <EvidenceBadge
+            label="Customer"
+            state={call.leadLinked ? "LINKED" : "NOT LINKED"}
+            icon={call.leadLinked ? Link2 : Unlink}
+          />
+          <EvidenceBadge
+            label="Conversation"
+            state={call.conversationLinked ? "LINKED" : "NOT LINKED"}
+            icon={call.conversationLinked ? Link2 : Unlink}
+          />
           <EvidenceBadge label="Memory" state={call.memoryContinuity} icon={MemoryStick} />
         </div>
 
@@ -181,9 +252,15 @@ export function CallActivityCard({ item }: { item: LiveCallItem }) {
 
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="h-11 w-full justify-between rounded-none border-t border-border/70 px-4 text-xs sm:px-5">
+          <Button
+            variant="ghost"
+            className="h-11 w-full justify-between rounded-none border-t border-border/70 px-4 text-xs sm:px-5"
+          >
             Operational Details
-            <ChevronDown aria-hidden="true" className={cn("transition-transform", open && "rotate-180")} />
+            <ChevronDown
+              aria-hidden="true"
+              className={cn("transition-transform", open && "rotate-180")}
+            />
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -192,13 +269,23 @@ export function CallActivityCard({ item }: { item: LiveCallItem }) {
 
             {item.interactionStatus === "FAILED" && (
               <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs">
-                <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
-                <div><p className="font-semibold text-foreground">Call did not complete</p><p className="mt-0.5 text-muted-foreground">{call.terminationReason ?? "Failure reason unavailable"}</p></div>
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mt-0.5 size-4 shrink-0 text-destructive"
+                />
+                <div>
+                  <p className="font-semibold text-foreground">Call did not complete</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    {call.terminationReason ?? "Failure reason unavailable"}
+                  </p>
+                </div>
               </div>
             )}
 
             <section>
-              <h4 className="text-xs font-semibold uppercase text-muted-foreground">Call performance</h4>
+              <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                Call performance
+              </h4>
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
                 <LatencyMetric label="ASR" value={call.latency.asr} />
                 <LatencyMetric label="Context" value={call.latency.context} />
@@ -210,19 +297,46 @@ export function CallActivityCard({ item }: { item: LiveCallItem }) {
 
             <section className="grid gap-3 sm:grid-cols-2">
               <div>
-                <h4 className="text-xs font-semibold uppercase text-muted-foreground">Conversation</h4>
+                <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                  Conversation
+                </h4>
                 <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                  <div><dt className="text-muted-foreground">Outcome</dt><dd className="mt-0.5 font-medium">{outcome}</dd></div>
-                  <div><dt className="text-muted-foreground">Language</dt><dd className="mt-0.5 font-medium">{language}</dd></div>
-                  <div><dt className="text-muted-foreground">Closing</dt><dd className="mt-0.5 font-medium">{closing}</dd></div>
-                  <div><dt className="text-muted-foreground">Termination</dt><dd className="mt-0.5 font-medium">{call.terminationReason ?? "UNKNOWN"}</dd></div>
+                  <div>
+                    <dt className="text-muted-foreground">Outcome</dt>
+                    <dd className="mt-0.5 font-medium">{outcome}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Language</dt>
+                    <dd className="mt-0.5 font-medium">{language}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Closing</dt>
+                    <dd className="mt-0.5 font-medium">{closing}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Termination</dt>
+                    <dd className="mt-0.5 font-medium">{call.terminationReason ?? "UNKNOWN"}</dd>
+                  </div>
                 </dl>
               </div>
               <div>
-                <h4 className="text-xs font-semibold uppercase text-muted-foreground">Technical evidence</h4>
+                <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                  Technical evidence
+                </h4>
                 <dl className="mt-2 space-y-2 text-xs">
-                  <div><dt className="text-muted-foreground">Source state</dt><dd className="font-medium">{call.sourceStatus}</dd></div>
-                  <div><dt className="text-muted-foreground">Record ID</dt><dd className="truncate font-mono text-[10px] text-muted-foreground" title={call.recordId}>{call.recordId}</dd></div>
+                  <div>
+                    <dt className="text-muted-foreground">Source state</dt>
+                    <dd className="font-medium">{call.sourceStatus}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Record ID</dt>
+                    <dd
+                      className="truncate font-mono text-[10px] text-muted-foreground"
+                      title={call.recordId}
+                    >
+                      {call.recordId}
+                    </dd>
+                  </div>
                 </dl>
               </div>
             </section>

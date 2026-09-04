@@ -444,25 +444,46 @@ function HqPage() {
                 <div className="space-y-3 p-3 sm:p-4">
                   {channelItems.map((i) => {
                     if (i.callObservability) {
-                      return <CallActivityCard key={i.id} item={{ ...i, callObservability: i.callObservability }} />;
+                      return (
+                        <CallActivityCard
+                          key={i.id}
+                          item={{ ...i, callObservability: i.callObservability }}
+                        />
+                      );
                     }
                     const Icon = i.channel === "VOICE_NOTE" ? Mic : MessageSquare;
                     return (
-                      <article key={i.id} className="grid gap-3 rounded-lg border border-border/70 bg-background/25 p-3 sm:grid-cols-[9rem_9rem_minmax(0,1fr)_auto] sm:items-center">
+                      <article
+                        key={i.id}
+                        className="grid gap-3 rounded-lg border border-border/70 bg-background/25 p-3 sm:grid-cols-[9rem_9rem_minmax(0,1fr)_auto] sm:items-center"
+                      >
                         <div className="flex items-center gap-2 text-sm font-medium">
-                          <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                          <Icon
+                            aria-hidden="true"
+                            className="size-4 shrink-0 text-muted-foreground"
+                          />
                           {i.channel === "VOICE_NOTE" ? "Voice note" : "WhatsApp text"}
                         </div>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{i.contactName}</p>
-                          <p className="truncate font-mono text-[11px] text-muted-foreground">{i.contactPhone}</p>
+                          <p className="truncate font-mono text-[11px] text-muted-foreground">
+                            {i.contactPhone}
+                          </p>
                         </div>
                         <div className="min-w-0 text-xs text-muted-foreground">
                           <p className="truncate">{i.agencyName}</p>
-                          <p className="truncate">{i.summary} · {fmtDate(i.occurredAt)}</p>
+                          <p className="truncate">
+                            {i.summary} · {fmtDate(i.occurredAt)}
+                          </p>
                         </div>
                         <Badge
-                          variant={i.interactionStatus === "SUCCESS" ? "default" : i.interactionStatus === "FAILED" ? "destructive" : "secondary"}
+                          variant={
+                            i.interactionStatus === "SUCCESS"
+                              ? "default"
+                              : i.interactionStatus === "FAILED"
+                                ? "destructive"
+                                : "secondary"
+                          }
                           className="w-fit"
                         >
                           {i.interactionStatus}
@@ -471,7 +492,9 @@ function HqPage() {
                     );
                   })}
                   {channelItems.length === 0 && (
-                    <p className="px-1 py-6 text-sm text-muted-foreground">No channel activity recorded yet.</p>
+                    <p className="px-1 py-6 text-sm text-muted-foreground">
+                      No channel activity recorded yet.
+                    </p>
                   )}
                 </div>
               </Panel>
@@ -601,4 +624,3 @@ function HqPage() {
     </div>
   );
 }
-
