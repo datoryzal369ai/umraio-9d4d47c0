@@ -444,34 +444,38 @@ export async function handleVoiceTurn(args: {
   // into the WhatsApp thread.
   const summary = buildCallSummary({ turns, intents, outcome, language });
 
-  await db
-    .from("whatsapp_call_sessions")
-    .update({
-      transcript: turns,
-      turn_count: (row.turn_count ?? 0) + 1,
-      detected_language: language,
-      voice_intents: intents,
-      voice_outcome: outcome,
-      closing_state: endCall ? "farewell" : nextClosingState,
-      disclosure_spoken: row.disclosure_spoken === true || payload.kind === "greeting",
-      voice_latency: latency,
-      renagi_signals: signals,
-      call_summary: summary,
-      lead_id: row.lead_id ?? context.leadId,
-      conversation_id: row.conversation_id ?? context.conversationId,
-      ...(travellers ? { voice_traveller_count: travellers } : {}),
-    })
-    .eq("id", row.id);
+  // These two writes touch independent rows, so they are issued concurrently.
+  // BOTH are awaited: durability is unchanged, only the wall clock shrinks.
+  await Promise.all([
+    db
+      .from("whatsapp_call_sessions")
+      .update({
+        transcript: turns,
+        turn_count: (row.turn_count ?? 0) + 1,
+        detected_language: language,
+        voice_intents: intents,
+        voice_outcome: outcome,
+        closing_state: endCall ? "farewell" : nextClosingState,
+        disclosure_spoken: row.disclosure_spoken === true || payload.kind === "greeting",
+        voice_latency: latency,
+        renagi_signals: signals,
+        call_summary: summary,
+        lead_id: row.lead_id ?? context.leadId,
+        conversation_id: row.conversation_id ?? context.conversationId,
+        ...(travellers ? { voice_traveller_count: travellers } : {}),
+      })
+      .eq("id", row.id),
+    // CALL → TEXT continuity, refreshed after EVERY turn (one row per call,
+    // kept current). A caller who hangs up mid-call is still remembered by the
+    // text brain, instead of the memory only landing at a clean end-of-call.
+    persistCallMemory(db, {
+      agencyId: row.agency_id,
+      conversationId: row.conversation_id ?? context.conversationId,
+      summary,
+      callId: row.call_id,
+    }),
+  ]);
 
-  // CALL → TEXT continuity, refreshed after EVERY turn (one row per call, kept
-  // current). A caller who hangs up mid-call is still remembered by the text
-  // brain, instead of the memory only landing at a clean end-of-call.
-  await persistCallMemory(db, {
-    agencyId: row.agency_id,
-    conversationId: row.conversation_id ?? context.conversationId,
-    summary,
-    callId: row.call_id,
-  });
 
   const stats = summarizeLatency(latency);
   console.log(
