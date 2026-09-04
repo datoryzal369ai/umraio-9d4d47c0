@@ -343,14 +343,15 @@ export function normalizeMessageChannel(modality: string | null | undefined): Hq
 
 export function normalizeMessageStatus(
   deliveryStatus: string | null | undefined,
-  humanAttentionRequired: boolean | null | undefined,
 ): HqInteractionStatus {
-  if (humanAttentionRequired) return "HUMAN_REQUIRED";
+  // Historical status is derived from event-level delivery evidence only.
+  // "sent" proves provider send/accept stage, not delivery/read.
   switch (deliveryStatus) {
     case "read":
     case "delivered":
-    case "sent":
       return "SUCCESS";
+    case "sent":
+      return "PARTIAL";
     case "failed":
       return "FAILED";
     case "pending":
