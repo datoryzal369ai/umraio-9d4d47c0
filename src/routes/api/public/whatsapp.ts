@@ -496,6 +496,9 @@ async function processInboundMessage(
             ai_enabled?: boolean;
             conversation_state?: string;
             state_updated_at?: string;
+            human_attention_required?: boolean;
+            escalated_at?: string | null;
+            escalation_reason?: string | null;
           } = {
             last_message_at: new Date().toISOString(),
             status: "open",
@@ -507,15 +510,67 @@ async function processInboundMessage(
           if (conversation.conversation_state === "DO_NOT_CONTACT") {
             const { detectOptOut } = await import("@/lib/sales/hardening.core");
             if (!detectOptOut(text).optedOut) {
-              convUpdate = {
-                ...convUpdate,
-                ai_enabled: true,
-                conversation_state: "ACTIVE",
-                state_updated_at: new Date().toISOString(),
-              };
+              const nowIso = new Date().toISOString();
+              const { buildRecoveryConversationPatch, resolveRecoveryStage } = await import(
+                "@/lib/sales/lifecycle-reconciliation.core"
+              );
+              // ATOMIC RECOVERY: AI, handover and escalation fields move as ONE
+              // coherent governed transition. A partial reopen is what left the
+              // conversation contradicting itself before.
+              convUpdate = { ...convUpdate, ...buildRecoveryConversationPatch(nowIso) };
               aiEnabled = true;
+
+              // Commercial stage is DERIVED from the strongest verified
+              // evidence, never blindly reset. do_not_contact history stays.
+              let recoveredStage: string | null = null;
+              if (leadId) {
+                const [{ data: leadRow }, { data: bookingRow }, { data: quotationRow }] =
+                  await Promise.all([
+                    supabaseAdmin
+                      .from("leads")
+                      .select("stage, pax, preferred_month, budget_myr, package_interest")
+                      .eq("agency_id", agencyId)
+                      .eq("id", leadId)
+                      .maybeSingle(),
+                    supabaseAdmin
+                      .from("bookings")
+                      .select("status")
+                      .eq("agency_id", agencyId)
+                      .eq("lead_id", leadId)
+                      .order("created_at", { ascending: false })
+                      .limit(1)
+                      .maybeSingle(),
+                    supabaseAdmin
+                      .from("quotations")
+                      .select("status")
+                      .eq("agency_id", agencyId)
+                      .eq("lead_id", leadId)
+                      .order("created_at", { ascending: false })
+                      .limit(1)
+                      .maybeSingle(),
+                  ]);
+                const lr = leadRow as Record<string, unknown> | null;
+                recoveredStage = resolveRecoveryStage({
+                  leadStage: (lr?.["stage"] as string | null) ?? null,
+                  bookingStatus:
+                    (bookingRow as { status?: string | null } | null)?.status ?? null,
+                  quotationStatus:
+                    (quotationRow as { status?: string | null } | null)?.status ?? null,
+                  qualified: Boolean(
+                    lr?.["pax"] && (lr?.["preferred_month"] || lr?.["budget_myr"] || lr?.["package_interest"]),
+                  ),
+                });
+                if (recoveredStage && recoveredStage !== (lr?.["stage"] as string | null)) {
+                  await supabaseAdmin
+                    .from("leads")
+                    .update({ stage: recoveredStage as never })
+                    .eq("agency_id", agencyId)
+                    .eq("id", leadId);
+                }
+              }
+
               console.log(
-                `[whatsapp] dnc_reengaged conversation=${conversationId} reason=customer_initiated_inbound`,
+                `[whatsapp] dnc_reengaged conversation=${conversationId} reason=customer_initiated_inbound stage=${recoveredStage ?? "unchanged"}`,
               );
               // AUDIT: durable record of the DNC → ACTIVE transition. The
               // historical do-not-contact flags on the lead are intentionally
@@ -532,6 +587,8 @@ async function processInboundMessage(
                   previous_state: "DO_NOT_CONTACT",
                   new_state: "ACTIVE",
                   reason: "customer_initiated_inbound",
+                  recovered_stage: recoveredStage,
+                  do_not_contact_history_preserved: true,
                 },
               });
             }

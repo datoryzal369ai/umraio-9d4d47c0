@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ConversationIntelligence } from "./conversation-intelligence.core";
+import { resolveOptOutStage } from "./lifecycle-reconciliation.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -83,6 +84,7 @@ export async function applySafetyGate(args: {
       })
       .eq("id", conversationId);
 
+    let preservedTerminalStage: string | null = null;
     if (leadId) {
       const { data: leadRow } = await supabase
         .from("leads")
@@ -90,26 +92,44 @@ export async function applySafetyGate(args: {
         .eq("id", leadId)
         .eq("agency_id", agencyId)
         .maybeSingle();
-      await supabase
-        .from("leads")
-        .update({
-          do_not_contact: true,
-          do_not_contact_at: now,
-          do_not_contact_reason: intel.optOutPhrase ?? "Customer opted out",
-          stage: "lost",
-        })
-        .eq("id", leadId);
-      await cancelPendingFollowups(supabase, agencyId, leadId, "Customer opted out of contact");
-      const { recordLeadStageTransition } = await import("../conversion/producers");
-      await recordLeadStageTransition({
-        db: supabase,
-        agencyId,
-        leadId,
-        from: (leadRow?.stage as string | undefined) ?? null,
-        to: "lost",
-        actor: "customer",
-        reason: "opt_out",
+      const { data: bookingRow } = await supabase
+        .from("bookings")
+        .select("status")
+        .eq("agency_id", agencyId)
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const currentStage = (leadRow?.stage as string | undefined) ?? null;
+      // GOVERNANCE ≠ COMMERCE. A communication opt-out never rewrites a
+      // verified commercial WIN (confirmed booking) into "lost".
+      const nextStage = resolveOptOutStage({
+        leadStage: currentStage,
+        bookingStatus: (bookingRow as { status?: string | null } | null)?.status ?? null,
       });
+      if (nextStage === null) preservedTerminalStage = currentStage;
+
+      const leadPatch: Record<string, unknown> = {
+        do_not_contact: true,
+        do_not_contact_at: now,
+        do_not_contact_reason: intel.optOutPhrase ?? "Customer opted out",
+      };
+      if (nextStage) leadPatch["stage"] = nextStage;
+      await supabase.from("leads").update(leadPatch).eq("id", leadId);
+      await cancelPendingFollowups(supabase, agencyId, leadId, "Customer opted out of contact");
+      if (nextStage) {
+        const { recordLeadStageTransition } = await import("../conversion/producers");
+        await recordLeadStageTransition({
+          db: supabase,
+          agencyId,
+          leadId,
+          from: currentStage,
+          to: nextStage,
+          actor: "customer",
+          reason: "opt_out",
+        });
+      }
     }
 
     await supabase.from("activity_log").insert({
@@ -118,7 +138,14 @@ export async function applySafetyGate(args: {
       action: "Customer opted out — do-not-contact applied",
       entity: "lead",
       entity_id: leadId,
-      meta: { conversation_id: conversationId, phrase: intel.optOutPhrase ?? null },
+      meta: {
+        conversation_id: conversationId,
+        phrase: intel.optOutPhrase ?? null,
+        // AUDIT: when a terminal commercial state is preserved, the STOP is
+        // still recorded here as the governance reason.
+        preserved_commercial_stage: preservedTerminalStage,
+        commercial_state_preserved: preservedTerminalStage !== null,
+      },
     });
     await supabase.from("notifications").insert({
       agency_id: agencyId,

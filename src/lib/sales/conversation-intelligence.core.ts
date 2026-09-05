@@ -39,6 +39,7 @@ import {
   buildBehavioralProfile,
   type BehavioralProfile,
 } from "@/lib/sales/behavioral.core";
+import { lostStageIsContradicted } from "./lifecycle-reconciliation.core";
 
 /* ------------------------------------------------------------------ *
  * 4-8. LANGUAGE INTELLIGENCE™
@@ -566,7 +567,13 @@ export function buildConversationIntelligence(input: IntelligenceInput): Convers
   } else if (input.bookingConfirmed || lead.stage === "booked") {
     state = "BOOKED";
     confidence = 0.95;
-  } else if (lead.stage === "lost" || signals.includes("NOT_INTERESTED")) {
+  } else if (
+    // PRECEDENCE: a persisted stage='lost' loses to stronger current evidence
+    // (confirmed booking already handled above, or a live quotation). LOST must
+    // reflect a genuinely lost commercial state, not a stale field.
+    (lead.stage === "lost" && !lostStageIsContradicted({ leadStage: lead.stage, quotationStatus: qStatus })) ||
+    signals.includes("NOT_INTERESTED")
+  ) {
     state = "LOST";
     confidence = 0.7;
   } else if (qStatus === "accepted" || (qStatus && depositIntent)) {
