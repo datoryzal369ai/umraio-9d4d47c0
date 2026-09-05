@@ -35,6 +35,7 @@ import {
   type TravellerNeed,
 } from "@/lib/sales/hardening.core";
 import {
+import { lostStageIsContradicted } from "./lifecycle-reconciliation.core";
   behavioralInstruction,
   buildBehavioralProfile,
   type BehavioralProfile,
@@ -341,8 +342,6 @@ export const OBJECTION_PLAYBOOK: Record<ObjectionCategory, string> = {
 /* ------------------------------------------------------------------ *
  * 9. CONVERSATION STATE MACHINE
  * ------------------------------------------------------------------ */
-
-import { lostStageIsContradicted } from "./lifecycle-reconciliation.core";
 
 export type ConversationState =
   | "DISCOVERY"
