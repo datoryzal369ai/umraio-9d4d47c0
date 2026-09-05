@@ -284,6 +284,43 @@ export type HqChannelActivityItem = {
   summary: string;
   sourceType: "message" | "call_session";
   sourceId: string;
+  /** Present for live calls only. Contains sanitized, metadata-only evidence. */
+  callObservability?: HqCallObservability;
+};
+
+export type HqCallOperationalState =
+  | "RECEIVED"
+  | "NEGOTIATING"
+  | "MEDIA_READY"
+  | "ANSWERED"
+  | "ENDED"
+  | "FAILED"
+  | "UNKNOWN";
+
+export type HqLatencySummary = { p50: number; p95: number; samples: number };
+
+export type HqCallObservability = {
+  recordId: string;
+  leadLinked: boolean;
+  conversationLinked: boolean;
+  operationalState: HqCallOperationalState;
+  sourceStatus: string;
+  receivedAt: string;
+  answerRequestedAt: string | null;
+  metaAcceptedAt: string | null;
+  mediaNegotiatedAt: string | null;
+  mediaReadyAt: string | null;
+  answeredAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  terminationReason: string | null;
+  turnCount: number;
+  detectedLanguage: string | null;
+  voiceOutcome: string | null;
+  closingState: string | null;
+  callSummaryPresent: boolean;
+  memoryContinuity: "PRESENT" | "ABSENT" | "UNKNOWN";
+  latency: Record<"asr" | "context" | "reasoning" | "tts" | "total", HqLatencySummary | null>;
 };
 
 export type HqMessageRow = {
@@ -322,6 +359,16 @@ export type HqCallSessionRow = {
   answered_at: string | null;
   ended_at: string | null;
   turn_count: number | null;
+  conversation_id?: string | null;
+  answer_requested_at?: string | null;
+  meta_accepted_at?: string | null;
+  media_negotiated_at?: string | null;
+  media_ready_at?: string | null;
+  detected_language?: string | null;
+  voice_outcome?: string | null;
+  closing_state?: string | null;
+  call_summary?: string | null;
+  voice_latency?: unknown;
 };
 
 const UNKNOWN_LABEL = "Unresolved";
@@ -377,6 +424,100 @@ export function normalizeCallStatus(row: {
   if (status === "answered") return row.answered_at ? "PARTIAL" : "PENDING";
   if (status === "ringing" || status === "connecting" || status === "received") return "PENDING";
   return "UNKNOWN";
+}
+
+function validTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function percentile(values: number[], fraction: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.ceil(sorted.length * fraction) - 1]!;
+}
+
+/** Parses only the sanitized numeric timings emitted by the existing voice turn pipeline. */
+export function summarizeCallLatency(value: unknown): HqCallObservability["latency"] {
+  const keys = ["asr", "context", "reasoning", "tts", "total"] as const;
+  const empty = () =>
+    Object.fromEntries(keys.map((key) => [key, null])) as HqCallObservability["latency"];
+  if (!Array.isArray(value)) return empty();
+  const result = empty();
+  for (const key of keys) {
+    const field = `${key}_ms`;
+    const values = value
+      .map((entry) =>
+        entry && typeof entry === "object" ? (entry as Record<string, unknown>)[field] : null,
+      )
+      .filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0);
+    if (values.length) {
+      result[key] = {
+        p50: percentile(values, 0.5),
+        p95: percentile(values, 0.95),
+        samples: values.length,
+      };
+    }
+  }
+  return result;
+}
+
+export function buildCallObservability(c: HqCallSessionRow): HqCallObservability {
+  const sourceStatus = c.status?.trim() || "UNKNOWN";
+  let operationalState: HqCallOperationalState = "UNKNOWN";
+  if (sourceStatus === "failed") operationalState = "FAILED";
+  else if (sourceStatus === "terminated" || sourceStatus === "missed" || c.ended_at)
+    operationalState = "ENDED";
+  else if (sourceStatus === "answered" || c.answered_at) operationalState = "ANSWERED";
+  else if (c.media_ready_at) operationalState = "MEDIA_READY";
+  else if (sourceStatus === "media_negotiating" || c.media_negotiated_at || c.meta_accepted_at)
+    operationalState = "NEGOTIATING";
+  else if (
+    sourceStatus === "ringing" ||
+    sourceStatus === "answer_requested" ||
+    sourceStatus === "received"
+  )
+    operationalState = "RECEIVED";
+
+  const answered = validTimestamp(c.answered_at);
+  const ended = validTimestamp(c.ended_at);
+  const durationSeconds =
+    answered !== null && ended !== null && ended >= answered
+      ? Math.round((ended - answered) / 1000)
+      : null;
+  const turnCount = Number.isInteger(c.turn_count) && (c.turn_count ?? 0) >= 0 ? c.turn_count! : 0;
+  const callSummaryPresent = typeof c.call_summary === "string" && c.call_summary.trim().length > 0;
+  const leadLinked = Boolean(c.lead_id);
+  const conversationLinked = Boolean(c.conversation_id);
+
+  return {
+    recordId: c.id,
+    leadLinked,
+    conversationLinked,
+    operationalState,
+    sourceStatus,
+    receivedAt: c.received_at,
+    answerRequestedAt: c.answer_requested_at ?? null,
+    metaAcceptedAt: c.meta_accepted_at ?? null,
+    mediaNegotiatedAt: c.media_negotiated_at ?? null,
+    mediaReadyAt: c.media_ready_at ?? null,
+    answeredAt: c.answered_at,
+    endedAt: c.ended_at,
+    durationSeconds,
+    terminationReason: c.termination_reason,
+    turnCount,
+    detectedLanguage: c.detected_language ?? null,
+    voiceOutcome: c.voice_outcome ?? null,
+    closingState: c.closing_state ?? null,
+    callSummaryPresent,
+    memoryContinuity:
+      conversationLinked && callSummaryPresent
+        ? "PRESENT"
+        : !conversationLinked && !callSummaryPresent
+          ? "ABSENT"
+          : "UNKNOWN",
+    latency: summarizeCallLatency(c.voice_latency),
+  };
 }
 
 function messageDirection(sender: string): HqChannelActivityItem["direction"] {
@@ -450,6 +591,7 @@ export function buildChannelActivity(input: {
       }`,
       sourceType: "call_session",
       sourceId: c.id,
+      callObservability: buildCallObservability(c),
     });
   }
 

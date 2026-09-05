@@ -17,6 +17,7 @@ import {
 
 import { PageHeader } from "@/components/app/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
+import { CallActivityCard } from "@/components/hq/CallActivityCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -440,75 +441,62 @@ function HqPage() {
               <p className="text-sm text-muted-foreground">Channel activity is unavailable.</p>
             ) : (
               <Panel title={`Recent interactions (${channelItems.length})`}>
-                <table className="w-full min-w-[900px] text-left text-sm">
-                  <thead className="text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Channel</th>
-                      <th className="px-4 py-3">Agency</th>
-                      <th className="px-4 py-3">Customer</th>
-                      <th className="px-4 py-3">Direction</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Activity</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {channelItems.map((i) => {
-                      const Icon =
-                        i.channel === "LIVE_CALL"
-                          ? PhoneCall
-                          : i.channel === "VOICE_NOTE"
-                            ? Mic
-                            : MessageSquare;
+                <div className="space-y-3 p-3 sm:p-4">
+                  {channelItems.map((i) => {
+                    if (i.callObservability) {
                       return (
-                        <tr key={i.id} className="border-t border-border/60">
-                          <td className="px-4 py-3 text-muted-foreground">
-                            {fmtDate(i.occurredAt)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="flex items-center gap-2">
-                              <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
-                              {i.channel === "WHATSAPP_TEXT"
-                                ? "WhatsApp text"
-                                : i.channel === "VOICE_NOTE"
-                                  ? "Voice note"
-                                  : "Live call"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">{i.agencyName}</td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium">{i.contactName}</div>
-                            <p className="font-mono text-[11px] text-muted-foreground">
-                              {i.contactPhone}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{i.direction}</td>
-                          <td className="px-4 py-3">
-                            <Badge
-                              variant={
-                                i.interactionStatus === "SUCCESS"
-                                  ? "default"
-                                  : i.interactionStatus === "FAILED"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                            >
-                              {i.interactionStatus}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{i.summary}</td>
-                        </tr>
+                        <CallActivityCard
+                          key={i.id}
+                          item={{ ...i, callObservability: i.callObservability }}
+                        />
                       );
-                    })}
-                    {channelItems.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
-                          No channel activity recorded yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                    }
+                    const Icon = i.channel === "VOICE_NOTE" ? Mic : MessageSquare;
+                    return (
+                      <article
+                        key={i.id}
+                        className="grid gap-3 rounded-lg border border-border/70 bg-background/25 p-3 sm:grid-cols-[9rem_9rem_minmax(0,1fr)_auto] sm:items-center"
+                      >
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Icon
+                            aria-hidden="true"
+                            className="size-4 shrink-0 text-muted-foreground"
+                          />
+                          {i.channel === "VOICE_NOTE" ? "Voice note" : "WhatsApp text"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{i.contactName}</p>
+                          <p className="truncate font-mono text-[11px] text-muted-foreground">
+                            {i.contactPhone}
+                          </p>
+                        </div>
+                        <div className="min-w-0 text-xs text-muted-foreground">
+                          <p className="truncate">{i.agencyName}</p>
+                          <p className="truncate">
+                            {i.summary} · {fmtDate(i.occurredAt)}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            i.interactionStatus === "SUCCESS"
+                              ? "default"
+                              : i.interactionStatus === "FAILED"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                          className="w-fit"
+                        >
+                          {i.interactionStatus}
+                        </Badge>
+                      </article>
+                    );
+                  })}
+                  {channelItems.length === 0 && (
+                    <p className="px-1 py-6 text-sm text-muted-foreground">
+                      No channel activity recorded yet.
+                    </p>
+                  )}
+                </div>
               </Panel>
             )}
           </TabsContent>

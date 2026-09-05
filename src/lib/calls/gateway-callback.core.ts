@@ -178,3 +178,12 @@ export function decideGatewayCallback(args: {
     },
   };
 }
+
+/**
+ * A media termination that represents a NATURAL end of the conversation (RAIŌ
+ * said goodbye), as opposed to a caller hang-up, ICE failure or reaper. Only
+ * these justify the control plane sending Meta a graceful `terminate`.
+ */
+export function isGracefulCompletion(reason: string | undefined | null): boolean {
+  return (reason ?? "").trim().toLowerCase() === "conversation_complete";
+}

@@ -238,7 +238,7 @@ export const getHqChannelActivity = createServerFn({ method: "GET" })
       supabaseAdmin
         .from("whatsapp_call_sessions")
         .select(
-          "id, agency_id, lead_id, caller_phone, direction, status, termination_reason, received_at, answered_at, ended_at, turn_count",
+          "id, agency_id, lead_id, conversation_id, caller_phone, direction, status, termination_reason, received_at, answer_requested_at, meta_accepted_at, media_negotiated_at, media_ready_at, answered_at, ended_at, turn_count, detected_language, voice_outcome, closing_state, call_summary, voice_latency",
         )
         .order("received_at", { ascending: false })
         .limit(100),

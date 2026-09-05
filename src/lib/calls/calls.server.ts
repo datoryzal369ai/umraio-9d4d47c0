@@ -22,6 +22,7 @@ import {
 } from "./call-events.core";
 import {
   decideGatewayCallback,
+  isGracefulCompletion,
   type CallSessionRow,
   type GatewayCallbackPayload,
 } from "./gateway-callback.core";
@@ -32,7 +33,7 @@ import {
   resolveGatewayConfig,
   terminateMediaSession,
 } from "./media-gateway.server";
-import { metaAcceptCall, metaPreAcceptCall } from "./meta-calls.server";
+import { metaAcceptCall, metaPreAcceptCall, metaTerminateCall } from "./meta-calls.server";
 import { finalizeCallMemory } from "./call-context.server";
 import { CallTimeline, mergeCallTimings, type CallTimings } from "./call-timings.core";
 
@@ -433,13 +434,16 @@ export async function processGatewayCallback(args: {
   db: Db;
   payload: GatewayCallbackPayload;
   now?: () => Date;
+  fetchImpl?: typeof fetch;
 }): Promise<GatewayCallbackOutcome> {
   const { db, payload } = args;
   const now = args.now ?? (() => new Date());
 
   const { data } = await db
     .from("whatsapp_call_sessions")
-    .select("id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces, stage_timings")
+    .select(
+      "id, call_id, agency_id, phone_number_id, status, gateway_session_id, meta_accepted_at, callback_nonces, stage_timings",
+    )
     .eq("call_id", payload.call_id)
     .maybeSingle();
 
@@ -477,5 +481,28 @@ export async function processGatewayCallback(args: {
   console.log(
     `[calls] gateway_callback_applied call_id=${payload.call_id} event=${payload.event} outcome=${decision.outcome}`,
   );
+
+  // GRACEFUL META HANG-UP. Duplicate-safe: the decision above only applies once
+  // per call (the session is terminal afterwards), so this runs at most once.
+  // Best-effort: a Meta failure never alters persisted call truth.
+  if (decision.outcome === "terminated" && isGracefulCompletion(payload.reason)) {
+    const row = data as { agency_id?: string; phone_number_id?: string } | null;
+    const phoneNumberId = row?.phone_number_id ?? "";
+    if (phoneNumberId) {
+      const tenant = await resolveTenant(db, phoneNumberId).catch(() => null);
+      if (tenant?.accessToken && tenant.agencyId === row?.agency_id) {
+        const result = await metaTerminateCall({
+          phoneNumberId,
+          accessToken: tenant.accessToken,
+          callId: payload.call_id,
+          ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
+        }).catch(() => ({ ok: false, reason: "meta_terminate_error" }) as const);
+        console.log(
+          `[calls] meta_terminate call_id=${payload.call_id} ok=${result.ok} reason=${result.ok ? "conversation_complete" : result.reason}`,
+        );
+      }
+    }
+  }
+
   return { applied: true, outcome: decision.outcome };
 }
