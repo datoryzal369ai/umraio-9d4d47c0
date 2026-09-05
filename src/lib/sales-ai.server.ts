@@ -74,12 +74,12 @@ import {
 } from "./sales/conversation-intelligence.core";
 import { applySafetyGate } from "./sales/safety-gate.server";
 import {
-import { hasConfirmedBooking } from "./sales/lifecycle-reconciliation.core";
   capabilityTruthInstructions,
   customerAskedAboutAiIdentity,
   customerAskedForLiveCall,
   sanitizeCapabilityClaims,
 } from "./sales/capability-truth.core";
+import { hasConfirmedBooking } from "./sales/lifecycle-reconciliation.core";
 import { buildSocialProfile, socialPresenceInstruction } from "./sales/social-presence.core";
 import { resolveCapabilities } from "@/lib/capabilities/registry.core";
 import { recentCallInstruction, type RecentCallRow } from "@/lib/calls/recent-call.core";

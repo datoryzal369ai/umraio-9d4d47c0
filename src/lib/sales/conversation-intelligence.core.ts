@@ -35,11 +35,11 @@ import {
   type TravellerNeed,
 } from "@/lib/sales/hardening.core";
 import {
-import { lostStageIsContradicted } from "./lifecycle-reconciliation.core";
   behavioralInstruction,
   buildBehavioralProfile,
   type BehavioralProfile,
 } from "@/lib/sales/behavioral.core";
+import { lostStageIsContradicted } from "./lifecycle-reconciliation.core";
 
 /* ------------------------------------------------------------------ *
  * 4-8. LANGUAGE INTELLIGENCE™
