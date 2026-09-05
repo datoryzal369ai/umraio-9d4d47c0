@@ -563,7 +563,7 @@ async function processInboundMessage(
                 if (recoveredStage && recoveredStage !== (lr?.["stage"] as string | null)) {
                   await supabaseAdmin
                     .from("leads")
-                    .update({ stage: recoveredStage })
+                    .update({ stage: recoveredStage as never })
                     .eq("agency_id", agencyId)
                     .eq("id", leadId);
                 }
