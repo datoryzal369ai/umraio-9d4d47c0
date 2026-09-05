@@ -92,7 +92,7 @@ export function resolveOptOutStage(evidence: LifecycleEvidence): LeadStage | nul
  * never downgrades a lead that is already further along.
  */
 export function resolveRecoveryStage(evidence: LifecycleEvidence): LeadStage | null {
-  const current = (evidence.leadStage ?? "").toLowerCase() as LeadStage;
+  const current = (evidence.leadStage ?? "").toLowerCase();
 
   // Strongest evidence first.
   if (hasConfirmedBooking(evidence)) return current === "completed" ? null : "booked";
