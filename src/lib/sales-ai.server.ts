@@ -74,6 +74,7 @@ import {
 } from "./sales/conversation-intelligence.core";
 import { applySafetyGate } from "./sales/safety-gate.server";
 import {
+import { hasConfirmedBooking } from "./sales/lifecycle-reconciliation.core";
   capabilityTruthInstructions,
   customerAskedAboutAiIdentity,
   customerAskedForLiveCall,
@@ -204,6 +205,20 @@ export async function loadContext(supabase: Db, conversationId: string) {
         .maybeSingle()
     : { data: null };
 
+  // LIFECYCLE EVIDENCE: the newest booking row is part of the conversation's
+  // verified commercial state — a confirmed booking outranks a stale
+  // `leads.stage` value when intelligence resolves the conversation state.
+  const { data: booking } = conversation.lead_id
+    ? await supabase
+        .from("bookings")
+        .select("status")
+        .eq("agency_id", conversation.agency_id)
+        .eq("lead_id", conversation.lead_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
   // CALL → TEXT continuity: the newest call session for this same thread, so
   // the text channel continues the phone conversation instead of restarting it.
   const { data: recentCall } = await supabase
@@ -217,6 +232,7 @@ export async function loadContext(supabase: Db, conversationId: string) {
 
   return {
     conversation,
+    booking: (booking ?? null) as { status?: string | null } | null,
     recentCall: (recentCall ?? null) as RecentCallRow,
     messages: [...((messages ?? []) as ChatMessageRow[])].reverse(),
     lead,
@@ -421,6 +437,10 @@ export function buildIntelligence(ctx: Awaited<ReturnType<typeof loadContext>>):
     humanTakeover: ctx.conversation.ai_enabled === false,
     agencyDefaultLanguage: ctx.settings?.ai_language ?? null,
     leadLanguagePreference: (lead?.["preferred_language"] as LanguagePreference | null) ?? null,
+    bookingConfirmed: hasConfirmedBooking({
+      leadStage: (lead?.["stage"] as string | null) ?? null,
+      bookingStatus: (ctx as { booking?: { status?: string | null } | null }).booking?.status ?? null,
+    }),
   });
 }
 
