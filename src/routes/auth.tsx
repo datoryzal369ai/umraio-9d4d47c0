@@ -131,7 +131,7 @@ function AuthPage() {
       email: parsed.data.email,
       password: parsed.data.password,
       options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
+        emailRedirectTo: `${window.location.origin}${destination}`,
         data: { full_name: parsed.data.fullName, agency_name: parsed.data.agencyName },
       },
     });
@@ -176,7 +176,7 @@ function AuthPage() {
   async function handleGoogle() {
     setPending(true);
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+      redirect_uri: `${window.location.origin}${destination}`,
     });
     if (result.error) {
       setPending(false);

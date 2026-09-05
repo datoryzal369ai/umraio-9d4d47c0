@@ -7,6 +7,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { mcpPlugin } from "@lovable.dev/mcp-js/stacks/tanstack/vite";
 
 /** Build-time commit hash of the bundle that is actually being served. */
 function buildCommit(short: boolean): string {
@@ -45,6 +46,7 @@ export default defineConfig({
     server: { entry: "server" },
   },
   vite: {
+    plugins: [mcpPlugin()],
     define: {
       __BUILD_COMMIT__: JSON.stringify(buildCommit(true)),
       __BUILD_COMMIT_SHA__: JSON.stringify(buildCommit(false)),
