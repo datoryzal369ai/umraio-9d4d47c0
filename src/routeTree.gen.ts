@@ -29,6 +29,7 @@ import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authen
 import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as QTokenRouteImport } from './routes/q.$token'
+import { Route as DotlovableOauthConsentRouteImport } from './routes/[.]lovable.oauth.consent'
 import { Route as AuthenticatedConversationsIndexRouteImport } from './routes/_authenticated/conversations/index'
 import { Route as AuthenticatedConversationsConversationIdRouteImport } from './routes/_authenticated/conversations/$conversationId'
 import { Route as AuthenticatedExecutiveIndexRouteImport } from './routes/_authenticated/executive/index'
@@ -158,6 +159,11 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 const QTokenRoute = QTokenRouteImport.update({
   id: '/q/$token',
   path: '/q/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DotlovableOauthConsentRoute = DotlovableOauthConsentRouteImport.update({
+  id: '/.lovable/oauth/consent',
+  path: '/.lovable/oauth/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedConversationsIndexRoute =
@@ -353,6 +359,7 @@ export interface FileRoutesByFullPath {
   '/tasks': typeof AuthenticatedTasksRoute
   '/join/$token': typeof JoinTokenRoute
   '/q/$token': typeof QTokenRoute
+  '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/executive/$workerKey': typeof AuthenticatedExecutiveWorkerKeyRoute
   '/executive/audit': typeof AuthenticatedExecutiveAuditRoute
@@ -403,6 +410,7 @@ export interface FileRoutesByTo {
   '/tasks': typeof AuthenticatedTasksRoute
   '/join/$token': typeof JoinTokenRoute
   '/q/$token': typeof QTokenRoute
+  '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/executive/$workerKey': typeof AuthenticatedExecutiveWorkerKeyRoute
   '/executive/audit': typeof AuthenticatedExecutiveAuditRoute
@@ -456,6 +464,7 @@ export interface FileRoutesById {
   '/_authenticated/tasks': typeof AuthenticatedTasksRoute
   '/join/$token': typeof JoinTokenRoute
   '/q/$token': typeof QTokenRoute
+  '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/_authenticated/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/_authenticated/executive/$workerKey': typeof AuthenticatedExecutiveWorkerKeyRoute
   '/_authenticated/executive/audit': typeof AuthenticatedExecutiveAuditRoute
@@ -509,6 +518,7 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/join/$token'
     | '/q/$token'
+    | '/.lovable/oauth/consent'
     | '/conversations/$conversationId'
     | '/executive/$workerKey'
     | '/executive/audit'
@@ -559,6 +569,7 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/join/$token'
     | '/q/$token'
+    | '/.lovable/oauth/consent'
     | '/conversations/$conversationId'
     | '/executive/$workerKey'
     | '/executive/audit'
@@ -611,6 +622,7 @@ export interface FileRouteTypes {
     | '/_authenticated/tasks'
     | '/join/$token'
     | '/q/$token'
+    | '/.lovable/oauth/consent'
     | '/_authenticated/conversations/$conversationId'
     | '/_authenticated/executive/$workerKey'
     | '/_authenticated/executive/audit'
@@ -655,6 +667,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   JoinTokenRoute: typeof JoinTokenRoute
   QTokenRoute: typeof QTokenRoute
+  DotlovableOauthConsentRoute: typeof DotlovableOauthConsentRoute
   ApiPublicMeetExecutiveRoute: typeof ApiPublicMeetExecutiveRoute
   ApiPublicMeetRequestRoute: typeof ApiPublicMeetRequestRoute
   ApiPublicWhatsappRoute: typeof ApiPublicWhatsappRoute
@@ -808,6 +821,13 @@ declare module '@tanstack/react-router' {
       path: '/q/$token'
       fullPath: '/q/$token'
       preLoaderRoute: typeof QTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.lovable/oauth/consent': {
+      id: '/.lovable/oauth/consent'
+      path: '/.lovable/oauth/consent'
+      fullPath: '/.lovable/oauth/consent'
+      preLoaderRoute: typeof DotlovableOauthConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/conversations/': {
@@ -1115,6 +1135,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   JoinTokenRoute: JoinTokenRoute,
   QTokenRoute: QTokenRoute,
+  DotlovableOauthConsentRoute: DotlovableOauthConsentRoute,
   ApiPublicMeetExecutiveRoute: ApiPublicMeetExecutiveRoute,
   ApiPublicMeetRequestRoute: ApiPublicMeetRequestRoute,
   ApiPublicWhatsappRoute: ApiPublicWhatsappRoute,
