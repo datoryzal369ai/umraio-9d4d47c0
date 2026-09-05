@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 import { recordLeadCreated } from "./conversion/producers";
+import { buildOwnerResumeConversationPatch } from "./sales/lifecycle-reconciliation.core";
 
 export type Conversation = {
   id: string;
@@ -178,18 +179,10 @@ export async function setAiEnabled(conversationId: string, enabled: boolean) {
   if (!agencyId) throw new Error("No agency context for this account");
 
   const now = new Date().toISOString();
-  const patch = enabled
-    ? {
-        ai_enabled: true,
-        // cut-off: muted-era messages are never replayed on resume
-        ai_muted_at: now,
-        // a crashed/stale claim must never survive a resume
-        ai_reply_claimed_at: null,
-        ai_reply_due_at: null,
-        escalated_at: null,
-        status: "open",
-      }
-    : { ai_enabled: false, ai_muted_at: now };
+  // ATOMIC RESUME: every pause/handover field is reconciled in ONE update, so
+  // the conversation can never be "AI on" and "waiting for a human" at once.
+  // Historical audit evidence (activity_log, lead do_not_contact) is untouched.
+  const patch = enabled ? buildOwnerResumeConversationPatch(now) : { ai_enabled: false, ai_muted_at: now };
 
   const { data, error } = await supabase
     .from("conversations")
