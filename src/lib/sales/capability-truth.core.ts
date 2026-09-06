@@ -33,7 +33,6 @@ const FALSE_CALL_DENIAL_PATTERNS: RegExp[] = [
   /\b(?:phone|voice)\s+calls?\b[^.!?]{0,40}\b(?:not\s+available|unavailable|not\s+supported)\b/i,
 ];
 
-
 /**
  * Used when a reply consisted ONLY of forbidden capability-denial text. Never
  * return the original in that case — it would ship the exact contradiction.
@@ -55,7 +54,6 @@ function mentionsLiveCallUnavailable(text: string): boolean {
 const FALSE_VOICE_DENIAL_PATTERNS: RegExp[] = [
   /\btidak\s+(?:boleh|dapat)\b[^.!?]{0,60}\b(?:bercakap|bersuara|hantar\s+(?:nota\s+)?suara|voice\s*note|voice\s*message|audio)\b/i,
   /\btak\s+(?:boleh|dapat)\b[^.!?]{0,60}\b(?:bercakap|bersuara|hantar\s+(?:nota\s+)?suara|voice\s*note|voice\s*message|audio)\b/i,
-  // "sistem ini memang tak ada fungsi voice note atau suara langsung"
   /\b(?:tiada|tak\s+ada|tidak\s+ada|belum\s+ada|tak\s+wujud)\b[^.!?]{0,60}\b(?:voice\s*note|nota\s+suara|fungsi\s+suara|suara)\b/i,
   /\b(?:voice\s*note|nota\s+suara)\b[^.!?]{0,40}\b(?:tiada|tak\s+ada|tidak\s+ada|tidak\s+tersedia|belum\s+tersedia|tak\s+tersedia)\b/i,
   /\bhanya\s+boleh\s+(?:balas|hantar|beri|bantu|berkomunikasi|berhubung)\b[^.!?]{0,60}\b(?:teks|tulisan|bertulis|mesej\s+tulisan|mesej\s+bertulis|text)\b/i,
@@ -66,7 +64,6 @@ const FALSE_VOICE_DENIAL_PATTERNS: RegExp[] = [
   /\bi\s+can\s+only\s+(?:reply|respond|send|help)\b[^.!?]{0,40}\b(?:text|written)\b/i,
   /\bi\s*(?:'|’)?m\s+(?:only|just)\s+a\s+text[-\s]?(?:based\s+)?(?:ai|bot|assistant)\b/i,
 ];
-
 
 /** Unnecessary self-referential machine talk during normal sales conversation. */
 const SELF_REFERENTIAL_PATTERNS: RegExp[] = [
@@ -90,7 +87,96 @@ export function customerAskedForLiveCall(text: string | null | undefined): boole
 }
 
 function splitSentences(text: string): string[] {
-  return text.split(/(?<=[.!?\n])\s+/);
+  return text.split(/(?<=[.!?])\s+/);
+}
+
+/**
+ * Removes forbidden sentences while PRESERVING the model's original line and
+ * paragraph structure. The previous implementation joined every surviving
+ * sentence with a space, which accidentally destroyed WhatsApp blank lines,
+ * bullets and scannable formatting even when the model produced them correctly.
+ */
+function filterForbiddenPreservingLayout(text: string, drop: RegExp[]): string {
+  if (!drop.length || !text) return text;
+
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => {
+      if (!line.trim()) return "";
+      const kept = splitSentences(line).filter(
+        (sentence) => !drop.some((pattern) => pattern.test(sentence)),
+      );
+      return kept.join(" ").trim();
+    })
+    .join("\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Bold compact WhatsApp labels without changing any underlying fact/value. */
+function boldWhatsAppLabels(line: string): string {
+  if (!line || /^\s*\*/.test(line)) return line;
+  const label = /(Hari\s+\d+(?:\s*[–-]\s*\d+)?|Pakej|Harga(?:\s+seorang)?|Jumlah|Deposit|Rujukan|Tempoh|Hotel|Tarikh|Bulan|Jemaah|Status|Quotation|Payment\s+link|Link\s+payment)/i;
+  return line.replace(
+    new RegExp(`^(\\s*[•-]?\\s*)(${label.source})(\\s*:)`, "i"),
+    (_m, prefix: string, name: string) => `${prefix}*${name}:*`,
+  );
+}
+
+/**
+ * Final deterministic readability guard for customer-facing WhatsApp text.
+ * It does not invent facts or truncate content; it only restores whitespace,
+ * separates dense prose, preserves bullets/URLs and highlights useful labels.
+ */
+function enforceWhatsAppReadability(text: string): string {
+  let value = (text ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\*\*([^*]+)\*\*/g, "*$1*")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+  if (!value) return value;
+
+  // Recover bullet boundaries when an upstream stage/model emitted them inline.
+  value = value.replace(/\s+(?=•\s+)/g, "\n");
+
+  let lines = value.split("\n").map((line) => boldWhatsAppLabels(line.trimEnd()));
+
+  const firstBullet = lines.findIndex((line) => /^\s*•\s+/.test(line));
+  if (firstBullet > 0 && lines[firstBullet - 1]?.trim()) {
+    lines.splice(firstBullet, 0, "");
+  }
+
+  // Add a visual break after a contiguous bullet block when prose continues.
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    if (/^\s*•\s+/.test(lines[i] ?? "") && !/^\s*•\s+/.test(lines[i + 1] ?? "") && (lines[i + 1] ?? "").trim()) {
+      lines.splice(i + 1, 0, "");
+      break;
+    }
+  }
+
+  value = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+
+  // If a long reply still contains no paragraph break or bullet structure,
+  // group sentences into short mobile-friendly paragraphs. No content is lost.
+  if (value.length > 320 && !value.includes("\n\n") && !/^\s*•\s+/m.test(value)) {
+    const sentences = splitSentences(value).map((s) => s.trim()).filter(Boolean);
+    if (sentences.length >= 3) {
+      const paragraphs: string[] = [];
+      for (let i = 0; i < sentences.length; i += 2) {
+        paragraphs.push(sentences.slice(i, i + 2).join(" "));
+      }
+      value = paragraphs.join("\n\n");
+    }
+  }
+
+  // Structural title for itinerary-style answers; no business fact is invented.
+  if (/\bHari\s+1\s*:/i.test(value) && !/^\*[^\n]+\*\s*$/m.test(value.split("\n")[0] ?? "")) {
+    value = `*ITINERARI UMRAH*\n\n${value}`;
+  }
+
+  return value.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**
@@ -107,13 +193,7 @@ export function sanitizeCapabilityClaims(
   if (options.callingAvailable) drop.push(...FALSE_CALL_DENIAL_PATTERNS);
   if (!options.customerAskedIdentity) drop.push(...SELF_REFERENTIAL_PATTERNS);
 
-  let cleaned = original;
-  if (drop.length && original) {
-    const kept = splitSentences(original).filter(
-      (sentence) => !drop.some((pattern) => pattern.test(sentence)),
-    );
-    cleaned = kept.join(" ").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-  }
+  let cleaned = filterForbiddenPreservingLayout(original, drop);
 
   // A reply made up ONLY of forbidden denial text must never be shipped as-is.
   if (!cleaned) {
@@ -128,14 +208,14 @@ export function sanitizeCapabilityClaims(
   if (options.liveCallRequested) {
     if (options.callingAvailable) {
       if (!/\b(?:boleh|tersedia|available|call\s+saya|jawab)\b/i.test(cleaned)) {
-        cleaned = cleaned ? `${LIVE_CALL_AVAILABLE_MS} ${cleaned}` : LIVE_CALL_AVAILABLE_MS;
+        cleaned = cleaned ? `${LIVE_CALL_AVAILABLE_MS}\n\n${cleaned}` : LIVE_CALL_AVAILABLE_MS;
       }
     } else if (!mentionsLiveCallUnavailable(cleaned)) {
-      cleaned = cleaned ? `${LIVE_CALL_UNAVAILABLE_MS} ${cleaned}` : LIVE_CALL_UNAVAILABLE_MS;
+      cleaned = cleaned ? `${LIVE_CALL_UNAVAILABLE_MS}\n\n${cleaned}` : LIVE_CALL_UNAVAILABLE_MS;
     }
   }
 
-  return cleaned;
+  return enforceWhatsAppReadability(cleaned);
 }
 
 /** Prompt lines injected into the sales system prompt. */
