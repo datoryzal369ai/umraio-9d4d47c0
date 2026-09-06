@@ -125,6 +125,24 @@ func waitFor(t *testing.T, what string, fn func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// pushUtteranceUntil keeps offering complete utterances until the condition
+// holds. A turn that arrives while the previous one is still in flight is
+// dropped by design (one turn at a time), so a single push is inherently racy
+// in tests — the caller in real life simply speaks again.
+func pushUtteranceUntil(t *testing.T, p *ConversationPipeline, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		pushSpeech(p, 10)
+		pushSilence(p, 5)
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
 // ---- tests -----------------------------------------------------------------
 
 // 1-2: real inbound Opus media reaches VAD and opens an utterance.
@@ -162,6 +180,30 @@ func TestUtteranceProducesOutboundAudio(t *testing.T) {
 	packets, err := ReadOggOpus(raw)
 	if err != nil || len(packets) == 0 {
 		t.Fatalf("utterance is not a real ogg/opus stream: %v (%d packets)", err, len(packets))
+	}
+}
+
+// Deep turns are genuinely two-stage: acknowledgement audio is played before
+// the continuation request that can perform reasoning or governed tools.
+func TestAcknowledgementPrecedesContinuation(t *testing.T) {
+	client := &fakeTurns{reply: func(req TurnRequest) (*TurnResponse, error) {
+		if req.Kind == TurnKindUtterance {
+			return &TurnResponse{ReplyOggBase64: oggReply(2), ContinueTurn: true}, nil
+		}
+		return &TurnResponse{ReplyOggBase64: oggReply(3)}, nil
+	}}
+	p, tr := newPipeline(t, client, fastCfg())
+	defer p.Close("test")
+
+	pushSpeech(p, 10)
+	pushSilence(p, 5)
+	waitFor(t, "both response stages", func() bool { return tr.count() == 5 })
+	seen := client.seen()
+	if len(seen) != 2 || seen[0].Kind != TurnKindUtterance || seen[1].Kind != TurnKindContinuation {
+		t.Fatalf("expected utterance then continuation, got %+v", seen)
+	}
+	if seen[1].AudioOggBase64 != "" {
+		t.Fatal("continuation must not echo customer audio")
 	}
 }
 
@@ -355,4 +397,62 @@ func (p *ConversationPipeline) busyNow() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.busy
+}
+
+// A continuation is stage two of ONE caller utterance. It must not open a new
+// turn sequence and must not produce a second, competing media-timing record:
+// the caller heard the acknowledgement first, so first-audio latency stays
+// anchored to stage one while synthesis cost accumulates across both stages.
+func TestContinuationDoesNotDoubleCountTurnOrTelemetry(t *testing.T) {
+	client := &fakeTurns{reply: func(req TurnRequest) (*TurnResponse, error) {
+		if req.Kind == TurnKindUtterance {
+			return &TurnResponse{ReplyOggBase64: oggReply(2), ContinueTurn: true}, nil
+		}
+		return &TurnResponse{ReplyOggBase64: oggReply(3)}, nil
+	}}
+	p, tr := newPipeline(t, client, fastCfg())
+	defer p.Close("test")
+
+	pushSpeech(p, 10)
+	pushSilence(p, 5)
+	waitFor(t, "both response stages", func() bool { return tr.count() == 5 })
+
+	m := p.LastMetrics()
+	if m == nil {
+		t.Fatal("expected media metrics after playback")
+	}
+	if m.PrevSequence != 1 {
+		t.Fatalf("continuation must stay on sequence 1, got %d", m.PrevSequence)
+	}
+
+	// The NEXT real utterance is sequence 2 and carries exactly one metrics
+	// record for the previous turn — never one per stage.
+	pushUtteranceUntil(t, p, "second utterance", func() bool {
+		for _, r := range client.seen() {
+			if r.Kind == TurnKindUtterance && r.Sequence == 2 {
+				return true
+			}
+		}
+		return false
+	})
+	var utterances int
+	for _, r := range client.seen() {
+		if r.Kind == TurnKindUtterance {
+			utterances++
+			if r.Sequence > 2 {
+				t.Fatalf("continuation inflated the turn counter: sequence %d", r.Sequence)
+			}
+			if r.Sequence == 2 {
+				if r.MediaMetrics == nil {
+					t.Fatal("expected the previous turn's metrics on the next request")
+				}
+				if r.MediaMetrics.PrevSequence != 1 {
+					t.Fatalf("metrics attributed to sequence %d, want 1", r.MediaMetrics.PrevSequence)
+				}
+			}
+		}
+	}
+	if utterances != 2 {
+		t.Fatalf("expected 2 utterance turns, got %d", utterances)
+	}
 }

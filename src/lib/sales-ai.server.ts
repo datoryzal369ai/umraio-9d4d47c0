@@ -1278,6 +1278,33 @@ function buildSalesToolRegistry(ctx: SalesCtx, intel: ConversationIntelligence =
 }
 
 /**
+ * Minimum governed capability surface used by a live call. Voice never gets
+ * CRM mutation, follow-up, handoff or expert-review tools. The same registry,
+ * tenant predicates, pricing engine, policy checker and audit log as WhatsApp
+ * remain authoritative.
+ */
+export async function governedVoiceCommercialTools(supabase: Db, conversationId: string) {
+  const ctx = await loadContext(supabase, conversationId);
+  const agencyId = ctx.conversation.agency_id as string;
+  if ((ctx.lead as { do_not_contact?: boolean } | null)?.do_not_contact === true) {
+    return { tools: {}, allowedTools: [] as string[] };
+  }
+  const registry = buildSalesToolRegistry(ctx);
+  const allowedTools = ["recommend_packages", "create_quotation"].filter((name) =>
+    registry.get(name),
+  );
+  const toolCtx: ToolExecutionContext = {
+    supabase,
+    agencyId,
+    correlationId: newCorrelationId(),
+    grantedPermissions: ["read", "write"],
+    allowedTools,
+    islamicPolicy: createIslamicPolicyChecker(supabase, agencyId),
+  };
+  return { tools: createSdkTools({ registry, ctx: toolCtx, expose: allowedTools }), allowedTools };
+}
+
+/**
  * LATENCY — read-only warm-up. Loads exactly the same inputs the reply path
  * needs (context + quota) so they can be fetched CONCURRENTLY with the
  * coalescing wait instead of serially after it. Never decides anything: the
