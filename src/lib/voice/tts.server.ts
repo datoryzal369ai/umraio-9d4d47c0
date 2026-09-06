@@ -356,6 +356,16 @@ export const lazyMinimaxEngine: VoiceEngine = {
  */
 export const FALLBACK_ENGINE_NAME: VoiceEngineName = "lovable";
 
+/**
+ * RAIŌ WhatsApp Voice Note engine — MiniMax ONLY, FAIL CLOSED.
+ *
+ * The voice note carries the canonical RAIŌ identity (speech-2.8-hd /
+ * Malay_male_1_v1). Substituting another provider would ship a different voice,
+ * so this engine is passed directly to `synthesizeSpeech` as a single-engine
+ * chain: if MiniMax fails, the turn stays text-only. It is never rerouted.
+ */
+export const whatsappVoiceNoteEngine: VoiceEngine = lazyMinimaxEngine;
+
 /** True when the operator pinned the runtime to OpenAI Direct. */
 export function isStrictOpenAiMode(): boolean {
   return (process.env["AI_PROVIDER"] ?? "").trim().toLowerCase() === "openai";
