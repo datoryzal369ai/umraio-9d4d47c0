@@ -57,9 +57,8 @@ func TestMediaMetricsTravelOnNextTurnRequest(t *testing.T) {
 	client := &fakeTurns{reply: func(TurnRequest) (*TurnResponse, error) {
 		return &TurnResponse{SpeechText: "helo", VoiceID: "Malay_male_1_v1", LanguageBoost: "Malay"}, nil
 	}}
-	cfg := fastCfg()
-	cfg.Synthesizer = &timedSpeaker{providerMs: 410, encodeMs: 12}
-	p, tr := newPipeline(t, client, cfg)
+	p, tr := newPipeline(t, client, fastCfg())
+	p.WithSynthesizer(&timedSpeaker{providerMs: 410, encodeMs: 12})
 	defer p.Close("test")
 
 	pushSpeech(p, 10)
