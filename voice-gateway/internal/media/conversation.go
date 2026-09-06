@@ -29,6 +29,28 @@ type TurnRequest struct {
 	Kind           string `json:"kind"`
 	AudioOggBase64 string `json:"audio_ogg_base64,omitempty"`
 	DurationMs     int    `json:"duration_ms"`
+	// MediaMetrics is additive, sanitized instrumentation only: durations in
+	// milliseconds, never audio, text or identifiers. It carries THIS turn's
+	// VAD finalisation and the media-plane timings of the turn that has just
+	// finished playing (the only moment they are all known).
+	MediaMetrics *TurnMediaMetrics `json:"media_metrics,omitempty"`
+}
+
+// TurnMediaMetrics are the media-plane halves of the end-to-end latency
+// budget. All values are whole milliseconds; zero means "not measured".
+type TurnMediaMetrics struct {
+	// VADFinalizeMs: last caller SPEECH frame -> utterance closed by the VAD.
+	VADFinalizeMs int `json:"vad_finalize_ms,omitempty"`
+	// PrevSequence identifies the turn the playback metrics below belong to.
+	PrevSequence int `json:"prev_sequence,omitempty"`
+	// TTSMs: MiniMax synthesis round trip (provider only).
+	TTSMs int `json:"tts_ms,omitempty"`
+	// TTSEncodeMs: PCM -> native Opus packetisation.
+	TTSEncodeMs int `json:"tts_encode_ms,omitempty"`
+	// PlaybackStartMs: control-plane turn dispatch -> first outbound packet.
+	PlaybackStartMs int `json:"playback_start_ms,omitempty"`
+	// SpeechEndToFirstAudioMs: caller stopped speaking -> caller hears audio.
+	SpeechEndToFirstAudioMs int `json:"speech_end_to_first_audio_ms,omitempty"`
 }
 
 // TurnResponse is the control plane's answer.
@@ -60,6 +82,19 @@ type TurnClient interface {
 type Synthesizer interface {
 	Speak(ctx context.Context, callID, text, voiceID, boost string) ([][]byte, error)
 }
+
+// SpeechTiming is the sanitized breakdown of one synthesis.
+type SpeechTiming struct {
+	ProviderMs int
+	EncodeMs   int
+}
+
+// TimedSynthesizer is the optional instrumentation seam. Implemented by
+// tts.Speaker; a plain Synthesizer keeps working unchanged.
+type TimedSynthesizer interface {
+	SpeakTimed(ctx context.Context, callID, text, voiceID, boost string) (packets [][]byte, providerMs int, encodeMs int, err error)
+}
+
 
 // ConversationConfig bounds the loop. Every value is configurable.
 type ConversationConfig struct {
@@ -109,8 +144,11 @@ type ConversationPipeline struct {
 	cancelTTS chan struct{}
 	bargeIns  int
 
-	speechEndAt time.Time
-	lastTiming  TurnTiming
+	// Instrumentation only — never influences conversational behaviour.
+	now          func() time.Time
+	speechEndAt  time.Time
+	lastMetrics  *TurnMediaMetrics
+	pendingVADMs int
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -124,7 +162,7 @@ func NewConversationPipeline(callID string, client TurnClient, cfg ConversationC
 	n := cfg.normalized()
 	return &ConversationPipeline{
 		callID: callID, client: client, cfg: n, logger: logger,
-		seg: NewSegmenter(n.VAD),
+		seg: NewSegmenter(n.VAD), now: time.Now,
 	}
 }
 
@@ -133,6 +171,35 @@ func NewConversationPipeline(callID string, client TurnClient, cfg ConversationC
 func (p *ConversationPipeline) WithSynthesizer(s Synthesizer) *ConversationPipeline {
 	p.synth = s
 	return p
+}
+
+
+// WithClock overrides the instrumentation clock (tests only).
+func (p *ConversationPipeline) WithClock(now func() time.Time) *ConversationPipeline {
+	if now != nil {
+		p.now = now
+		p.seg.WithClock(now)
+	}
+	return p
+}
+
+// LastMetrics returns the media-plane timings of the most recently played
+// turn, or nil when nothing has been played yet.
+func (p *ConversationPipeline) LastMetrics() *TurnMediaMetrics {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.lastMetrics == nil {
+		return nil
+	}
+	copied := *p.lastMetrics
+	return &copied
+}
+
+func (p *ConversationPipeline) clock() time.Time {
+	if p.now == nil {
+		return time.Now()
+	}
+	return p.now()
 }
 
 // Mode identifies this pipeline in diagnostics as the real-time AI loop.
@@ -228,9 +295,13 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 			return
 		}
 		durationMs := len(utterance) * p.cfg.VAD.FrameMs
+		endedAt := p.clock()
+		speechEnd := p.seg.SpeechEndAt()
+		p.speechEndAt = speechEnd
+		if !speechEnd.IsZero() {
+			p.pendingVADMs = int(endedAt.Sub(speechEnd).Milliseconds())
+		}
 		p.mu.Unlock()
-		// speech end -> first audio starts ticking the instant VAD finalises.
-		p.markSpeechEnd()
 		p.startTurn(TurnRequest{
 			CallID:         p.callID,
 			Kind:           TurnKindUtterance,
@@ -251,6 +322,22 @@ func (p *ConversationPipeline) startTurn(req TurnRequest) {
 	p.busy = true
 	p.turns++
 	req.Sequence = p.turns
+	metrics := TurnMediaMetrics{VADFinalizeMs: p.pendingVADMs}
+	if p.lastMetrics != nil {
+		metrics.PrevSequence = p.lastMetrics.PrevSequence
+		metrics.TTSMs = p.lastMetrics.TTSMs
+		metrics.TTSEncodeMs = p.lastMetrics.TTSEncodeMs
+		metrics.PlaybackStartMs = p.lastMetrics.PlaybackStartMs
+		metrics.SpeechEndToFirstAudioMs = p.lastMetrics.SpeechEndToFirstAudioMs
+	}
+	p.pendingVADMs = 0
+	if metrics != (TurnMediaMetrics{}) {
+		copied := metrics
+		req.MediaMetrics = &copied
+	}
+	turnStartedAt := p.clock()
+	speechEndAt := p.speechEndAt
+	sequence := req.Sequence
 	ctx := p.ctx
 	p.mu.Unlock()
 
@@ -265,25 +352,22 @@ func (p *ConversationPipeline) startTurn(req TurnRequest) {
 			p.busy = false
 			p.mu.Unlock()
 		}()
-		p.runTurn(ctx, req)
+		p.runTurn(ctx, req, turnState{startedAt: turnStartedAt, speechEndAt: speechEndAt, sequence: sequence})
 	}()
 }
 
-func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest) {
+// turnState carries the per-turn instrumentation anchors.
+type turnState struct {
+	startedAt   time.Time
+	speechEndAt time.Time
+	sequence    int
+}
+
+func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st turnState) {
 	tctx, cancel := context.WithTimeout(ctx, p.cfg.TurnTimeout)
 	defer cancel()
 
-	turnStart := time.Now()
-	vadFinalizeMs := int64(0)
-	p.mu.Lock()
-	speechEnd := p.speechEndAt
-	p.mu.Unlock()
-	if !speechEnd.IsZero() {
-		vadFinalizeMs = turnStart.Sub(speechEnd).Milliseconds()
-	}
-
 	resp, err := p.client.Turn(tctx, req)
-	controlPlaneMs := time.Since(turnStart).Milliseconds()
 	if err != nil {
 		// FAIL CLOSED: no fabricated transcript, no fabricated audio.
 		p.logger.Warn("turn_failed", "call_id", p.callID, "kind", req.Kind, "error_class", "turn")
@@ -300,16 +384,23 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest) {
 			p.logger.Warn("turn_reply_no_synthesizer", "call_id", p.callID)
 			break
 		}
-		ttsStart := time.Now()
-		packets, ttsErr := p.synth.Speak(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
-		ttsEncodeMs := time.Since(ttsStart).Milliseconds()
+		var packets [][]byte
+		var timing SpeechTiming
+		var ttsErr error
+		if timed, ok := p.synth.(TimedSynthesizer); ok {
+			var providerMs, encodeMs int
+			packets, providerMs, encodeMs, ttsErr = timed.SpeakTimed(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
+			timing = SpeechTiming{ProviderMs: providerMs, EncodeMs: encodeMs}
+		} else {
+			packets, ttsErr = p.synth.Speak(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
+		}
 		if ttsErr != nil {
 			// FAIL CLOSED: silence, never a substitute provider or voice.
 			p.logger.Warn("turn_reply_tts_failed", "call_id", p.callID)
 			break
 		}
-		p.logTurnTiming("gateway_tts", speechEnd, turnStart, vadFinalizeMs, controlPlaneMs, ttsEncodeMs, packets)
-		p.play(packets)
+		firstAudioAt := p.play(packets)
+		p.recordTurnMetrics(st, timing, firstAudioAt)
 	case resp.ReplyOggBase64 != "":
 		raw, decErr := base64.StdEncoding.DecodeString(resp.ReplyOggBase64)
 		if decErr != nil {
@@ -321,8 +412,8 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest) {
 			p.logger.Warn("turn_reply_invalid_container", "call_id", p.callID)
 			return
 		}
-		p.logTurnTiming("control_plane_ogg", speechEnd, turnStart, vadFinalizeMs, controlPlaneMs, 0, packets)
-		p.play(packets)
+		firstAudioAt := p.play(packets)
+		p.recordTurnMetrics(st, SpeechTiming{}, firstAudioAt)
 	}
 
 	if resp.EndCall {
@@ -335,75 +426,17 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest) {
 	}
 }
 
-// markSpeechEnd records when VAD finalised the caller utterance.
-func (p *ConversationPipeline) markSpeechEnd() {
-	p.mu.Lock()
-	p.speechEndAt = time.Now()
-	p.mu.Unlock()
-}
-
-// logTurnTiming emits gateway-observable latency telemetry for one turn.
-// It carries NO transcript, audio or identifiers beyond the call id.
-func (p *ConversationPipeline) logTurnTiming(
-	audioSource string,
-	speechEnd, turnStart time.Time,
-	vadFinalizeMs, controlPlaneMs, ttsEncodeMs int64,
-	packets [][]byte,
-) {
-	playbackStart := time.Now()
-	speechEndToFirstAudioMs := int64(0)
-	if !speechEnd.IsZero() {
-		speechEndToFirstAudioMs = playbackStart.Sub(speechEnd).Milliseconds()
-	}
-	p.logger.Info("turn_timing",
-		"call_id", p.callID,
-		"audio_source", audioSource,
-		"vad_finalize_ms", vadFinalizeMs,
-		"control_plane_ms", controlPlaneMs,
-		"tts_encode_ms", ttsEncodeMs,
-		"playback_start_ms", playbackStart.Sub(turnStart).Milliseconds(),
-		"speech_end_to_first_audio_ms", speechEndToFirstAudioMs,
-		"packets", len(packets),
-	)
-	p.mu.Lock()
-	p.lastTiming = TurnTiming{
-		AudioSource:             audioSource,
-		VADFinalizeMs:           vadFinalizeMs,
-		ControlPlaneMs:          controlPlaneMs,
-		TTSEncodeMs:             ttsEncodeMs,
-		PlaybackStartMs:         playbackStart.Sub(turnStart).Milliseconds(),
-		SpeechEndToFirstAudioMs: speechEndToFirstAudioMs,
-	}
-	p.mu.Unlock()
-}
-
-// TurnTiming is the last observed per-turn latency breakdown.
-type TurnTiming struct {
-	AudioSource             string
-	VADFinalizeMs           int64
-	ControlPlaneMs          int64
-	TTSEncodeMs             int64
-	PlaybackStartMs         int64
-	SpeechEndToFirstAudioMs int64
-}
-
-// LastTiming returns the most recent per-turn latency breakdown.
-func (p *ConversationPipeline) LastTiming() TurnTiming {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.lastTiming
-}
-
 // play streams reply packets at real time and stops the instant a barge-in,
 // termination or context cancellation occurs.
-func (p *ConversationPipeline) play(packets [][]byte) {
+func (p *ConversationPipeline) play(packets [][]byte) time.Time {
+	var firstAudioAt time.Time
 	if len(packets) == 0 {
-		return
+		return firstAudioAt
 	}
 	p.mu.Lock()
 	if p.closed || p.transport == nil {
 		p.mu.Unlock()
-		return
+		return firstAudioAt
 	}
 	cancelCh := make(chan struct{})
 	p.cancelTTS = cancelCh
@@ -427,18 +460,50 @@ func (p *ConversationPipeline) play(packets [][]byte) {
 	for _, packet := range packets {
 		select {
 		case <-cancelCh: // barge-in: discard every remaining frame
-			return
+			return firstAudioAt
 		default:
 		}
 		if err := t.SendOpus(OpusFrame{Data: packet, Duration: interval}); err != nil {
-			return
+			return firstAudioAt
+		}
+		if firstAudioAt.IsZero() {
+			firstAudioAt = p.clock()
 		}
 		select {
 		case <-cancelCh:
-			return
+			return firstAudioAt
 		case <-ticker.C:
 		}
 	}
+	return firstAudioAt
+}
+
+// recordTurnMetrics stores the media-plane timings of the turn that just
+// played. They ride along with the NEXT turn request — the gateway never
+// opens a new endpoint or a second callback for telemetry.
+func (p *ConversationPipeline) recordTurnMetrics(st turnState, timing SpeechTiming, firstAudioAt time.Time) {
+	if firstAudioAt.IsZero() {
+		return
+	}
+	m := &TurnMediaMetrics{
+		PrevSequence: st.sequence,
+		TTSMs:        timing.ProviderMs,
+		TTSEncodeMs:  timing.EncodeMs,
+	}
+	if !st.startedAt.IsZero() {
+		m.PlaybackStartMs = int(firstAudioAt.Sub(st.startedAt).Milliseconds())
+	}
+	if !st.speechEndAt.IsZero() {
+		m.SpeechEndToFirstAudioMs = int(firstAudioAt.Sub(st.speechEndAt).Milliseconds())
+	}
+	p.mu.Lock()
+	p.lastMetrics = m
+	p.mu.Unlock()
+	p.logger.Info("turn_media_timing",
+		"call_id", p.callID, "sequence", st.sequence,
+		"tts_ms", m.TTSMs, "tts_encode_ms", m.TTSEncodeMs,
+		"playback_start_ms", m.PlaybackStartMs,
+		"speech_end_to_first_audio_ms", m.SpeechEndToFirstAudioMs)
 }
 
 func (p *ConversationPipeline) stopPlaybackLocked(_ string) {

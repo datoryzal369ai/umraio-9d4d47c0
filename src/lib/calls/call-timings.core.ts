@@ -27,6 +27,8 @@ export type CallTimingStage = (typeof CALL_TIMING_STAGES)[number];
 
 export type CallTimings = Partial<Record<CallTimingStage, string>> & {
   durations_ms?: Record<string, number>;
+  /** Explicit, enumerated reason a session failed or was terminated. */
+  failure_reason?: string;
 };
 
 /** Stage pairs whose elapsed time is reported alongside the marks. */
@@ -105,5 +107,12 @@ export function mergeCallTimings(existing: unknown, incoming: CallTimings): Call
   const durations = computeCallDurations(merged);
   const out: CallTimings = { ...merged };
   if (Object.keys(durations).length > 0) out.durations_ms = durations;
+  const reason =
+    typeof incoming.failure_reason === "string" && incoming.failure_reason
+      ? incoming.failure_reason
+      : typeof base["failure_reason"] === "string"
+        ? (base["failure_reason"] as string)
+        : "";
+  if (reason) out.failure_reason = reason.slice(0, 120);
   return out;
 }

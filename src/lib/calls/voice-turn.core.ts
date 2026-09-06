@@ -14,13 +14,55 @@ export const MAX_STORED_TURNS = 60;
 
 export type VoiceTurnKind = "greeting" | "utterance";
 
+/**
+ * Additive, sanitized media-plane instrumentation sent by the gateway.
+ * Durations in whole milliseconds only — never audio, text or identifiers.
+ * `vad_finalize_ms` belongs to THIS turn; the remaining fields describe the
+ * turn identified by `prev_sequence`, which is the first moment the gateway
+ * knows them.
+ */
+export type VoiceTurnMediaMetrics = {
+  vad_finalize_ms?: number;
+  prev_sequence?: number;
+  tts_ms?: number;
+  tts_encode_ms?: number;
+  playback_start_ms?: number;
+  speech_end_to_first_audio_ms?: number;
+};
+
+/** Upper bound for any reported media timing (10 minutes) — rejects noise. */
+export const MAX_MEDIA_METRIC_MS = 600_000;
+
 export type VoiceTurnRequest = {
   call_id: string;
   sequence: number;
   kind: VoiceTurnKind;
   audio_ogg_base64: string | null;
   duration_ms: number;
+  media_metrics?: VoiceTurnMediaMetrics;
 };
+
+const MEDIA_METRIC_KEYS = [
+  "vad_finalize_ms",
+  "prev_sequence",
+  "tts_ms",
+  "tts_encode_ms",
+  "playback_start_ms",
+  "speech_end_to_first_audio_ms",
+] as const;
+
+/** Bounded, non-negative integers only; anything else is dropped silently. */
+export function parseMediaMetrics(input: unknown): VoiceTurnMediaMetrics | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  const out: VoiceTurnMediaMetrics = {};
+  for (const key of MEDIA_METRIC_KEYS) {
+    const value = Number(record[key]);
+    if (!Number.isFinite(value) || value < 0 || value > MAX_MEDIA_METRIC_MS) continue;
+    out[key] = Math.floor(value);
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
 
 /** Strict parser — an unparsable body is rejected, never coerced. */
 export function parseVoiceTurnRequest(input: unknown): VoiceTurnRequest | null {
@@ -36,7 +78,9 @@ export function parseVoiceTurnRequest(input: unknown): VoiceTurnRequest | null {
 
   const sequence = Number(record["sequence"]);
   const durationMs = Number(record["duration_ms"]);
+  const metrics = parseMediaMetrics(record["media_metrics"]);
   return {
+    ...(metrics ? { media_metrics: metrics } : {}),
     call_id: callId,
     sequence: Number.isFinite(sequence) && sequence > 0 ? Math.floor(sequence) : 1,
     kind,

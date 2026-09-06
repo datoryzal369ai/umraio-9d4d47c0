@@ -84,6 +84,15 @@ const (
 type Segmenter struct {
 	cfg VADConfig
 
+	// now is injectable purely so tests can assert VAD finalisation timing
+	// deterministically. Production always uses the wall clock.
+	now func() time.Time
+	// lastSpeechAt is when the most recent SPEECH frame arrived; speechEndAt
+	// freezes that value at the moment an utterance closes, so the control
+	// plane can measure the hangover the caller actually experienced.
+	lastSpeechAt time.Time
+	speechEndAt  time.Time
+
 	inSpeech   bool
 	speechRun  int
 	silenceRun int
@@ -93,8 +102,20 @@ type Segmenter struct {
 }
 
 func NewSegmenter(cfg VADConfig) *Segmenter {
-	return &Segmenter{cfg: cfg.normalized()}
+	return &Segmenter{cfg: cfg.normalized(), now: time.Now}
 }
+
+// WithClock overrides the segmenter clock (tests only).
+func (s *Segmenter) WithClock(now func() time.Time) *Segmenter {
+	if now != nil {
+		s.now = now
+	}
+	return s
+}
+
+// SpeechEndAt is the arrival time of the last SPEECH frame of the utterance
+// that closed most recently. Zero when no utterance has closed yet.
+func (s *Segmenter) SpeechEndAt() time.Time { return s.speechEndAt }
 
 func (s *Segmenter) Config() VADConfig { return s.cfg }
 
@@ -103,6 +124,7 @@ func (s *Segmenter) Speaking() bool { return s.inSpeech }
 
 // Reset drops all buffered audio and returns to the listening state.
 func (s *Segmenter) Reset() {
+	s.lastSpeechAt = time.Time{}
 	s.inSpeech = false
 	s.speechRun = 0
 	s.silenceRun = 0
@@ -115,6 +137,9 @@ func (s *Segmenter) Reset() {
 // value is the complete utterance in arrival order; otherwise it is nil.
 func (s *Segmenter) Push(frame OpusFrame) (VADEvent, [][]byte) {
 	isSpeech := len(frame.Data) >= s.cfg.SpeechMinBytes
+	if isSpeech {
+		s.lastSpeechAt = s.clock()
+	}
 
 	if !s.inSpeech {
 		// Keep a short pre-roll so the utterance does not clip its own onset.
@@ -154,10 +179,19 @@ func (s *Segmenter) Push(frame OpusFrame) (VADEvent, [][]byte) {
 	return VADNone, nil
 }
 
+func (s *Segmenter) clock() time.Time {
+	if s.now == nil {
+		return time.Now()
+	}
+	return s.now()
+}
+
 func (s *Segmenter) close(trailingSilenceMs int) (VADEvent, [][]byte) {
 	voicedMs := s.durationMs - trailingSilenceMs
 	utterance := s.buffered
+	speechEnd := s.lastSpeechAt
 	s.Reset()
+	s.speechEndAt = speechEnd
 	if voicedMs < s.cfg.MinUtteranceMs {
 		return VADDiscarded, nil
 	}

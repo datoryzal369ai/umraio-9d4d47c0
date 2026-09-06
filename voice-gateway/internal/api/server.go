@@ -299,10 +299,28 @@ func (s *Server) forget(callID string) {
 	s.Registry.Remove(callID)
 }
 
+// failureReason guarantees every failed/terminated session carries an
+// explicit, enumerated reason the control plane can persist. It never
+// contains free-form provider text.
+func failureReason(name, reason string) string {
+	if reason != "" {
+		return reason
+	}
+	switch name {
+	case callback.EventMediaFailed:
+		return "media_failed_unspecified"
+	case callback.EventTerminated:
+		return "terminated_unspecified"
+	default:
+		return ""
+	}
+}
+
 func (s *Server) emit(name string, sess *session.Session, reason string) {
 	if s.Events == nil {
 		return
 	}
+	reason = failureReason(name, reason)
 	st := sess.Stats()
 	ev := callback.Event{
 		Event: name, CallID: st.CallID, SessionID: st.SessionID,
