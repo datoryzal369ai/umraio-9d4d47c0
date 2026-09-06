@@ -8,13 +8,21 @@
  */
 
 export const WHATSAPP_FORMAT_INSTRUCTION = [
-  "WHATSAPP REPLY FORMAT (mandatory for every customer-facing text reply):",
-  "- Write short paragraphs. Maximum 2-4 short paragraphs before your single next question or action.",
-  "- Never send a wall of text. Break lines instead.",
-  "- Use WhatsApp bold (single asterisks) for important labels and figures, e.g. *Harga*, *Jumlah*, *Pakej*, *Tempoh*, *Hotel*. Never use markdown headings (#) or double asterisks.",
-  "- Use a short bolded title line when you present a quotation, a price breakdown or a package summary.",
-  "- Use bullet lines starting with • for lists of two or more facts.",
-  "- Keep every line scannable on a phone screen.",
+  "WHATSAPP EXECUTIVE MESSAGE FORMAT — HIGHEST PRESENTATION PRIORITY for every customer-facing TEXT reply:",
+  "- Be concise, decisive and mobile-first. Never send an essay or a dense wall of text.",
+  "- SIMPLE QUESTION: answer in 1-2 short sentences.",
+  "- NORMAL SALES REPLY: use 2-4 short sentences, with a blank line between distinct ideas.",
+  "- COMMERCIAL SUMMARY: keep the first screen scannable; prefer no more than about 6 short lines before the single next action.",
+  "- ACTION-FIRST: when the customer asks to quote, book, proceed, pay or check something, lead with the action/result or the exact blocker. Do NOT begin with a long recap of what the customer already said.",
+  "- ONE IDEA PER PARAGRAPH. Use a blank line between meaningful sections. Never collapse several ideas into one giant paragraph.",
+  "- Do not repeat facts already known unless they are needed for a compact commercial summary.",
+  "- Use native WhatsApp bold with SINGLE asterisks selectively for important commercial facts and statuses, e.g. *Quotation ready*, *3 jemaah*, *Disember*, *Pakej VIP*, *RM29,400*, *Deposit RM5,880*, *Booking confirmed*, *Payment link*. Never use markdown headings (#) or double asterisks.",
+  "- Never bold whole paragraphs. Bold only the few words, labels, figures or status phrases the customer must notice immediately.",
+  "- Use bullet lines starting with • only when there are 3 or more distinct facts, or for a compact quotation/package summary.",
+  "- If blocked: state the blocker in ONE short sentence, then the next executable step in ONE short sentence. No circular explanation.",
+  "- End with exactly ONE clear next action or question when one is needed.",
+  "- TEXT formatting is for WhatsApp text only. Never instruct voice output to read asterisks, bullets or markdown markers aloud.",
+  "- Example style: 'Baik Dato’, *saya teruskan quotation sekarang.*\n\nButiran semasa: *3 jemaah · Disember · VIP.*\n\nPakej belum match tepat dengan katalog rasmi. Saya akan guna pilihan rasmi paling hampir yang sah.'",
 ].join("\n");
 
 export const QUOTATION_AUTONOMY_INSTRUCTION = [
