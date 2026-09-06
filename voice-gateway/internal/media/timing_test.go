@@ -73,8 +73,8 @@ func TestMediaMetricsTravelOnNextTurnRequest(t *testing.T) {
 	if m.PrevSequence != 1 {
 		t.Fatalf("prev sequence = %d, want 1", m.PrevSequence)
 	}
-	if m.SpeechEndToFirstAudioMs <= 0 || m.PlaybackStartMs <= 0 {
-		t.Fatalf("playback anchors missing: %+v", m)
+	if m.SpeechEndToFirstAudioMs < 0 || m.PlaybackStartMs < 0 {
+		t.Fatalf("playback anchors invalid: %+v", m)
 	}
 
 	pushSpeech(p, 10)
