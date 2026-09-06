@@ -27,8 +27,16 @@ func (s *Speaker) Available() bool { return s != nil && s.client != nil && Encod
 // Speak returns ready-to-send Opus packets for one reply. Errors carry a
 // sanitized class only — never text, never credentials.
 func (s *Speaker) Speak(ctx context.Context, callID, text, voiceID, boost string) ([][]byte, error) {
+	packets, _, _, err := s.SpeakTimed(ctx, callID, text, voiceID, boost)
+	return packets, err
+}
+
+// SpeakTimed is Speak plus sanitized instrumentation: the MiniMax provider
+// round trip and the native Opus encode, in whole milliseconds. Behaviour,
+// voice identity and fail-closed semantics are identical to Speak.
+func (s *Speaker) SpeakTimed(ctx context.Context, callID, text, voiceID, boost string) ([][]byte, int, int, error) {
 	if !s.Available() {
-		return nil, ErrEncoder
+		return nil, 0, 0, ErrEncoder
 	}
 	started := time.Now()
 	pcm, err := s.client.SynthesizePCM(ctx, text, voiceID, boost)
@@ -37,24 +45,26 @@ func (s *Speaker) Speak(ctx context.Context, callID, text, voiceID, boost string
 			"call_id", callID, "provider", "minimax",
 			"model", s.client.Model(), "voice", orDefault(voiceID, s.client.VoiceID()),
 			"stage", "provider", "error_class", classOf(err))
-		return nil, err
+		return nil, 0, 0, err
 	}
 	ttsMs := time.Since(started).Milliseconds()
 
+	encodeStarted := time.Now()
 	packets, err := EncodeOpus(pcm)
+	encodeMs := time.Since(encodeStarted).Milliseconds()
 	if err != nil {
 		s.logger.Warn("tts_failed",
 			"call_id", callID, "provider", "minimax", "stage", "encode",
 			"error_class", classOf(err))
-		return nil, err
+		return nil, 0, 0, err
 	}
 	s.logger.Info("tts_ok",
 		"call_id", callID, "provider", "minimax",
 		"model", s.client.Model(), "voice", orDefault(voiceID, s.client.VoiceID()),
 		"boost", orDefault(boost, s.client.Boost()),
 		"packets", len(packets), "speech_ms", len(packets)*FrameMs,
-		"provider_ms", ttsMs, "encode_ms", time.Since(started).Milliseconds()-ttsMs)
-	return packets, nil
+		"provider_ms", ttsMs, "encode_ms", encodeMs)
+	return packets, int(ttsMs), int(encodeMs), nil
 }
 
 func classOf(err error) string {

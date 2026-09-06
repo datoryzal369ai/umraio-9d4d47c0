@@ -92,7 +92,7 @@ type SpeechTiming struct {
 // TimedSynthesizer is the optional instrumentation seam. Implemented by
 // tts.Speaker; a plain Synthesizer keeps working unchanged.
 type TimedSynthesizer interface {
-	SpeakTimed(ctx context.Context, callID, text, voiceID, boost string) ([][]byte, SpeechTiming, error)
+	SpeakTimed(ctx context.Context, callID, text, voiceID, boost string) (packets [][]byte, providerMs int, encodeMs int, err error)
 }
 
 
@@ -388,7 +388,9 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st 
 		var timing SpeechTiming
 		var ttsErr error
 		if timed, ok := p.synth.(TimedSynthesizer); ok {
-			packets, timing, ttsErr = timed.SpeakTimed(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
+			var providerMs, encodeMs int
+			packets, providerMs, encodeMs, ttsErr = timed.SpeakTimed(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
+			timing = SpeechTiming{ProviderMs: providerMs, EncodeMs: encodeMs}
 		} else {
 			packets, ttsErr = p.synth.Speak(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
 		}
