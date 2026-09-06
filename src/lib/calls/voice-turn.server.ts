@@ -436,7 +436,10 @@ export async function handleVoiceTurn(args: {
     fast_path: fastPath,
     level: route.level,
     acknowledged: Boolean(route.acknowledgement) && !fastPath,
+    // Additive media-plane instrumentation reported by the gateway.
+    ...(payload.media_metrics ? { media: payload.media_metrics } : {}),
   };
+
   const latency = appendLatency(row.voice_latency, latencyEntry);
   const outcome = deriveCallOutcome(intents, turns);
   // INCREMENTAL CALL MEMORY — the summary is refreshed on EVERY turn, so a
