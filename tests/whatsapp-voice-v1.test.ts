@@ -244,11 +244,18 @@ beforeEach(() => {
   state.media = { ok: true, bytes: 40_000 };
   state.asr = { ok: true, text: "Salam, saya nak tanya pakej umrah bulan Mac" };
   process.env["META_APP_SECRET"] = SECRET;
+  process.env["MINIMAX_TTS_API_KEY"] = "test-minimax-key";
   fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
-    if (url.includes("/v1/audio/speech")) {
+    // RAIŌ voice notes are MiniMax-only (fail closed). MiniMax returns hex PCM
+    // which the OGG/Opus encoder then packages for native WhatsApp delivery.
+    if (url.includes("/t2a_v2")) {
       state.ttsCalls += 1;
-      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+      const pcm = Buffer.alloc(24_000 * 2 * 1).toString("hex");
+      return new Response(
+        JSON.stringify({ data: { audio: pcm }, base_resp: { status_code: 0 } }),
+        { status: 200 },
+      );
     }
     if (url.endsWith("/media")) {
       return new Response(JSON.stringify({ id: "outbound-media-1" }), { status: 200 });

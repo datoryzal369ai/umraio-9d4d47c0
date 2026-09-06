@@ -1119,17 +1119,27 @@ async function processInboundMessage(
                     console.log(`[voice] voice_reply_fallback_text reason=${decision.reason}`);
                   } else {
                     const ttsStarted = Date.now();
-                    const { synthesizeSpeech } = await import("@/lib/voice/tts.server");
+                    const { synthesizeSpeech, whatsappVoiceNoteEngine } = await import(
+                      "@/lib/voice/tts.server"
+                    );
                     vlog(
                       "VOICE_TTS_START",
                       `persona=${decision.presentation.personaKey} voice_name=${decision.presentation.voice} speed=${decision.presentation.speed} length_class=${decision.presentation.lengthClass} spoken_chars=${decision.text.length}`,
                     );
+                    /**
+                     * FAIL CLOSED: the RAIŌ voice note is MiniMax-only and always
+                     * native OGG/Opus. Passing the engine explicitly makes the
+                     * chain single-provider, so a MiniMax failure leaves the turn
+                     * text-only instead of speaking with another provider's voice.
+                     */
                     const speech = await synthesizeSpeech({
                       text: decision.text,
                       voice: decision.presentation.voice,
                       speed: decision.presentation.speed,
                       instructions: decision.presentation.instructions,
                       language: voiceLanguage,
+                      requireOggOpus: true,
+                      engine: whatsappVoiceNoteEngine,
                     });
                     if (!speech.ok || !isDeliverableAudio({ byteLength: speech.bytes.byteLength })) {
                       vlog(

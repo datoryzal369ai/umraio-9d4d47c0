@@ -79,7 +79,8 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
-let wasmSource: "hosted_asset" | "runtime_compile" | "unavailable" = "unavailable";
+let wasmSource: "compiled_module" | "hosted_asset" | "runtime_compile" | "unavailable" =
+  "unavailable";
 
 /** Which loader produced the encoder — non-secret diagnostic for the probe. */
 export function opusWasmSource(): string {
@@ -111,13 +112,17 @@ function finishInstance(instance: WebAssembly.Instance): OpusExports {
 }
 
 /**
- * HOSTED MODULE SOURCE — the libopus binary is served as a static asset at
- * `/wasm/opus.wasm` (public/wasm/) and fetched by URL AT RUNTIME ONLY, never
- * imported from source: a `.wasm` source import would place the binary in the
- * server bundle and break deployment. Nothing here runs at module evaluation.
+ * MODULE SOURCE ORDER
  *
- * Node/vitest resolve the same asset over the dev server when available and
- * otherwise fall through to the embedded base64 build below.
+ * 1. PRECOMPILED MODULE IMPORT (production). The serverless runtime forbids
+ *    compiling WebAssembly from bytes at runtime ("Wasm code generation
+ *    disallowed by embedder"), so `fetch(...)` + `WebAssembly.instantiate(bytes)`
+ *    can NEVER work there. The supported path is importing the `.wasm` file so
+ *    the bundler ships an already-compiled `WebAssembly.Module`, which may be
+ *    instantiated at runtime. The import is dynamic so Node/vitest, where the
+ *    loader has no `.wasm` handler, simply fall through.
+ * 2. Hosted asset fetch, then the embedded base64 build — both compile from
+ *    bytes and therefore only apply to dev/node/test runtimes.
  */
 async function instantiateFromBytes(bytes: Uint8Array<ArrayBuffer>): Promise<OpusExports | null> {
   try {
@@ -125,6 +130,18 @@ async function instantiateFromBytes(bytes: Uint8Array<ArrayBuffer>): Promise<Opu
       bytes,
       OPUS_IMPORTS,
     )) as WebAssembly.WebAssemblyInstantiatedSource;
+    return finishInstance(instance);
+  } catch {
+    return null;
+  }
+}
+
+async function loadCompiledModule(): Promise<OpusExports | null> {
+  try {
+    const mod = ((await import("./opus/opus.wasm?cfmodule")) as { default?: unknown }).default;
+    if (!(mod instanceof WebAssembly.Module)) return null;
+    const instance = await WebAssembly.instantiate(mod, OPUS_IMPORTS);
+    wasmSource = "compiled_module";
     return finishInstance(instance);
   } catch {
     return null;
@@ -144,7 +161,24 @@ async function loadHostedModule(): Promise<OpusExports | null> {
   }
 }
 
+/**
+ * Byte-compilation is impossible in the serverless runtime, so in production the
+ * precompiled module is the ONLY accepted source. Falling through to the hosted
+ * or embedded byte paths there would just fail slowly and hide the real cause,
+ * so the encoder reports unavailable and the voice note fails closed instead.
+ */
+export function opusAllowsByteCompilation(): boolean {
+  return process.env["NODE_ENV"] !== "production";
+}
+
 async function loadOpusExports(): Promise<OpusExports | null> {
+  const compiled = await loadCompiledModule();
+  if (compiled) return compiled;
+  if (!opusAllowsByteCompilation()) {
+    wasmSource = "unavailable";
+    console.error("[voice] opus_wasm_unavailable source=compiled_module reason=not_packaged");
+    return null;
+  }
   const hosted = await loadHostedModule();
   if (hosted) return hosted;
   try {
