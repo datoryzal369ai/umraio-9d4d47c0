@@ -186,6 +186,19 @@ export type TurnLatency = {
   level?: number;
   /** True when the caller heard an acknowledgement before the reasoned answer. */
   acknowledged?: boolean;
+  /**
+   * Media-plane timings reported by the gateway (additive instrumentation).
+   * `vad_finalize_ms` is for this turn; the playback fields describe the turn
+   * named by `prev_sequence`, since they only exist once audio has been sent.
+   */
+  media?: {
+    vad_finalize_ms?: number;
+    prev_sequence?: number;
+    tts_ms?: number;
+    tts_encode_ms?: number;
+    playback_start_ms?: number;
+    speech_end_to_first_audio_ms?: number;
+  };
 };
 
 export function appendLatency(existing: unknown, entry: TurnLatency, max = 60): TurnLatency[] {
@@ -214,5 +227,26 @@ export function summarizeLatency(entries: TurnLatency[]): Record<string, number>
     p50_context_ms: percentile(entries.map((e) => e.context_ms ?? 0), 50),
     p50_reasoning_ms: percentile(entries.map((e) => e.reasoning_ms ?? 0), 50),
     p50_tts_ms: percentile(entries.map((e) => e.tts_ms ?? 0), 50),
+    ...summarizeMediaLatency(entries),
   };
+}
+
+/** Percentiles for the media plane, reported only when actually measured. */
+function summarizeMediaLatency(entries: TurnLatency[]): Record<string, number> {
+  const pick = (key: keyof NonNullable<TurnLatency["media"]>): number[] =>
+    entries
+      .map((e) => e.media?.[key])
+      .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  const out: Record<string, number> = {};
+  const add = (name: string, values: number[]) => {
+    if (values.length === 0) return;
+    out[`p50_${name}`] = percentile(values, 50);
+    out[`p95_${name}`] = percentile(values, 95);
+  };
+  add("vad_finalize_ms", pick("vad_finalize_ms"));
+  add("media_tts_ms", pick("tts_ms"));
+  add("media_tts_encode_ms", pick("tts_encode_ms"));
+  add("playback_start_ms", pick("playback_start_ms"));
+  add("speech_end_to_first_audio_ms", pick("speech_end_to_first_audio_ms"));
+  return out;
 }

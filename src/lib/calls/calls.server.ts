@@ -462,6 +462,13 @@ export async function processGatewayCallback(args: {
       if ((payload.outbound_packets ?? 0) > 0) marks.first_outbound_rtp_at = payload.timestamp;
     } else {
       marks.terminate_received_at = payload.timestamp;
+      // Every failed/terminated session carries an explicit reason.
+      marks.failure_reason =
+        payload.reason && payload.reason.trim()
+          ? payload.reason.trim()
+          : decision.outcome === "failed"
+            ? "media_failed_unspecified"
+            : "terminated_unspecified";
     }
     decision.patch["stage_timings"] = mergeCallTimings(
       (data as { stage_timings?: unknown } | null)?.stage_timings,
