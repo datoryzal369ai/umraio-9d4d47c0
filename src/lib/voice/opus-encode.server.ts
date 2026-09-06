@@ -25,10 +25,30 @@ const GRANULE_RATE = 48_000;
 const GRANULE_SCALE = GRANULE_RATE / PCM_SAMPLE_RATE;
 /** OPUS_GET_LOOKAHEAD_REQUEST */
 const OPUS_GET_LOOKAHEAD = 4027;
-/** OPUS_SET_BITRATE_REQUEST — 24 kbps mono voice is ample for speech. */
+/** OPUS_SET_BITRATE_REQUEST. */
 const OPUS_SET_BITRATE = 4002;
-const OPUS_APPLICATION_VOIP = 2048;
-const OPUS_TARGET_BITRATE = 24_000;
+/** OPUS_SET_COMPLEXITY_REQUEST — 10 = maximum analysis quality. */
+const OPUS_SET_COMPLEXITY = 4010;
+/** OPUS_SET_BANDWIDTH_REQUEST. */
+const OPUS_SET_BANDWIDTH = 4008;
+/** OPUS_BANDWIDTH_FULLBAND — preserve the widest possible speech bandwidth. */
+const OPUS_BANDWIDTH_FULLBAND = 1105;
+/**
+ * QUALITY FIX: OPUS_APPLICATION_AUDIO + 48 kbps + complexity 10 + fullband.
+ * The previous VOIP/24 kbps/default-complexity profile produced a robotic,
+ * narrowband-sounding RAIŌ voice note. AUDIO mode keeps the natural timbre.
+ */
+const OPUS_APPLICATION_AUDIO = 2049;
+const OPUS_TARGET_BITRATE = 48_000;
+const OPUS_COMPLEXITY = 10;
+
+/** Exported for regression tests that lock the voice-quality settings. */
+export const OPUS_QUALITY_SETTINGS = {
+  application: OPUS_APPLICATION_AUDIO,
+  bitrate: OPUS_TARGET_BITRATE,
+  complexity: OPUS_COMPLEXITY,
+  bandwidth: OPUS_BANDWIDTH_FULLBAND,
+} as const;
 
 export type OpusEncodeResult =
   | { ok: true; bytes: Uint8Array }
@@ -59,7 +79,7 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 let exportsPromise: Promise<OpusExports | null> | null = null;
-let wasmSource: "bundled_module" | "runtime_compile" | "unavailable" = "unavailable";
+let wasmSource: "hosted_asset" | "runtime_compile" | "unavailable" = "unavailable";
 
 /** Which loader produced the encoder — non-secret diagnostic for the probe. */
 export function opusWasmSource(): string {
@@ -91,41 +111,42 @@ function finishInstance(instance: WebAssembly.Instance): OpusExports {
 }
 
 /**
- * WORKER-SAFE MODULE SOURCE — the serverless Worker runtime forbids ALL
- * runtime WebAssembly compilation from bytes, including at module evaluation
- * (`new WebAssembly.Module(bytes)` throws "wasm code generation disallowed").
- * Production proof: /api/public/health/opus-probe returned
- * {"ok":false,"reason":"wasm_unavailable"} on the published build.
+ * HOSTED MODULE SOURCE — the libopus binary is served as a static asset at
+ * `/wasm/opus.wasm` (public/wasm/) and fetched by URL AT RUNTIME ONLY, never
+ * imported from source: a `.wasm` source import would place the binary in the
+ * server bundle and break deployment. Nothing here runs at module evaluation.
  *
- * The ONLY supported source is a module the bundler links as WebAssembly —
- * `import opusWasm from "./opus/opus.wasm"` yields an already-compiled
- * WebAssembly.Module in the Worker. Node/vitest resolve the same import to a
- * URL/asset path, so the embedded base64 build stays as the local fallback.
+ * Node/vitest resolve the same asset over the dev server when available and
+ * otherwise fall through to the embedded base64 build below.
  */
-async function loadBundledModule(): Promise<WebAssembly.Module | null> {
+async function instantiateFromBytes(bytes: Uint8Array<ArrayBuffer>): Promise<OpusExports | null> {
   try {
-    const mod: unknown = (await import("./opus/opus.wasm")) as unknown;
-    const candidate = (mod as { default?: unknown })?.default ?? mod;
-    if (candidate instanceof WebAssembly.Module) return candidate;
+    const { instance } = (await WebAssembly.instantiate(
+      bytes,
+      OPUS_IMPORTS,
+    )) as WebAssembly.WebAssemblyInstantiatedSource;
+    return finishInstance(instance);
   } catch {
-    /* not a bundled wasm module in this runtime */
+    return null;
   }
-  return null;
+}
+
+async function loadHostedModule(): Promise<OpusExports | null> {
+  const origin = process.env["PUBLIC_SITE_URL"] ?? "https://umraio.com";
+  try {
+    const response = await fetch(`${origin}/wasm/opus.wasm`);
+    if (!response.ok) return null;
+    const exports = await instantiateFromBytes(new Uint8Array(await response.arrayBuffer()));
+    if (exports) wasmSource = "hosted_asset";
+    return exports;
+  } catch {
+    return null;
+  }
 }
 
 async function loadOpusExports(): Promise<OpusExports | null> {
-  const bundled = await loadBundledModule();
-  if (bundled) {
-    try {
-      const exports = finishInstance(new WebAssembly.Instance(bundled, OPUS_IMPORTS));
-      wasmSource = "bundled_module";
-      return exports;
-    } catch (error) {
-      console.error(
-        `[voice] opus_wasm_instantiate_failed source=bundled reason=${(error as Error)?.name ?? "unknown"}`,
-      );
-    }
-  }
+  const hosted = await loadHostedModule();
+  if (hosted) return hosted;
   try {
     // Runtimes that still allow compiling from bytes (node, vitest, dev).
     const { instance } = await WebAssembly.instantiate(
@@ -267,11 +288,15 @@ export async function encodePcmToOggOpus(pcm: Uint8Array): Promise<OpusEncodeRes
   try {
     encoderPtr = wasm.malloc(wasm.opus_encoder_get_size(PCM_CHANNELS));
     if (
-      wasm.opus_encoder_init(encoderPtr, PCM_SAMPLE_RATE, PCM_CHANNELS, OPUS_APPLICATION_VOIP) < 0
+      wasm.opus_encoder_init(encoderPtr, PCM_SAMPLE_RATE, PCM_CHANNELS, OPUS_APPLICATION_AUDIO) < 0
     ) {
       return { ok: false, reason: "encode_failed" };
     }
     wasm.opus_encoder_ctl_set(encoderPtr, OPUS_SET_BITRATE, OPUS_TARGET_BITRATE);
+    // Best-effort quality controls: ignore failures so older libopus builds
+    // still encode rather than breaking the whole voice-note path.
+    wasm.opus_encoder_ctl_set(encoderPtr, OPUS_SET_COMPLEXITY, OPUS_COMPLEXITY);
+    wasm.opus_encoder_ctl_set(encoderPtr, OPUS_SET_BANDWIDTH, OPUS_BANDWIDTH_FULLBAND);
     const lookahead = wasm.opus_encoder_ctl_get(encoderPtr, OPUS_GET_LOOKAHEAD);
     const preSkip = Math.max(0, Math.round((lookahead > 0 ? lookahead : 0) * GRANULE_SCALE));
 

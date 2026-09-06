@@ -5,7 +5,7 @@
  * SOURCE: the `wasm/opus.wasm` artifact of `@evan/opus` (MIT; libopus BSD) —
  * vendored so nothing is ever fetched at runtime. See LICENSE.opus-bindings.txt.
  *
- * The bundled binary import (`./opus.wasm`) is tried first at runtime; this
+ * The hosted `/wasm/opus.wasm` asset is tried first at runtime; this
  * string is the portable fallback (Node / vitest / dev server).
  *
  * GENERATED FILE — do not edit by hand.
