@@ -111,7 +111,6 @@ func TestMediaDiagnosticsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("establish: %v", err)
 	}
-	ms.NotifyAccepted()
 	if err := caller.SetRemoteDescription(pion.SessionDescription{Type: pion.SDPTypeAnswer, SDP: answer}); err != nil {
 		t.Fatalf("caller answer: %v", err)
 	}

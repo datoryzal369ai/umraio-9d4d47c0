@@ -63,7 +63,7 @@ function checkCallWrite(result: { error?: DbWriteError } | null | undefined, sta
   throw new Error(`call_persistence_${stage}`);
 }
 
-/** Re-read after external work so its committed callback timings survive. */
+/** Re-read after external work so the next timing write includes committed callback marks. */
 async function persistTimingMarks(
   db: Db,
   callId: string,
@@ -472,8 +472,6 @@ async function maybeRequestAnswer(args: {
     console.error(
       `[calls] meta_accept_anchor_missing call_id=${event.callId} effect=media_ready_will_be_rejected action=inspect_database`,
     );
-    // Never tell the gateway that acceptance was committed when both writes failed.
-    throw new Error("call_persistence_meta_accept");
   }
 
   // 4) Post-accept notification. Exactly one greeting is started by the

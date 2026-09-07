@@ -290,7 +290,7 @@ describe("post-accept persistence boundary", () => {
     },
   );
 
-  it("never confirms acceptance to the gateway when storing Meta acceptance failed", async () => {
+  it("does not orphan an accepted call when storing the acceptance anchor failed", async () => {
     let attempts = 0;
     const { db } = database(null, {
       failWrite: (patch) => {
@@ -312,9 +312,9 @@ describe("post-accept persistence boundary", () => {
     };
     await expect(
       processCallEvent({ db, event: connect, phoneNumberId: PHONE, env, fetchImpl }),
-    ).rejects.toThrow();
+    ).resolves.toBe("meta_accepted");
     expect(attempts).toBe(2);
-    expect(seen.some((url) => url.endsWith("/accepted"))).toBe(false);
+    expect(seen.filter((url) => url.endsWith("/accepted"))).toHaveLength(1);
   });
 
   it("continues after the existing acceptance retry commits successfully", async () => {

@@ -135,7 +135,6 @@ func TestInboundRTPDrivesMediaReady(t *testing.T) {
 	if sess.MediaReadyRule() {
 		t.Fatal("media ready before any RTP")
 	}
-	ms.NotifyAccepted()
 	if err := caller.SetRemoteDescription(pion.SessionDescription{Type: pion.SDPTypeAnswer, SDP: answer}); err != nil {
 		t.Fatalf("caller answer: %v", err)
 	}

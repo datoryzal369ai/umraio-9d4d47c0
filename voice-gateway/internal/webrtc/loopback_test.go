@@ -143,7 +143,6 @@ func TestLoopbackNegotiatesOpusAndReachesMediaReady(t *testing.T) {
 	if mediaReady.Load() != 0 {
 		t.Fatal("media_ready emitted before any RTP")
 	}
-	ms.NotifyAccepted()
 
 	if err := caller.SetRemoteDescription(pion.SessionDescription{
 		Type: pion.SDPTypeAnswer, SDP: answer,
