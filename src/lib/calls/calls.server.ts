@@ -22,17 +22,20 @@ import {
 } from "./call-events.core";
 import {
   decideGatewayCallback,
+  shouldTerminateAtMeta,
   type CallSessionRow,
   type GatewayCallbackPayload,
 } from "./gateway-callback.core";
 import {
+  isGreetingConfirmed,
   notifyCallAccepted,
+  postAcceptNotifyOutcome,
   probeGatewaySpeech,
   requestMediaSession,
   resolveGatewayConfig,
   terminateMediaSession,
 } from "./media-gateway.server";
-import { metaAcceptCall, metaPreAcceptCall } from "./meta-calls.server";
+import { metaAcceptCall, metaPreAcceptCall, metaTerminateCall } from "./meta-calls.server";
 import { finalizeCallMemory } from "./call-context.server";
 import { CallTimeline, mergeCallTimings, type CallTimings } from "./call-timings.core";
 
@@ -49,6 +52,42 @@ async function resolveTenant(db: Db, phoneNumberId: string): Promise<Tenant | nu
   const agencyId = data?.agency_id as string | undefined;
   if (!agencyId) return null;
   return { agencyId, accessToken: (data?.access_token as string | undefined) ?? null };
+}
+
+type DbWriteError = { code?: string | null; message?: string | null } | null | undefined;
+
+/**
+ * One call-session write on the critical path. Database errors are NEVER
+ * swallowed: they are logged (stage + code, never row content) and reported to
+ * the caller, which decides whether the call can continue. It never throws.
+ * `critical` writes get exactly one immediate retry — the `meta_accepted_at`
+ * anchor, for instance, is what later lets `media_ready` become `answered`.
+ */
+async function writeSession(
+  db: Db,
+  callId: string,
+  stage: string,
+  patch: Record<string, unknown>,
+  options: { critical?: boolean } = {},
+): Promise<boolean> {
+  const attempts = options.critical ? 2 : 1;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let error: DbWriteError = null;
+    try {
+      const result = (await db.from("whatsapp_call_sessions").update(patch).eq("call_id", callId)) as
+        | { error?: DbWriteError }
+        | null
+        | undefined;
+      error = result?.error ?? null;
+    } catch (thrown) {
+      error = { code: (thrown as Error)?.name ?? "exception", message: (thrown as Error)?.message ?? null };
+    }
+    if (!error) return true;
+    console.error(
+      `[calls] session_write_failed call_id=${callId} stage=${stage} attempt=${attempt}/${attempts} code=${error.code ?? "unknown"} critical=${Boolean(options.critical)}`,
+    );
+  }
+  return false;
 }
 
 export type CallHandlingOutcome =
@@ -137,11 +176,15 @@ export async function processCallEvent(args: {
   };
   if (terminal) {
     timeline.mark("terminate_received_at", new Date(event.occurredAt));
+    // FIRST WRITE WINS: the original ringing webhook's anchors survive; only
+    // the genuinely new `terminate_received_at` mark is added.
     statusPatch["stage_timings"] = mergeCallTimings(existing.stage_timings, timeline.snapshot());
   }
-  await db.from("whatsapp_call_sessions").update(statusPatch).eq("id", existing.id);
+  const written = await writeSession(db, event.callId, `webhook_${event.status}`, statusPatch, {
+    critical: terminal,
+  });
   console.log(
-    `[calls] call_state_transition call_id=${event.callId} from=${existing.status} to=${event.status} reason=${event.terminationReason ?? "none"}`,
+    `[calls] call_state_transition call_id=${event.callId} from=${existing.status} to=${event.status} reason=${event.terminationReason ?? "none"} persisted=${written}`,
   );
 
   // A caller who hangs up mid-negotiation must not leave media running.
@@ -161,7 +204,15 @@ export async function processCallEvent(args: {
     }
     // CALL → TEXT continuity: flush whatever RAIŌ learned into the SAME
     // WhatsApp thread the moment the call ends, including a mid-call hang-up.
-    await finalizeCallMemory(db, { callId: event.callId }).catch(() => undefined);
+    // The outcome is enumerated and recorded — never silently dropped.
+    const memoryOutcome = await finalizeCallMemory(db, { callId: event.callId }).catch(() => "threw" as const);
+    if (memoryOutcome.endsWith("_failed") || memoryOutcome === "threw") {
+      await writeSession(db, event.callId, "call_memory_outcome", {
+        stage_timings: mergeCallTimings(statusPatch["stage_timings"] ?? existing.stage_timings, {
+          call_memory_outcome: memoryOutcome,
+        }),
+      });
+    }
   }
   return "state_updated";
 }
@@ -178,8 +229,8 @@ async function markFailed(
     ended_at: nowIso,
     termination_reason: reason,
   };
-  if (timings) patch["stage_timings"] = timings;
-  await db.from("whatsapp_call_sessions").update(patch).eq("call_id", callId);
+  if (timings) patch["stage_timings"] = mergeCallTimings(timings, { failure_reason: reason });
+  await writeSession(db, callId, `failed_${reason}`, patch, { critical: true });
 }
 
 /** Statuses in which media negotiation is (or may be) in flight. */
@@ -250,10 +301,10 @@ async function maybeRequestAnswer(args: {
     return "answer_deferred_media_gateway_required";
   }
 
-  await db
-    .from("whatsapp_call_sessions")
-    .update({ status: "answer_requested", answer_requested_at: nowIso })
-    .eq("call_id", event.callId);
+  await writeSession(db, event.callId, "answer_requested", {
+    status: "answer_requested",
+    answer_requested_at: nowIso,
+  });
   console.log(`[calls] answer_requested call_id=${event.callId} gateway=configured`);
 
   const fetchOpt = args.fetchImpl ? { fetchImpl: args.fetchImpl } : {};
@@ -289,15 +340,18 @@ async function maybeRequestAnswer(args: {
   }
   timeline.mark("gateway_answer_received_at");
 
-  await db
-    .from("whatsapp_call_sessions")
-    .update({
+  await writeSession(
+    db,
+    event.callId,
+    "media_negotiating",
+    {
       status: "media_negotiating",
       gateway_session_id: media.sessionId,
       media_negotiated_at: now().toISOString(),
       stage_timings: timeline.snapshot(),
-    })
-    .eq("call_id", event.callId);
+    },
+    { critical: true },
+  );
   console.log(`[calls] media_negotiating call_id=${event.callId} session_id=${media.sessionId}`);
 
   if (!tenant.accessToken) {
@@ -309,10 +363,16 @@ async function maybeRequestAnswer(args: {
   const cancelled = async (phase: string): Promise<CallHandlingOutcome> => {
     console.log(`[calls] answer_cancelled call_id=${event.callId} phase=${phase} reason=call_terminated`);
     await teardown("call_terminated");
-    await db
+    // The terminal webhook already merged its marks; ours are added underneath
+    // (first write wins) so neither side loses an anchor.
+    const { data: current } = await db
       .from("whatsapp_call_sessions")
-      .update({ stage_timings: timeline.snapshot() })
-      .eq("call_id", event.callId);
+      .select("stage_timings")
+      .eq("call_id", event.callId)
+      .maybeSingle();
+    await writeSession(db, event.callId, `cancelled_${phase}`, {
+      stage_timings: mergeCallTimings(current?.stage_timings, timeline.snapshot()),
+    });
     return "cancelled_by_terminate";
   };
 
@@ -330,15 +390,15 @@ async function maybeRequestAnswer(args: {
   if (preAccepted.ok) {
     timeline.mark("meta_pre_accept_completed_at");
     if (!(await isCallStillActive(db, event.callId))) return cancelled("after_pre_accept");
-    await db
-      .from("whatsapp_call_sessions")
-      .update({
-        status: "meta_pre_accepted",
-        meta_pre_accepted_at: timeline.get("meta_pre_accept_completed_at"),
-        stage_timings: timeline.snapshot(),
-      })
-      .eq("call_id", event.callId);
-    console.log(`[calls] meta_pre_accept_ok call_id=${event.callId}`);
+    // Schema contract: `meta_pre_accepted` is an accepted session status
+    // (widening migration 2026-09). A failed write is logged, never fatal —
+    // the accept path continues so the caller is not dropped over telemetry.
+    const persisted = await writeSession(db, event.callId, "meta_pre_accepted", {
+      status: "meta_pre_accepted",
+      meta_pre_accepted_at: timeline.get("meta_pre_accept_completed_at"),
+      stage_timings: timeline.snapshot(),
+    });
+    console.log(`[calls] meta_pre_accept_ok call_id=${event.callId} persisted=${persisted}`);
   } else {
     // Documented fallback: when pre_accept cannot be completed, proceed
     // straight to accept rather than dropping the call.
@@ -366,21 +426,35 @@ async function maybeRequestAnswer(args: {
   // A TERMINATE that landed while accept was in flight must NOT be revived.
   if (!(await isCallStillActive(db, event.callId))) return cancelled("after_accept");
 
-  await db
-    .from("whatsapp_call_sessions")
-    .update({
+  // CRITICAL anchor: without `meta_accepted_at` the later `media_ready`
+  // callback is rejected (`media_ready_without_meta_accept`) and the call can
+  // never become `answered`. One retry, and a loud log if it still fails.
+  const acceptPersisted = await writeSession(
+    db,
+    event.callId,
+    "meta_accepted",
+    {
       meta_accepted_at: timeline.get("meta_accept_completed_at"),
       stage_timings: timeline.snapshot(),
-    })
-    .eq("call_id", event.callId);
-  console.log(
-    `[calls] meta_accept_ok call_id=${event.callId} awaiting=media_ready pre_accept=${preAccepted.ok} ${timeline.logLine()}`,
+    },
+    { critical: true },
   );
+  console.log(
+    `[calls] meta_accept_ok call_id=${event.callId} awaiting=media_ready pre_accept=${preAccepted.ok} persisted=${acceptPersisted} ${timeline.logLine()}`,
+  );
+  if (!acceptPersisted) {
+    console.error(
+      `[calls] meta_accept_anchor_missing call_id=${event.callId} effect=media_ready_will_be_rejected action=inspect_database`,
+    );
+  }
 
   // 4) Post-accept notification. Exactly one greeting is started by the
   //    gateway here — never earlier (the turn endpoint rejects a call Meta has
   //    not accepted) and never again (the gateway keeps it idempotent). A
   //    TERMINATE that already closed the media session yields "closed".
+  //    SUCCESS IS CONFIRMED, NOT ASSUMED: `post_accept_notified_at` is only
+  //    recorded when the gateway reports the greeting started (or had already
+  //    started); every other outcome is persisted as an enumerated outcome.
   const notified = await notifyCallAccepted({
     gatewayUrl: gateway.url,
     secret: gateway.secret,
@@ -390,8 +464,11 @@ async function maybeRequestAnswer(args: {
     now: now(),
     ...fetchOpt,
   });
+  const notifyOutcome = postAcceptNotifyOutcome(notified);
+  const greetingConfirmed = isGreetingConfirmed(notified);
+  if (greetingConfirmed) timeline.mark("post_accept_notified_at");
   console.log(
-    `[calls] post_accept_notify call_id=${event.callId} ok=${notified.ok} greeting=${notified.greeting ?? notified.reason ?? "unknown"}`,
+    `[calls] post_accept_notify call_id=${event.callId} ok=${notified.ok} confirmed=${greetingConfirmed} outcome=${notifyOutcome}`,
   );
   // Speech ownership guard: the Worker control plane cannot encode Opus, so a
   // media plane without the speech capability produces a SILENT accepted call
@@ -408,14 +485,11 @@ async function maybeRequestAnswer(args: {
     }
   }
 
-  await db
-    .from("whatsapp_call_sessions")
-    .update({
-      stage_timings: mergeCallTimings(timeline.snapshot(), {
-        post_accept_notified_at: now().toISOString(),
-      }),
-    })
-    .eq("call_id", event.callId);
+  await writeSession(db, event.callId, "post_accept_notify", {
+    stage_timings: mergeCallTimings(timeline.snapshot(), {
+      post_accept_notify_outcome: notifyOutcome,
+    }),
+  });
 
   return "meta_accepted";
 }
@@ -433,13 +507,16 @@ export async function processGatewayCallback(args: {
   db: Db;
   payload: GatewayCallbackPayload;
   now?: () => Date;
+  fetchImpl?: typeof fetch;
 }): Promise<GatewayCallbackOutcome> {
   const { db, payload } = args;
   const now = args.now ?? (() => new Date());
 
   const { data } = await db
     .from("whatsapp_call_sessions")
-    .select("id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces, stage_timings")
+    .select(
+      "id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces, stage_timings, agency_id, phone_number_id",
+    )
     .eq("call_id", payload.call_id)
     .maybeSingle();
 
@@ -470,19 +547,94 @@ export async function processGatewayCallback(args: {
             ? "media_failed_unspecified"
             : "terminated_unspecified";
     }
-    decision.patch["stage_timings"] = mergeCallTimings(
-      (data as { stage_timings?: unknown } | null)?.stage_timings,
-      marks,
-    );
+    decision.patch["stage_timings"] = mergeCallTimings(session!.stage_timings, marks);
+  }
+
+  // Graceful completion (RAIŌ said goodbye) → ask Meta to hang up so the
+  // caller's phone ends the call now. The request marker is written in the
+  // SAME transition write, so a duplicate callback (rejected upstream as
+  // `session_terminal`) or a re-read of the row can never issue it twice.
+  const terminateAtMeta = shouldTerminateAtMeta({
+    outcome: decision.outcome,
+    reason: payload.reason,
+    session: session!,
+  });
+  if (terminateAtMeta) {
+    decision.patch["stage_timings"] = mergeCallTimings(decision.patch["stage_timings"] ?? session!.stage_timings, {
+      meta_terminate_requested_at: now().toISOString(),
+    });
   }
 
   // Compare-and-set: a session-id bind is only allowed while the column is NULL,
   // so a concurrent Establish response can never be overwritten by a callback.
   let query = db.from("whatsapp_call_sessions").update(decision.patch).eq("id", session!.id);
   if (decision.requireNullGatewaySession) query = query.is("gateway_session_id", null);
-  await query;
+  const written = (await query) as { error?: DbWriteError } | null | undefined;
+  if (written?.error) {
+    // Surface to the HTTP layer as a retryable failure: the gateway re-sends
+    // the event and the state machine re-evaluates it against the real row.
+    console.error(
+      `[calls] session_write_failed call_id=${payload.call_id} stage=callback_${payload.event} code=${written.error.code ?? "unknown"} critical=true`,
+    );
+    throw new Error("session_write_failed");
+  }
   console.log(
     `[calls] gateway_callback_applied call_id=${payload.call_id} event=${payload.event} outcome=${decision.outcome}`,
   );
+
+  if (terminateAtMeta) {
+    await terminateCallAtMeta({
+      db,
+      session: session!,
+      timings: decision.patch["stage_timings"],
+      now,
+      ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
+    });
+  }
+
   return { applied: true, outcome: decision.outcome };
+}
+
+/**
+ * Best-effort Meta terminate after a GRACEFUL completion. Uses only the
+ * tenant credentials the Worker resolves itself from the session's
+ * phone_number_id (never anything gateway-supplied). Failure here never
+ * changes call state — Meta's own TERMINATE webhook stays authoritative.
+ */
+async function terminateCallAtMeta(args: {
+  db: Db;
+  session: CallSessionRow;
+  timings: unknown;
+  now: () => Date;
+  fetchImpl?: typeof fetch;
+}): Promise<void> {
+  const { db, session, now } = args;
+  const callId = session.call_id;
+  let outcome = "skipped:tenant_unresolved";
+  try {
+    const phoneNumberId = session.phone_number_id ?? null;
+    const tenant = phoneNumberId ? await resolveTenant(db, phoneNumberId) : null;
+    if (!tenant || (session.agency_id && tenant.agencyId !== session.agency_id)) {
+      outcome = "skipped:tenant_unresolved";
+    } else if (!tenant.accessToken) {
+      outcome = "skipped:meta_token_missing";
+    } else {
+      const result = await metaTerminateCall({
+        phoneNumberId: phoneNumberId!,
+        accessToken: tenant.accessToken,
+        callId,
+        ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
+      });
+      outcome = result.ok ? "ok" : `failed:${result.reason}`;
+    }
+  } catch (error) {
+    outcome = `failed:${(error as Error)?.name ?? "exception"}`;
+  }
+  console.log(`[calls] meta_terminate call_id=${callId} reason=conversation_complete outcome=${outcome}`);
+  await writeSession(db, callId, "meta_terminate", {
+    stage_timings: mergeCallTimings(args.timings, {
+      meta_terminate_completed_at: now().toISOString(),
+      meta_terminate_outcome: outcome,
+    }),
+  });
 }
