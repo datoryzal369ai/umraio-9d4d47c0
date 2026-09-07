@@ -31,7 +31,7 @@
  */
 export const INTERNAL_FAILURE_PATTERNS: RegExp[] = [
   // Credits tied to audio, voice, AI or the system — never "kad kredit"/"credit card".
-  /\bkredit\b(?!\s+(kad|card)\b)(?<!\bkad\s)[^.!?\n]{0,40}\b(audio|suara|voice|ai|sistem|system|habis|tidak\s+mencukupi|perlu\s+ditambah|ditambah\s+semula|top.?up|tambah\s+nilai)\b/i,
+  /(?<!\bkad\s)\bkredit\b(?!\s+(kad|card)\b)[^.!?\n]{0,40}\b(audio|suara|voice|ai|sistem|system|habis|tidak\s+mencukupi|perlu\s+ditambah|ditambah\s+semula|top.?up|tambah\s+nilai)\b/i,
   /\b(audio|suara|voice|ai|sistem|system)\b[^.!?\n]{0,40}(?<!\bkad\s)\bkredit\b(?!\s+(kad|card)\b)/i,
   /\bcredits?\b(?!\s+cards?\b)[^.!?\n]{0,40}\b(audio|voice|ai|system|insufficient|exhausted|top.?up|replenish|purchase|balance)\b/i,
   /\b(audio|voice|ai|system|insufficient|exhausted|top.?up)\b[^.!?\n]{0,40}\bcredits?\b(?!\s+cards?\b)/i,
