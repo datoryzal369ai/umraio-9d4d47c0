@@ -1,11 +1,15 @@
 /**
- * UMRAIO® — Meta Cloud API call-answer client (server only).
+ * UMRAIO® — Meta Cloud API call client (server only).
  *
  * The Worker is the ONLY holder of the Meta access token; the media gateway
  * never sees it. Both `pre_accept` and `accept` are sent with the REAL SDP
  * answer produced by the gateway, and per the Calling API reference the SDP
  * sent on `accept` MUST be byte-identical to the one sent on `pre_accept`.
  * A non-2xx reply is a failure — it never yields "answered".
+ *
+ * `terminate` carries no SDP. It is used ONLY after a graceful conversation
+ * completion so the caller's phone hangs up promptly instead of waiting for
+ * Meta to notice the media stopped.
  */
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -13,34 +17,43 @@ export type MetaAcceptResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-export type MetaCallAction = "pre_accept" | "accept";
+export type MetaCallAction = "pre_accept" | "accept" | "terminate";
 
 type MetaCallActionArgs = {
   action: MetaCallAction;
   phoneNumberId: string;
   accessToken: string;
   callId: string;
-  sdpAnswer: string;
+  /** Required for pre_accept / accept; ignored for terminate. */
+  sdpAnswer?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   signal?: AbortSignal;
 };
 
 /**
- * Sends one Meta call action with the gateway's real SDP answer.
+ * Sends one Meta call action.
  * Payload shape follows the official Calling API reference:
- *   { messaging_product, call_id, action, session: { sdp_type: "answer", sdp } }
+ *   { messaging_product, call_id, action, session?: { sdp_type: "answer", sdp } }
  */
 export async function metaCallAction(args: MetaCallActionArgs): Promise<MetaAcceptResult> {
   const doFetch = args.fetchImpl ?? fetch;
   if (!args.accessToken) return { ok: false, reason: "meta_token_missing" };
-  if (!args.sdpAnswer?.trim()) return { ok: false, reason: "missing_sdp_answer" };
+  const needsSdp = args.action !== "terminate";
+  if (needsSdp && !args.sdpAnswer?.trim()) return { ok: false, reason: "missing_sdp_answer" };
 
   const timeoutSignal = AbortSignal.timeout(args.timeoutMs ?? 10_000);
   const signal =
     args.signal && typeof AbortSignal.any === "function"
       ? AbortSignal.any([timeoutSignal, args.signal])
       : timeoutSignal;
+
+  const payload: Record<string, unknown> = {
+    messaging_product: "whatsapp",
+    call_id: args.callId,
+    action: args.action,
+  };
+  if (needsSdp) payload["session"] = { sdp_type: "answer", sdp: args.sdpAnswer };
 
   let response: Response;
   try {
@@ -50,12 +63,7 @@ export async function metaCallAction(args: MetaCallActionArgs): Promise<MetaAcce
         "Content-Type": "application/json",
         Authorization: `Bearer ${args.accessToken}`,
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        call_id: args.callId,
-        action: args.action,
-        session: { sdp_type: "answer", sdp: args.sdpAnswer },
-      }),
+      body: JSON.stringify(payload),
       signal,
     });
   } catch {
@@ -72,16 +80,30 @@ export async function metaCallAction(args: MetaCallActionArgs): Promise<MetaAcce
   return { ok: true };
 }
 
+type SdpActionArgs = Omit<MetaCallActionArgs, "action" | "sdpAnswer"> & { sdpAnswer: string };
+
 /**
  * Pre-accept: establishes the WebRTC/ICE/DTLS path BEFORE the final accept so
  * media is already flowing-capable when the call is answered. Recommended by
  * Meta to avoid audio clipping and setup-timeout hangups.
  */
-export function metaPreAcceptCall(args: Omit<MetaCallActionArgs, "action">): Promise<MetaAcceptResult> {
+export function metaPreAcceptCall(args: SdpActionArgs): Promise<MetaAcceptResult> {
   return metaCallAction({ ...args, action: "pre_accept" });
 }
 
 /** Final accept. Must carry the SAME SDP answer used for pre_accept. */
-export function metaAcceptCall(args: Omit<MetaCallActionArgs, "action">): Promise<MetaAcceptResult> {
+export function metaAcceptCall(args: SdpActionArgs): Promise<MetaAcceptResult> {
   return metaCallAction({ ...args, action: "accept" });
+}
+
+/**
+ * Terminate an in-progress call at Meta. Best effort by contract: the caller
+ * decides idempotency (one request per call) and never lets a failure here
+ * change the persisted call state — Meta's own TERMINATE webhook remains the
+ * source of truth for the end of the call.
+ */
+export function metaTerminateCall(
+  args: Omit<MetaCallActionArgs, "action" | "sdpAnswer">,
+): Promise<MetaAcceptResult> {
+  return metaCallAction({ ...args, action: "terminate" });
 }

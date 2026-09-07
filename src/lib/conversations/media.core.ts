@@ -44,9 +44,16 @@ export function isRenderableMime(kind: MediaKind, raw: string | null | undefined
   return false;
 }
 
+/**
+ * Internal, text-bodied modalities that carry no provider media and render as
+ * an ordinary text bubble. `call_summary` is the CALL → TEXT continuity note
+ * written back into the WhatsApp thread after a RAIŌ phone call.
+ */
+const TEXT_LIKE_MODALITIES = new Set(["text", "call_summary"]);
+
 export function mediaKindOf(modality: string | null | undefined): MediaKind {
   const value = (modality ?? "text").toLowerCase();
-  if (value === "text") return "text";
+  if (TEXT_LIKE_MODALITIES.has(value)) return "text";
   if (value === "audio") return "audio";
   if (value === "image") return "image";
   if (value === "document") return "document";

@@ -44,6 +44,7 @@ import {
 } from "@/lib/sales/context-continuity.core";
 import {
   WHATSAPP_FORMAT_INSTRUCTION,
+  INTERNAL_FAILURE_SILENCE_INSTRUCTION,
   QUOTATION_AUTONOMY_INSTRUCTION,
   HANDOVER_LANGUAGE_INSTRUCTION,
   NEXT_BEST_ACTION_INSTRUCTION,
@@ -55,6 +56,7 @@ import {
   existingQuotationInstruction,
   type ExistingQuotationCard,
 } from "@/lib/sales/whatsapp-presentation.core";
+import { composeWhatsappReply } from "@/lib/sales/whatsapp-composer.core";
 import { quotationLink } from "@/lib/quotations/quotations.server";
 import {
   detectRequestedPackage,
@@ -536,6 +538,7 @@ function systemPrompt(
     }),
     // WHATSAPP SALES UX — presentation + decision routing (pure, no business-rule change).
     WHATSAPP_FORMAT_INSTRUCTION,
+    INTERNAL_FAILURE_SILENCE_INSTRUCTION,
     directPriceInstruction({
       latestMessage: redactSuppressedTopics(lastCustomer?.body, suppressedTopics),
       packages: (ctx.packages as Array<Record<string, unknown>>).map((p) => ({
@@ -1561,13 +1564,25 @@ export async function generateAgentReply(
   // CAPABILITY TRUTH — the model may never deny a capability the system has.
   // Enforced deterministically, not left to the prompt.
   const latestCustomerBody = [...ctx.messages].reverse().find((m) => m.sender === "customer")?.body;
-  const text = sanitizeCapabilityClaims((result.data ?? "").trim(), {
+  const capabilitySafe = sanitizeCapabilityClaims((result.data ?? "").trim(), {
     voiceAvailable: true,
     callingAvailable: resolveCapabilities(process.env as Record<string, string | undefined>)
       .whatsappCalling,
     customerAskedIdentity: customerAskedAboutAiIdentity(latestCustomerBody),
     liveCallRequested: customerAskedForLiveCall(latestCustomerBody),
   });
+  // WHATSAPP COMPOSITION + INTERNAL-FAILURE SCRUB — the final outbound text is
+  // composed deterministically (short paragraphs, WhatsApp bold, one closing
+  // question) and any sentence disclosing credits/quotas/providers/system
+  // errors is removed. A reply that was ONLY such a disclosure becomes empty
+  // and falls through to the neutral customer-safe reply below.
+  const composed = composeWhatsappReply(capabilitySafe);
+  if (composed.scrubbedSentences || composed.removedClosers || composed.markdownRewritten) {
+    console.log(
+      `[sales-ai] whatsapp_compose scrubbed=${composed.scrubbedSentences} closers_removed=${composed.removedClosers} markdown_rewritten=${composed.markdownRewritten} empty_after_scrub=${composed.emptyAfterScrub} chars=${capabilitySafe.length}->${composed.text.length}`,
+    );
+  }
+  const text = composed.text;
 
   // Step 3 — persist derived conversation memory (real data only, no fabrication).
   try {

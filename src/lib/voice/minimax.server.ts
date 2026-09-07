@@ -129,6 +129,20 @@ function classifyHttp(status: number): { kind: TtsFailureKind; retryable: boolea
   return { kind: "provider", retryable: true };
 }
 
+/** MiniMax application status codes that mean "no credit / entitlement". */
+export const MINIMAX_ENTITLEMENT_CODES = new Set([1008, 2053]);
+
+/**
+ * Maps a non-zero MiniMax `base_resp.status_code` to the failure taxonomy.
+ * Exported for tests; the numeric code is the only thing ever logged.
+ */
+export function classifyMinimaxStatusCode(statusCode: number): TtsFailureKind {
+  if (MINIMAX_ENTITLEMENT_CODES.has(statusCode)) return "entitlement";
+  if (statusCode === 1004 || statusCode === 2049) return "unauthorized";
+  if (statusCode === 1002) return "rate_limited";
+  return "provider";
+}
+
 /**
  * MULTILINGUAL TTS — maps the EXISTING conversation voice language
  * (`agency_settings.voice_language`, resolved by language.core) to the MiniMax
@@ -243,17 +257,13 @@ async function requestMinimaxAudio(
         `[voice] tts_failed engine=minimax category=provider code=${statusCode} attempt=${attempt}`,
       );
       if (retryable && attempt < MINIMAX_TTS_MAX_ATTEMPTS) continue;
-      // 1008 = insufficient balance: a billing/entitlement state, NOT a bad
-      // credential. Keeping it distinct stops a topped-up-but-wrong-account
-      // situation from being misread as a broken key.
-      const kind: TtsFailureKind =
-        statusCode === 1008
-          ? "entitlement"
-          : statusCode === 1004 || statusCode === 2049
-            ? "unauthorized"
-            : statusCode === 1002
-              ? "rate_limited"
-              : "provider";
+      // 1008 = insufficient balance and 2053 = "insufficient credit, purchase
+      // top-up credits or upgrade" (verified against the live API 2026-09):
+      // both are billing/entitlement states, NOT a bad credential. Keeping
+      // them distinct stops a topped-up-but-wrong-account situation from
+      // being misread as a broken key, and lets the fail-closed Voice Note
+      // path report `entitlement` instead of a generic provider fault.
+      const kind: TtsFailureKind = classifyMinimaxStatusCode(statusCode);
       return { ok: false, kind };
     }
 
