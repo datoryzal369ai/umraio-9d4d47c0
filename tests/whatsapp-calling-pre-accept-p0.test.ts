@@ -69,6 +69,8 @@ function makeDb(initial?: Record<string, unknown> | null) {
           const chain: any = {
             eq: () => chain,
             is: () => chain,
+            select: () => chain,
+            maybeSingle: async () => ({ data: state.session, error: null }),
             then: (r: any) => Promise.resolve(null).then(r),
           };
           return chain;

@@ -318,8 +318,12 @@ func (ms *MediaSession) readInbound(remote *pion.TrackRemote) {
 	}
 }
 
-// maybeFireMediaReady applies session.MediaReadyRule and emits at most once.
+// maybeFireMediaReady preserves the transport rule, but consumes its one-shot
+// notification only after the Worker has committed Meta acceptance.
 func (ms *MediaSession) maybeFireMediaReady() {
+	if !ms.accepted.Load() {
+		return
+	}
 	now := time.Now()
 	if !ms.sess.TryFireMediaReady(now) {
 		return
@@ -391,6 +395,9 @@ func (ms *MediaSession) NotifyAccepted() string {
 		return string(umedia.GreetingClosed)
 	}
 	ms.accepted.Store(true)
+	// Transport and RTP can already be ready from pre_accept. Recheck without
+	// waiting for another packet, even when the greeting pipeline is disabled.
+	ms.maybeFireMediaReady()
 	greeter, ok := ms.pipeline.(umedia.Greeter)
 	if !ok {
 		ms.log.Info("post_accept_greeting", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,

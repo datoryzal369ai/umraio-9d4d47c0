@@ -60,6 +60,27 @@ function makeDb(options: {
     from(table: string) {
       const filters: [string, unknown][] = [];
       const result = (payload: unknown, op: string) => {
+        const execute = () => {
+          const failure =
+            op === "update" && options.failUpdates?.table === table
+              ? { code: options.failUpdates.code, message: "boom" }
+              : op === "insert" && options.failInserts?.table === table
+                ? { code: options.failInserts.code, message: "boom" }
+                : null;
+          let data = null;
+          if (
+            !failure &&
+            op === "update" &&
+            table === "whatsapp_call_sessions" &&
+            state.session &&
+            filters.every(([key, value]) => state.session![key] === value)
+          ) {
+            state.session = { ...state.session, ...(payload as object) };
+            data = state.session;
+          }
+          writes.push({ table, op, payload, filters: [...filters] });
+          return Promise.resolve({ data, error: failure });
+        };
         const chain: any = {
           eq: (k: string, v: unknown) => {
             filters.push([k, v]);
@@ -69,19 +90,9 @@ function makeDb(options: {
             filters.push([k, v]);
             return chain;
           },
-          then: (resolve: any, reject?: any) => {
-            const failure =
-              op === "update" && options.failUpdates?.table === table
-                ? { code: options.failUpdates.code, message: "boom" }
-                : op === "insert" && options.failInserts?.table === table
-                  ? { code: options.failInserts.code, message: "boom" }
-                  : null;
-            if (!failure && op === "update" && table === "whatsapp_call_sessions" && state.session) {
-              state.session = { ...state.session, ...(payload as object) };
-            }
-            writes.push({ table, op, payload, filters: [...filters] });
-            return Promise.resolve({ data: null, error: failure }).then(resolve, reject);
-          },
+          select: () => chain,
+          maybeSingle: execute,
+          then: (resolve: any, reject?: any) => execute().then(resolve, reject),
         };
         return chain;
       };

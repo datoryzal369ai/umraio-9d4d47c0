@@ -64,7 +64,13 @@ function makeDb(options: {
         update: (payload: any) => {
           writes.push({ table, op: "update", payload });
           if (state.session) state.session = { ...state.session, ...payload };
-          const chain: any = { eq: () => chain, then: (r: any) => Promise.resolve(null).then(r) };
+          const chain: any = {
+            eq: () => chain,
+            is: () => chain,
+            select: () => chain,
+            maybeSingle: async () => ({ data: state.session, error: null }),
+            then: (r: any) => Promise.resolve(null).then(r),
+          };
           return chain;
         },
       };

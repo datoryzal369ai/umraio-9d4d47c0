@@ -56,6 +56,32 @@ async function resolveTenant(db: Db, phoneNumberId: string): Promise<Tenant | nu
 
 type DbWriteError = { code?: string | null; message?: string | null } | null | undefined;
 
+function checkCallWrite(result: { error?: DbWriteError } | null | undefined, stage: string): void {
+  if (!result?.error) return;
+  // Log the stage and code only; database messages can contain row values.
+  console.error(`[calls] persistence_failed stage=${stage} code=${result.error.code ?? "unknown"}`);
+  throw new Error(`call_persistence_${stage}`);
+}
+
+/** Re-read after external work so its committed callback timings survive. */
+async function persistTimingMarks(
+  db: Db,
+  callId: string,
+  stage: string,
+  marks: CallTimings,
+): Promise<void> {
+  const current = await db
+    .from("whatsapp_call_sessions")
+    .select("stage_timings")
+    .eq("call_id", callId)
+    .maybeSingle();
+  checkCallWrite(current, `${stage}_read`);
+  if (!current?.data) return;
+  await writeSession(db, callId, stage, {
+    stage_timings: mergeCallTimings(current.data.stage_timings, marks),
+  });
+}
+
 /**
  * One call-session write on the critical path. Database errors are NEVER
  * swallowed: they are logged (stage + code, never row content) and reported to
@@ -446,6 +472,8 @@ async function maybeRequestAnswer(args: {
     console.error(
       `[calls] meta_accept_anchor_missing call_id=${event.callId} effect=media_ready_will_be_rejected action=inspect_database`,
     );
+    // Never tell the gateway that acceptance was committed when both writes failed.
+    throw new Error("call_persistence_meta_accept");
   }
 
   // 4) Post-accept notification. Exactly one greeting is started by the
@@ -485,11 +513,13 @@ async function maybeRequestAnswer(args: {
     }
   }
 
-  await writeSession(db, event.callId, "post_accept_notify", {
-    stage_timings: mergeCallTimings(timeline.snapshot(), {
-      post_accept_notify_outcome: notifyOutcome,
-    }),
-  });
+  const notifyMarks: CallTimings = { post_accept_notify_outcome: notifyOutcome };
+  const notifiedAt = timeline.get("post_accept_notified_at");
+  if (greetingConfirmed && notifiedAt) notifyMarks.post_accept_notified_at = notifiedAt;
+  // Telemetry cannot cancel an accepted call. Persistence failures are logged.
+  await persistTimingMarks(db, event.callId, "post_accept_notify", notifyMarks).catch(
+    () => undefined,
+  );
 
   return "meta_accepted";
 }
@@ -512,13 +542,15 @@ export async function processGatewayCallback(args: {
   const { db, payload } = args;
   const now = args.now ?? (() => new Date());
 
-  const { data } = await db
+  const loaded = await db
     .from("whatsapp_call_sessions")
     .select(
       "id, call_id, status, gateway_session_id, meta_accepted_at, callback_nonces, stage_timings, agency_id, phone_number_id",
     )
     .eq("call_id", payload.call_id)
     .maybeSingle();
+  checkCallWrite(loaded, "callback_read");
+  const data = loaded?.data;
 
   const session = (data as CallSessionRow | null) ?? null;
   const decision = decideGatewayCallback({ payload, session, now: now() });
@@ -565,11 +597,15 @@ export async function processGatewayCallback(args: {
     });
   }
 
-  // Compare-and-set: a session-id bind is only allowed while the column is NULL,
-  // so a concurrent Establish response can never be overwritten by a callback.
-  let query = db.from("whatsapp_call_sessions").update(decision.patch).eq("id", session!.id);
+  // Claim the state that was validated. A concurrent terminal webhook cannot
+  // be revived, and only one graceful-completion callback may claim teardown.
+  let query = db
+    .from("whatsapp_call_sessions")
+    .update(decision.patch)
+    .eq("id", session!.id)
+    .eq("status", session!.status);
   if (decision.requireNullGatewaySession) query = query.is("gateway_session_id", null);
-  const written = (await query) as { error?: DbWriteError } | null | undefined;
+  const written = await query.select("id").maybeSingle();
   if (written?.error) {
     // Surface to the HTTP layer as a retryable failure: the gateway re-sends
     // the event and the state machine re-evaluates it against the real row.
@@ -577,6 +613,20 @@ export async function processGatewayCallback(args: {
       `[calls] session_write_failed call_id=${payload.call_id} stage=callback_${payload.event} code=${written.error.code ?? "unknown"} critical=true`,
     );
     throw new Error("session_write_failed");
+  }
+  if (!written?.data) {
+    const current = await db
+      .from("whatsapp_call_sessions")
+      .select("status")
+      .eq("id", session!.id)
+      .maybeSingle();
+    checkCallWrite(current, "callback_conflict_read");
+    if (current?.data && isTerminalCallStatus(current.data.status)) {
+      return { applied: false, rejection: "concurrent_state_change" };
+    }
+    // A nonterminal transition may have won (for example, ready versus failed).
+    // Use the existing HTTP 500 retry path instead of consuming the losing event.
+    throw new Error("call_persistence_concurrent_state_change");
   }
   console.log(
     `[calls] gateway_callback_applied call_id=${payload.call_id} event=${payload.event} outcome=${decision.outcome}`,
@@ -586,7 +636,6 @@ export async function processGatewayCallback(args: {
     await terminateCallAtMeta({
       db,
       session: session!,
-      timings: decision.patch["stage_timings"],
       now,
       ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
     });
@@ -604,7 +653,6 @@ export async function processGatewayCallback(args: {
 async function terminateCallAtMeta(args: {
   db: Db;
   session: CallSessionRow;
-  timings: unknown;
   now: () => Date;
   fetchImpl?: typeof fetch;
 }): Promise<void> {
@@ -631,10 +679,8 @@ async function terminateCallAtMeta(args: {
     outcome = `failed:${(error as Error)?.name ?? "exception"}`;
   }
   console.log(`[calls] meta_terminate call_id=${callId} reason=conversation_complete outcome=${outcome}`);
-  await writeSession(db, callId, "meta_terminate", {
-    stage_timings: mergeCallTimings(args.timings, {
-      meta_terminate_completed_at: now().toISOString(),
-      meta_terminate_outcome: outcome,
-    }),
-  });
+  await persistTimingMarks(db, callId, "meta_terminate", {
+    meta_terminate_completed_at: now().toISOString(),
+    meta_terminate_outcome: outcome,
+  }).catch(() => undefined);
 }
