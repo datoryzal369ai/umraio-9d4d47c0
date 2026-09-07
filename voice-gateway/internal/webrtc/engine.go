@@ -492,17 +492,28 @@ func (ms *MediaSession) Terminate(reason string) {
 		ms.mu.Unlock()
 		now := time.Now()
 		pre := ms.sess.Stats()
+		effectiveReason := reason
+		if session.IsTerminal(pre.State) && pre.Reason != "" {
+			effectiveReason = pre.Reason
+		}
 		ms.log.Info("media session terminating", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
 			"state", string(pre.State),
 			"inbound_packets", pre.InboundPackets, "outbound_packets", pre.OutboundPackets,
 			"media_ready", !pre.MediaReadyAt.IsZero(),
 			"pipeline_mode", ms.pipelineMode,
-			"reason", reason)
+			"reason", effectiveReason)
 		if !session.IsTerminal(ms.sess.State()) {
-			_ = ms.sess.Advance(session.StateTerminating, reason, now)
-			_ = ms.sess.Advance(session.StateTerminated, reason, now)
+			_ = ms.sess.Advance(session.StateTerminating, effectiveReason, now)
+			_ = ms.sess.Advance(session.StateTerminated, effectiveReason, now)
 		}
-		go ms.finishTerminate(reason)
+		// Failed and Closed callbacks are dispatched independently by Pion. A
+		// failure may therefore land while this cleanup path is transitioning;
+		// prefer the final stored terminal reason for the callback.
+		post := ms.sess.Stats()
+		if session.IsTerminal(post.State) && post.Reason != "" {
+			effectiveReason = post.Reason
+		}
+		go ms.finishTerminate(effectiveReason)
 	})
 }
 

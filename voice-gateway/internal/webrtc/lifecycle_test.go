@@ -23,6 +23,23 @@ type lifecyclePipeline struct {
 	closeRelease chan struct{}
 }
 
+type blockingLifecycleLog struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *blockingLifecycleLog) Enabled(context.Context, slog.Level) bool { return true }
+func (h *blockingLifecycleLog) Handle(_ context.Context, record slog.Record) error {
+	if record.Message == "media session terminating" {
+		h.once.Do(func() { close(h.entered) })
+		<-h.release
+	}
+	return nil
+}
+func (h *blockingLifecycleLog) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *blockingLifecycleLog) WithGroup(string) slog.Handler      { return h }
+
 func newLifecyclePipeline(blockClose bool) *lifecyclePipeline {
 	p := &lifecyclePipeline{
 		closeStarted: make(chan struct{}),
@@ -156,6 +173,70 @@ func TestFailedRemainsFailedAndCleansUpExactlyOnce(t *testing.T) {
 	}
 	if hooks.Load() != 1 {
 		t.Fatalf("terminal hook count = %d, want 1", hooks.Load())
+	}
+}
+
+func TestClosedAfterFailurePreservesFailureReason(t *testing.T) {
+	pipe := newLifecyclePipeline(false)
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hook <- reason
+	}})
+	if err := sess.Advance(session.StateFailed, "remote_description_failed", time.Now()); err != nil {
+		t.Fatalf("mark session failed: %v", err)
+	}
+
+	ms.handleConnectionState(pion.PeerConnectionStateClosed)
+
+	if got := awaitLifecycleHook(t, hook); got != "remote_description_failed" {
+		t.Fatalf("terminal hook reason = %q, want original failure reason", got)
+	}
+	if sess.State() != session.StateFailed {
+		t.Fatalf("failed state overwritten during closed cleanup: %s", sess.State())
+	}
+	if sess.TerminationReason() != "remote_description_failed" {
+		t.Fatalf("failure reason overwritten: %q", sess.TerminationReason())
+	}
+	if pipe.closes.Load() != 1 {
+		t.Fatalf("pipeline close count = %d, want 1", pipe.closes.Load())
+	}
+}
+
+func TestConcurrentClosedCleanupUsesFinalFailureReason(t *testing.T) {
+	pipe := newLifecyclePipeline(false)
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hook <- reason
+	}})
+	logHandler := &blockingLifecycleLog{entered: make(chan struct{}), release: make(chan struct{})}
+	ms.log = slog.New(logHandler)
+	defer func() {
+		select {
+		case <-logHandler.release:
+		default:
+			close(logHandler.release)
+		}
+	}()
+
+	go ms.handleConnectionState(pion.PeerConnectionStateClosed)
+	select {
+	case <-logHandler.entered:
+	case <-time.After(time.Second):
+		t.Fatal("closed cleanup did not reach the terminal transition")
+	}
+	if err := sess.Advance(session.StateFailed, "ice_failed", time.Now()); err != nil {
+		t.Fatalf("concurrent failure transition: %v", err)
+	}
+	close(logHandler.release)
+
+	if got := awaitLifecycleHook(t, hook); got != "ice_failed" {
+		t.Fatalf("terminal hook reason = %q, want final concurrent failure reason", got)
+	}
+	if sess.State() != session.StateFailed {
+		t.Fatalf("concurrent failure state overwritten: %s", sess.State())
+	}
+	if pipe.closes.Load() != 1 {
+		t.Fatalf("pipeline close count = %d, want 1", pipe.closes.Load())
 	}
 }
 
