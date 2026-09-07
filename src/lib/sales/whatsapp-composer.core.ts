@@ -47,7 +47,7 @@ export const INTERNAL_FAILURE_PATTERNS: RegExp[] = [
   /\bAPI\b/,
   /\b(error|ralat)\b\s*(code|kod)?\s*[:#]?\s*\d{3,5}\b|\b(kod|code)\s+(ralat|error)\b|\berror\s+code\b/i,
   // Billing / subscription state of the platform (not the customer's booking payment).
-  /\b(langganan|subscription|pelan\s+(langganan|bayaran)|billing|pengebilan)\b[^.!?\n]{0,40}\b(naik\s+taraf|upgrade|tamat|expired|luput|tidak\s+aktif|inactive|kredit|credit)\b/i,
+  /\b(langganan|subscription|pelan\s+(langganan|bayaran)|billing|pengebilan)\b[^.!?\n]{0,40}\b((?:di)?naik\s+taraf|upgrade|tamat|expired|luput|tidak\s+aktif|inactive|kredit|credit)\b/i,
   /\b(naik\s+taraf|upgrade)\b[^.!?\n]{0,40}\b(langganan|subscription|pelan\s+langganan|subscription\s+plan)\b/i,
   // Generic "the system failed" phrasing.
   /\b(ralat|masalah|gangguan|kegagalan|isu)\s+(sistem|teknikal|dalaman)\b|\b(system|technical|internal)\s+(error|failure|issue|problem|fault|glitch)\b/i,
@@ -325,11 +325,11 @@ export function composeWhatsappReply(input: string | null | undefined, options: 
         continue;
       }
       const kept: string[] = [];
-      let removedHere = false;
+      let removedDisclosure = false;
       for (const sentence of block.sentences) {
         if (isInternalFailureDisclosure(sentence)) {
           scrubbed += 1;
-          removedHere = true;
+          removedDisclosure = true;
           continue;
         }
         if (isGenericCloser(sentence)) {
@@ -344,7 +344,8 @@ export function composeWhatsappReply(input: string | null | undefined, options: 
         if (key) seen.add(key);
         // A sentence that followed a removed one must not open with a dangling
         // contrast connector ("Namun, ...").
-        kept.push(removedHere && kept.length === 0 ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, "")) : sentence);
+        kept.push(removedDisclosure ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, "")) : sentence);
+        removedDisclosure = false;
       }
       if (kept.length) outBlocks.push({ kind: "prose", sentences: kept });
     }

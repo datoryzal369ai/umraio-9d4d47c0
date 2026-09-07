@@ -95,7 +95,6 @@ type TimedSynthesizer interface {
 	SpeakTimed(ctx context.Context, callID, text, voiceID, boost string) (packets [][]byte, providerMs int, encodeMs int, err error)
 }
 
-
 // ConversationConfig bounds the loop. Every value is configurable.
 type ConversationConfig struct {
 	VAD VADConfig
@@ -172,7 +171,6 @@ func (p *ConversationPipeline) WithSynthesizer(s Synthesizer) *ConversationPipel
 	p.synth = s
 	return p
 }
-
 
 // WithClock overrides the instrumentation clock (tests only).
 func (p *ConversationPipeline) WithClock(now func() time.Time) *ConversationPipeline {
@@ -339,12 +337,14 @@ func (p *ConversationPipeline) startTurn(req TurnRequest) {
 	speechEndAt := p.speechEndAt
 	sequence := req.Sequence
 	ctx := p.ctx
+	// Register the turn before releasing the lifecycle lock. Close takes the
+	// same lock before waiting, so it can never race Wait against a late Add.
+	p.wg.Add(1)
 	p.mu.Unlock()
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
 		defer func() {

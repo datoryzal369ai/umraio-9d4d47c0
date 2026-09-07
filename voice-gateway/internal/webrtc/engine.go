@@ -183,22 +183,7 @@ func (e *Engine) Establish(
 
 	_ = s.Advance(session.StateConnecting, "", time.Now())
 
-	pc.OnConnectionStateChange(func(st pion.PeerConnectionState) {
-		log.Info("peer connection state", "call_id", s.CallID, "session_id", s.ID,
-			"peer_connection_state", st.String())
-		switch st {
-		case pion.PeerConnectionStateConnected:
-			s.MarkICEConnected(time.Now())
-			s.MarkOutboundReady()
-			ms.logTransportDiagnostics()
-			ms.maybeFireMediaReady()
-		case pion.PeerConnectionStateFailed:
-			_ = s.Advance(session.StateFailed, "ice_failed", time.Now())
-			ms.Terminate("ice_failed")
-		case pion.PeerConnectionStateDisconnected, pion.PeerConnectionStateClosed:
-			ms.Terminate("peer_disconnected")
-		}
-	})
+	pc.OnConnectionStateChange(ms.handleConnectionState)
 
 	pc.OnICEConnectionStateChange(func(st pion.ICEConnectionState) {
 		log.Info("ice connection state", "call_id", s.CallID, "session_id", s.ID,
@@ -421,6 +406,48 @@ func (ms *MediaSession) NotifyAccepted() string {
 // Accepted reports whether the control plane confirmed the Meta accept.
 func (ms *MediaSession) Accepted() bool { return ms.accepted.Load() }
 
+// handleConnectionState applies only lifecycle consequences. In particular,
+// Pion's Disconnected state is transient and may recover to Connected; Failed
+// and Closed are the terminal signals. Negotiation and media-ready rules remain
+// owned by their existing paths.
+func (ms *MediaSession) handleConnectionState(st pion.PeerConnectionState) {
+	action, terminal, recoverable := "observe", false, false
+	switch st {
+	case pion.PeerConnectionStateConnected:
+		action = "mark_connected"
+	case pion.PeerConnectionStateDisconnected:
+		action, recoverable = "await_recovery", true
+	case pion.PeerConnectionStateFailed:
+		action, terminal = "fail_and_cleanup", true
+	case pion.PeerConnectionStateClosed:
+		action, terminal = "close_and_cleanup", true
+	}
+	ms.log.Info("peer connection state",
+		"call_id", ms.sess.CallID,
+		"session_id", ms.sess.ID,
+		"peer_connection_state", st.String(),
+		"lifecycle_action", action,
+		"terminal", terminal,
+		"recoverable", recoverable)
+
+	switch st {
+	case pion.PeerConnectionStateConnected:
+		ms.sess.MarkICEConnected(time.Now())
+		ms.sess.MarkOutboundReady()
+		ms.logTransportDiagnostics()
+		ms.maybeFireMediaReady()
+	case pion.PeerConnectionStateDisconnected:
+		// Deliberately wait for Pion to report Connected, Failed or Closed.
+		// A transient network interruption must not end an otherwise live call.
+		return
+	case pion.PeerConnectionStateFailed:
+		_ = ms.sess.Advance(session.StateFailed, "ice_failed", time.Now())
+		ms.Terminate("ice_failed")
+	case pion.PeerConnectionStateClosed:
+		ms.Terminate("peer_closed")
+	}
+}
+
 // SendOpus implements media.Transport.
 func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	ms.mu.Lock()
@@ -454,7 +481,10 @@ func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	return nil
 }
 
-// Terminate implements media.Transport and is idempotent.
+// Terminate implements media.Transport and is idempotent. State becomes
+// terminal synchronously, while resource cleanup runs on its own goroutine.
+// This is required when a pipeline turn itself requests termination: calling
+// pipeline.Close inline would make that goroutine wait on its own WaitGroup.
 func (ms *MediaSession) Terminate(reason string) {
 	ms.closeOnce.Do(func() {
 		ms.mu.Lock()
@@ -472,12 +502,29 @@ func (ms *MediaSession) Terminate(reason string) {
 			_ = ms.sess.Advance(session.StateTerminating, reason, now)
 			_ = ms.sess.Advance(session.StateTerminated, reason, now)
 		}
-		ms.pipeline.Close(reason)
-		_ = ms.pc.Close()
-		if ms.hooks.OnTerminated != nil {
-			go ms.hooks.OnTerminated(ms.sess, reason)
-		}
+		go ms.finishTerminate(reason)
 	})
+}
+
+func (ms *MediaSession) finishTerminate(reason string) {
+	if ms.pipeline != nil {
+		ms.pipeline.Close(reason)
+	}
+	if ms.pc != nil {
+		_ = ms.pc.Close()
+	}
+	post := ms.sess.Stats()
+	ms.log.Info("media session cleanup complete",
+		"call_id", ms.sess.CallID,
+		"session_id", ms.sess.ID,
+		"state", string(post.State),
+		"inbound_packets", post.InboundPackets,
+		"outbound_packets", post.OutboundPackets,
+		"pipeline_mode", ms.pipelineMode,
+		"reason", reason)
+	if ms.hooks.OnTerminated != nil {
+		ms.hooks.OnTerminated(ms.sess, reason)
+	}
 }
 
 // ConnectionState exposes the raw peer state for health reporting.
