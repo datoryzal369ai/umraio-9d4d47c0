@@ -43,6 +43,10 @@ export type CallSessionRow = {
   gateway_session_id: string | null;
   meta_accepted_at: string | null;
   callback_nonces: string[] | null;
+  /** Tenant fields the Worker loaded itself — used for the graceful Meta terminate. */
+  agency_id?: string | null;
+  phone_number_id?: string | null;
+  stage_timings?: unknown;
 };
 
 export type CallbackRejection =
@@ -70,6 +74,44 @@ const TERMINAL = new Set(["missed", "terminated", "failed"]);
 
 export function isTerminalSessionStatus(status: string): boolean {
   return TERMINAL.has(status);
+}
+
+/** The gateway reason RAIŌ's own farewell produces (see voice-turn.server). */
+export const GRACEFUL_COMPLETION_REASON = "conversation_complete";
+
+/**
+ * A GRACEFUL completion is the one case where the platform — not the caller —
+ * ended the conversation: RAIŌ said goodbye and the media plane closed the
+ * session. Only then may the control plane ask Meta to hang up, so the
+ * caller's phone ends the call immediately instead of waiting for Meta's
+ * media-loss timeout. A caller hang-up, an ICE failure or a timeout is never
+ * "graceful" and never triggers a Meta terminate.
+ */
+export function isGracefulCompletion(reason: string | null | undefined): boolean {
+  const value = (reason ?? "").trim().toLowerCase();
+  return value === GRACEFUL_COMPLETION_REASON || value.startsWith(`${GRACEFUL_COMPLETION_REASON}:`);
+}
+
+/**
+ * Decides whether a Meta terminate should be issued for an applied callback.
+ * Requires: the callback was applied as `terminated`, the reason is graceful,
+ * the session had actually been accepted by Meta (otherwise there is nothing
+ * to hang up), and no terminate has been requested for this call before.
+ */
+export function shouldTerminateAtMeta(args: {
+  outcome: "answered" | "terminated" | "failed" | "negotiating";
+  reason: string | null | undefined;
+  session: Pick<CallSessionRow, "meta_accepted_at" | "stage_timings">;
+}): boolean {
+  if (args.outcome !== "terminated") return false;
+  if (!isGracefulCompletion(args.reason)) return false;
+  if (!args.session.meta_accepted_at) return false;
+  const timings = args.session.stage_timings;
+  if (timings && typeof timings === "object" && !Array.isArray(timings)) {
+    const marker = (timings as Record<string, unknown>)["meta_terminate_requested_at"];
+    if (typeof marker === "string" && marker) return false;
+  }
+  return true;
 }
 
 /** Strictly validates the untrusted JSON body of a gateway callback. */

@@ -146,6 +146,27 @@ export async function terminateMediaSession(args: {
   }
 }
 
+export type NotifyAcceptedResult = { ok: boolean; greeting?: string; reason?: string };
+
+/**
+ * Greeting outcomes that CONFIRM the media plane has started (or already had)
+ * the opening turn. Only these count as a successful post-accept
+ * notification; a 2xx carrying `disabled`, `closed`, `detached` or `unknown`
+ * is delivered-but-not-confirmed and is recorded as such.
+ */
+const CONFIRMED_GREETINGS = new Set(["started", "duplicate"]);
+
+export function isGreetingConfirmed(result: NotifyAcceptedResult): boolean {
+  return result.ok && CONFIRMED_GREETINGS.has(result.greeting ?? "");
+}
+
+/** Enumerated, log-safe outcome of the post-accept notification. */
+export function postAcceptNotifyOutcome(result: NotifyAcceptedResult): string {
+  if (isGreetingConfirmed(result)) return `confirmed:${result.greeting}`;
+  if (result.ok) return `unconfirmed:${result.greeting ?? "unknown"}`;
+  return `failed:${result.reason ?? "unknown"}`;
+}
+
 /**
  * Explicit "Meta accept completed" signal.
  *
@@ -154,6 +175,9 @@ export async function terminateMediaSession(args: {
  * never retried, so nothing would ever produce the first outbound RTP packet.
  * The gateway treats this as idempotent — a repeat yields `duplicate`.
  * Failure here never changes business call state.
+ *
+ * `ok` means the gateway ACKNOWLEDGED the notification (2xx). Whether the
+ * greeting actually started is a separate fact — see `isGreetingConfirmed`.
  */
 export async function notifyCallAccepted(args: {
   gatewayUrl: string;
@@ -164,7 +188,7 @@ export async function notifyCallAccepted(args: {
   now?: Date;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
-}): Promise<{ ok: boolean; greeting?: string; reason?: string }> {
+}): Promise<NotifyAcceptedResult> {
   const doFetch = args.fetchImpl ?? fetch;
   const now = args.now ?? new Date();
   if (!args.gatewayUrl || !args.secret) return { ok: false, reason: "gateway_not_configured" };

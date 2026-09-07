@@ -71,7 +71,13 @@ export async function fetchAnalytics(days: number): Promise<AnalyticsData> {
       .gte("created_at", since)
       .limit(1000),
     supabase.from("packages").select("id, name, price_myr").limit(200),
-    supabase.from("messages").select("id, sender, created_at").gte("created_at", since).limit(2000),
+    // Internal call-summary notes are not outbound messages — keep AI-share metrics honest.
+    supabase
+      .from("messages")
+      .select("id, sender, created_at")
+      .gte("created_at", since)
+      .neq("modality", "call_summary")
+      .limit(2000),
   ]);
 
   return {

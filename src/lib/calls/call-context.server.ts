@@ -149,15 +149,44 @@ export async function hydrateCallerContext(
 /**
  * CALL → TEXT continuity. The structured call summary is written back into the
  * SAME WhatsApp thread so the next text or voice note already knows what was
- * discussed on the phone. Best-effort: a failure here never fails the call.
+ * discussed on the phone. Best-effort: a failure here never fails the call —
+ * but it is never silent either: every database error is logged (code only)
+ * and returned as an enumerated outcome the caller can persist.
  *
  * INCREMENTAL by design: a dropped call must not lose the conversation. The
  * summary is refreshed after every substantive turn, keyed by the call id, so
  * exactly ONE memory row exists per call and it is always current — even when
  * the caller hangs up mid-sentence and the end-of-call path never runs.
+ *
+ * Schema contract (widening migration 2026-09): messages.modality accepts
+ * `call_summary` and messages.delivery_status accepts `internal`. These rows
+ * are internal notes — never sent to the customer, rendered as plain text in
+ * the CRM timeline and excluded from outbound-text metrics.
  */
 export function callMemoryMarker(callId: string): string {
   return `[call ${callId}]`;
+}
+
+export const CALL_MEMORY_MODALITY = "call_summary";
+export const CALL_MEMORY_DELIVERY_STATUS = "internal";
+
+export type CallMemoryOutcome =
+  | "skipped_no_conversation"
+  | "skipped_empty_summary"
+  | "updated"
+  | "inserted"
+  | "lookup_failed"
+  | "update_failed"
+  | "insert_failed"
+  | "threw";
+
+type DbError = { code?: string | null; message?: string | null } | null | undefined;
+
+function logDbError(stage: string, callId: string | null | undefined, error: DbError): void {
+  // Code + stage only: never the row body (it contains the customer's words).
+  console.error(
+    `[calls] call_memory_write_failed stage=${stage} call_id=${callId ?? "unknown"} code=${error?.code ?? "unknown"}`,
+  );
 }
 
 export async function persistCallMemory(
@@ -169,35 +198,55 @@ export async function persistCallMemory(
     /** When present, the summary row for this call is UPDATED, never duplicated. */
     callId?: string | null;
   },
-): Promise<void> {
-  if (!args.conversationId || !args.summary.trim()) return;
+): Promise<CallMemoryOutcome> {
+  if (!args.conversationId) return "skipped_no_conversation";
+  if (!args.summary.trim()) return "skipped_empty_summary";
   const marker = args.callId ? callMemoryMarker(args.callId) : null;
   const body = marker ? `${args.summary.trim()}\n${marker}` : args.summary.trim();
   try {
     if (marker) {
-      const { data: existing } = await db
+      const lookup = (await db
         .from("messages")
         .select("id")
         .eq("conversation_id", args.conversationId)
-        .eq("modality", "call_summary")
+        .eq("modality", CALL_MEMORY_MODALITY)
         .ilike("body", `%${marker}%`)
         .limit(1)
-        .maybeSingle();
-      if (existing?.id) {
-        await db.from("messages").update({ body }).eq("id", existing.id);
-        return;
+        .maybeSingle()) as { data?: { id?: string } | null; error?: DbError } | null;
+      if (lookup?.error) {
+        logDbError("lookup", args.callId, lookup.error);
+        return "lookup_failed";
+      }
+      const existingId = lookup?.data?.id;
+      if (existingId) {
+        const updated = (await db.from("messages").update({ body }).eq("id", existingId)) as {
+          error?: DbError;
+        } | null;
+        if (updated?.error) {
+          logDbError("update", args.callId, updated.error);
+          return "update_failed";
+        }
+        return "updated";
       }
     }
-    await db.from("messages").insert({
+    const inserted = (await db.from("messages").insert({
       agency_id: args.agencyId,
       conversation_id: args.conversationId,
       sender: "ai",
       body,
-      modality: "call_summary",
-      delivery_status: "internal",
-    });
-  } catch {
-    // continuity is best-effort; the call session row remains authoritative
+      modality: CALL_MEMORY_MODALITY,
+      delivery_status: CALL_MEMORY_DELIVERY_STATUS,
+    })) as { error?: DbError } | null;
+    if (inserted?.error) {
+      logDbError("insert", args.callId, inserted.error);
+      return "insert_failed";
+    }
+    return "inserted";
+  } catch (error) {
+    console.error(
+      `[calls] call_memory_write_failed stage=exception call_id=${args.callId ?? "unknown"} error=${(error as Error)?.name ?? "Error"}`,
+    );
+    return "threw";
   }
 }
 
@@ -205,26 +254,37 @@ export async function persistCallMemory(
  * Called when Meta reports the call ended (including a caller hang-up mid
  * conversation). Flushes whatever RAIŌ already knows into the WhatsApp thread
  * so the text brain can continue the SAME conversation immediately.
+ * Returns the enumerated outcome so the call path can record it; never throws.
  */
 export async function finalizeCallMemory(
   db: Db,
   args: { callId: string },
-): Promise<void> {
+): Promise<CallMemoryOutcome> {
   try {
-    const { data: session } = await db
+    const { data: session, error } = (await db
       .from("whatsapp_call_sessions")
       .select("agency_id, conversation_id, call_summary, call_id")
       .eq("call_id", args.callId)
-      .maybeSingle();
-    if (!session?.conversation_id || !session?.call_summary) return;
-    await persistCallMemory(db, {
-      agencyId: String(session.agency_id),
-      conversationId: String(session.conversation_id),
-      summary: String(session.call_summary),
-      callId: String(session.call_id ?? args.callId),
+      .maybeSingle()) as { data?: Record<string, unknown> | null; error?: DbError };
+    if (error) {
+      logDbError("session_lookup", args.callId, error);
+      return "lookup_failed";
+    }
+    if (!session?.["conversation_id"]) return "skipped_no_conversation";
+    if (!session?.["call_summary"]) return "skipped_empty_summary";
+    const outcome = await persistCallMemory(db, {
+      agencyId: String(session["agency_id"]),
+      conversationId: String(session["conversation_id"]),
+      summary: String(session["call_summary"]),
+      callId: String(session["call_id"] ?? args.callId),
     });
-  } catch {
-    // best-effort continuity only
+    console.log(`[calls] call_memory_finalized call_id=${args.callId} outcome=${outcome}`);
+    return outcome;
+  } catch (error) {
+    console.error(
+      `[calls] call_memory_write_failed stage=finalize call_id=${args.callId} error=${(error as Error)?.name ?? "Error"}`,
+    );
+    return "threw";
   }
 }
 
