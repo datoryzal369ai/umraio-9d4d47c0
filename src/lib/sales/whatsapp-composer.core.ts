@@ -24,28 +24,35 @@
 
 /**
  * Sentence-level patterns that identify an internal/provider/billing
- * disclosure. Each pattern is deliberately narrow so legitimate sales
- * language (e.g. "bayar guna kad kredit") is never touched.
+ * disclosure. Each pattern is deliberately narrow so legitimate Umrah sales
+ * language is never touched: "kad kredit" (payment method), "kuota visa /
+ * kuota jemaah" (real Umrah quota), "top up bilik" (room surcharge),
+ * "penyelenggaraan hotel" and the Malay word "api" (fire) all stay intact.
  */
 export const INTERNAL_FAILURE_PATTERNS: RegExp[] = [
-  // Credits / top-up tied to audio, voice, AI or the system (not credit cards).
-  /\bkredit\b(?![^.!?\n]{0,12}\bkad\b)(?![^.!?\n]{0,4}\bcard\b)[^.!?\n]{0,40}\b(audio|suara|voice|ai|sistem|system|habis|tidak\s+mencukupi|perlu\s+ditambah|ditambah\s+semula|top.?up|tambah\s+nilai)\b/i,
-  /\b(audio|suara|voice|ai|sistem|system)\b[^.!?\n]{0,40}\bkredit\b(?![^.!?\n]{0,4}\b(kad|card)\b)/i,
-  /\bcredits?\b(?![^.!?\n]{0,4}\bcards?\b)[^.!?\n]{0,40}\b(audio|voice|ai|system|insufficient|exhausted|top.?up|replenish|purchase|balance)\b/i,
-  /\b(audio|voice|ai|system|insufficient|exhausted|top.?up)\b[^.!?\n]{0,40}\bcredits?\b(?![^.!?\n]{0,4}\bcards?\b)/i,
-  /\bkad\s+kredit\b(?!)/i, // never matches — documents the exclusion explicitly
-  /\btop.?up\b|\btambah\s+nilai\b|\btambah\s+semula\b[^.!?\n]{0,20}\b(kredit|baki|credit)\b/i,
-  // Quotas / limits of the platform.
-  /\b(kuota|quota|had\s+penggunaan|usage\s+limit|rate\s+limit)\b/i,
+  // Credits tied to audio, voice, AI or the system — never "kad kredit"/"credit card".
+  /\bkredit\b(?!\s+(kad|card)\b)(?<!\bkad\s)[^.!?\n]{0,40}\b(audio|suara|voice|ai|sistem|system|habis|tidak\s+mencukupi|perlu\s+ditambah|ditambah\s+semula|top.?up|tambah\s+nilai)\b/i,
+  /\b(audio|suara|voice|ai|sistem|system)\b[^.!?\n]{0,40}(?<!\bkad\s)\bkredit\b(?!\s+(kad|card)\b)/i,
+  /\bcredits?\b(?!\s+cards?\b)[^.!?\n]{0,40}\b(audio|voice|ai|system|insufficient|exhausted|top.?up|replenish|purchase|balance)\b/i,
+  /\b(audio|voice|ai|system|insufficient|exhausted|top.?up)\b[^.!?\n]{0,40}\bcredits?\b(?!\s+cards?\b)/i,
+  // Top-up / reload of the platform balance (a room "top up" surcharge has no credit/balance noun).
+  /\b(top.?up|tambah\s+nilai|tambah\s+semula|isi\s+semula|reload)\b[^.!?\n]{0,30}\b(kredit|credit|baki|balance|akaun|account)\b/i,
+  /\b(kredit|credit|baki|balance|akaun|account)\b[^.!?\n]{0,30}\b(top.?up|tambah\s+nilai|tambah\s+semula|isi\s+semula|reload)\b/i,
+  // Platform quotas / limits (an Umrah visa or seat quota is never "AI/audio/system" quota).
+  /\b(kuota|quota)\s+(ai|audio|suara|voice|sistem|system|mesej|message|api|bulanan\s+ai)\b/i,
+  /\b(ai|audio|suara|voice|sistem|system|mesej|message)\s+(kuota|quota)\b/i,
+  /\b(had\s+penggunaan|usage\s+limit|rate\s+limit|rate-limited|limit\s+reached)\b/i,
   // Providers, runtimes and transport internals.
-  /\b(minimax|openai|chatgpt|gpt-?\d?|anthropic|claude|gemini|whisper|xiaozhi|lovable|supabase|cloudflare|wasm|opus|tts|asr|api|endpoint|webhook|gateway|server|pelayan|token|status[_\s]?code|http\s*\d{3}|error\s*code|kod\s+ralat)\b/i,
-  /\b\d{4}\b(?=[^.!?\n]{0,20}\b(error|ralat|code|kod)\b)|\b(error|ralat|code|kod)\b(?=[^.!?\n]{0,20}\b\d{4}\b)/i,
+  /\b(minimax|openai|chatgpt|gpt-?\d?o?|anthropic|claude|gemini|whisper|xiaozhi|lovable|supabase|cloudflare|wasm|opus|tts|asr|endpoint|webhook|gateway|backend|token|status[_\s]?code|http\s*\d{3})\b/i,
+  /\bAPI\b/,
+  /\b(error|ralat)\b\s*(code|kod)?\s*[:#]?\s*\d{3,5}\b|\b(kod|code)\s+(ralat|error)\b|\berror\s+code\b/i,
   // Billing / subscription state of the platform (not the customer's booking payment).
   /\b(langganan|subscription|pelan\s+(langganan|bayaran)|billing|pengebilan)\b[^.!?\n]{0,40}\b(naik\s+taraf|upgrade|tamat|expired|luput|tidak\s+aktif|inactive|kredit|credit)\b/i,
-  /\b(naik\s+taraf|upgrade)\b[^.!?\n]{0,40}\b(langganan|subscription|pelan|plan)\b/i,
+  /\b(naik\s+taraf|upgrade)\b[^.!?\n]{0,40}\b(langganan|subscription|pelan\s+langganan|subscription\s+plan)\b/i,
   // Generic "the system failed" phrasing.
-  /\b(ralat|masalah|gangguan|kegagalan)\s+(sistem|teknikal|dalaman|pelayan)\b|\b(system|technical|internal)\s+(error|failure|issue|problem|fault)\b|\bmaintenance\b|\bpenyelenggaraan\b/i,
-  /\b(ciri|fungsi|feature)\s+(suara|audio|voice)\b[^.!?\n]{0,30}\b(tidak\s+(tersedia|aktif|dapat)|unavailable|disabled|dimatikan)\b/i,
+  /\b(ralat|masalah|gangguan|kegagalan|isu)\s+(sistem|teknikal|dalaman)\b|\b(system|technical|internal)\s+(error|failure|issue|problem|fault|glitch)\b/i,
+  /\b(sistem|system)\s+(dalam\s+|under\s+)?(penyelenggaraan|maintenance)\b/i,
+  /\b(ciri|fungsi|feature|perkhidmatan|service)\s+(suara|audio|voice)\b[^.!?\n]{0,30}\b(tidak\s+(tersedia|aktif|dapat)|unavailable|disabled|dimatikan|belum\s+diaktifkan)\b/i,
 ];
 
 const LEADING_CONNECTORS =
