@@ -1,0 +1,143 @@
+name: UMRAIO P0 frozen candidate validation
+
+on:
+  push:
+    branches:
+      - codex/umraio-p0-validation-runner-20260908
+    paths:
+      - .github/workflows/umraio-p0-frozen-validation.yml
+      - .github/validation/UMRAIO_P0_local_commits.bundle
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: umraio-p0-frozen-validation-20260908
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_SHA: 1f18df31c7df1ed87146bbf504ccb1bd357a11f0
+  VERIFIED_BASE: 68cb9f6f85dfe6f8b9d0351f777bf907edbd118f
+  CANDIDATE_BRANCH: codex/umraio-p0-closure-20260908
+
+jobs:
+  preserve:
+    name: Preserve the exact frozen commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify bundle and preserve immutable candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle=.github/validation/UMRAIO_P0_local_commits.bundle
+          printf '%s  %s\n' '79773b0306d03440e91dae01cea2218a10ecf91151e386181989e91fa0729231' "$bundle" | sha256sum --check
+          git bundle verify "$bundle"
+          git fetch "$bundle" HEAD
+          test "$(git rev-parse FETCH_HEAD)" = "$CANDIDATE_SHA"
+          git merge-base --is-ancestor "$VERIFIED_BASE" "$CANDIDATE_SHA"
+          remote_sha=$(git ls-remote --heads origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')
+          if [ -n "$remote_sha" ]; then
+            test "$remote_sha" = "$CANDIDATE_SHA" || { echo 'Existing branch differs; refusing to update it.'; exit 1; }
+          else
+            git push origin "$CANDIDATE_SHA:refs/heads/$CANDIDATE_BRANCH"
+          fi
+          test "$(git ls-remote --heads origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')" = "$CANDIDATE_SHA"
+          printf 'Frozen remote candidate: `%s`\n' "$CANDIDATE_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  go:
+    name: Go ${{ matrix.mode }} at frozen SHA
+    needs: preserve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [full, race]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1f18df31c7df1ed87146bbf504ccb1bd357a11f0
+          persist-credentials: false
+      - name: Verify exact test source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain)"
+          git rev-parse HEAD
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: voice-gateway/go.mod
+          cache-dependency-path: voice-gateway/go.sum
+      - name: Install native Opus dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev
+      - name: Run every Go test
+        id: tests
+        working-directory: voice-gateway
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+          GOFLAGS: '-json'
+          TEST_MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          if [ "$TEST_MODE" = race ]; then
+            go test -race -count=1 ./... | tee "$GITHUB_WORKSPACE/go-race.jsonl"
+          else
+            go test -count=1 ./... | tee "$GITHUB_WORKSPACE/go-full.jsonl"
+          fi
+      - name: Record results for every previously blocked test
+        if: always()
+        shell: python
+        env:
+          TEST_MODE: ${{ matrix.mode }}
+        run: |
+          import collections, json, os, pathlib
+          names = '''TestAcceptedIsIdempotentForLiveSession
+          TestEngineDiagnosticsAreSafe
+          TestAnswerAdvertisesBothCandidateFamilies
+          TestOfferRequiresRequestSignature
+          TestOfferRejectsExpiredToken
+          TestOfferRejectsCallIDMismatch
+          TestOfferSucceedsAndDoesNotClaimMediaReady
+          TestOfferReplayIsRejected
+          TestConcurrentSessionLimitEnforced
+          TestTerminateEndsSessionAndEmitsEvent
+          TestLoopbackNegotiatesOpusAndReachesMediaReady
+          TestTerminateIsIdempotentAndClosesPipeline
+          TestMediaDiagnosticsEndToEnd
+          TestNegotiationBindsInboundAudioPath
+          TestInboundRTPDrivesMediaReady
+          TestSetRemoteDescriptionAcceptsNormalizedOffer'''.split()
+          source = pathlib.Path('go-' + os.environ['TEST_MODE'] + '.jsonl')
+          events = [json.loads(line) for line in source.read_text().splitlines()] if source.exists() else []
+          results = {event['Test']: event['Action'] for event in events if event.get('Test') and event['Action'] in ('pass', 'fail', 'skip')}
+          counts = collections.Counter(result for name, result in results.items() if '/' not in name)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+            summary.write('Source SHA: `' + os.environ['CANDIDATE_SHA'] + '`\n\n')
+            summary.write('Top-level test totals: ' + json.dumps(dict(counts)) + '\n\n')
+            summary.write('| Previously blocked test | Result |\n|---|---|\n')
+            for name in names:
+              result = results.get(name, 'NOT EXECUTED')
+              print(name + ': ' + result)
+              summary.write('| `' + name + '` | ' + result + ' |\n')
+          if any(results.get(name) != 'pass' for name in names):
+            raise SystemExit('One or more required tests did not pass.')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: umraio-p0-go-${{ matrix.mode }}-1f18df3
+          path: go-${{ matrix.mode }}.jsonl
+          if-no-files-found: warn
+          retention-days: 14
