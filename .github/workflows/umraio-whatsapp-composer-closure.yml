@@ -10,18 +10,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  close-composer-p0:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'codex/p0-whatsapp-composer-closure'
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout isolated closure branch
+      - name: Checkout exact PR merge candidate
         uses: actions/checkout@v4
         with:
-          ref: codex/p0-whatsapp-composer-closure
           fetch-depth: 0
 
       - name: Use Bun
@@ -31,97 +29,6 @@ jobs:
 
       - name: Frozen dependency install
         run: bun install --frozen-lockfile
-
-      - name: Apply two deterministic composer repairs
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("src/lib/sales/whatsapp-composer.core.ts")
-          text = path.read_text()
-
-          pattern_repairs = [
-              (
-                  r"(naik\s+taraf|upgrade|tamat|expired|luput|tidak\s+aktif|inactive|kredit|credit)",
-                  r"((?:di)?naik\s+taraf|upgrade|tamat|expired|luput|tidak\s+aktif|inactive|kredit|credit)",
-              ),
-              (
-                  r"(naik\s+taraf|upgrade)",
-                  r"((?:di)?naik\s+taraf|upgrade)",
-              ),
-          ]
-          for old_pattern, new_pattern in pattern_repairs:
-              if new_pattern not in text:
-                  count = text.count(old_pattern)
-                  if count != 1:
-                      raise SystemExit(f"expected exactly one pattern target {old_pattern!r}, found {count}")
-                  text = text.replace(old_pattern, new_pattern)
-              elif text.count(new_pattern) != 1:
-                  raise SystemExit(f"pattern repair is duplicated for {new_pattern!r}")
-
-          old_block = "\n".join([
-              "      const kept: string[] = [];",
-              "      let removedHere = false;",
-              "      for (const sentence of block.sentences) {",
-              "        if (isInternalFailureDisclosure(sentence)) {",
-              "          scrubbed += 1;",
-              "          removedHere = true;",
-              "          continue;",
-              "        }",
-              "        if (isGenericCloser(sentence)) {",
-              "          removedClosers += 1;",
-              "          continue;",
-              "        }",
-              "        const key = normalizeForDedupe(sentence);",
-              "        if (key && seen.has(key)) {",
-              "          removedClosers += 1;",
-              "          continue;",
-              "        }",
-              "        if (key) seen.add(key);",
-              "        // A sentence that followed a removed one must not open with a dangling",
-              "        // contrast connector (\"Namun, ...\").",
-              "        kept.push(removedHere && kept.length === 0 ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, \"\")) : sentence);",
-              "      }",
-          ])
-          new_block = "\n".join([
-              "      const kept: string[] = [];",
-              "      let stripLeadingConnector = false;",
-              "      for (const sentence of block.sentences) {",
-              "        if (isInternalFailureDisclosure(sentence)) {",
-              "          scrubbed += 1;",
-              "          stripLeadingConnector = true;",
-              "          continue;",
-              "        }",
-              "        if (isGenericCloser(sentence)) {",
-              "          removedClosers += 1;",
-              "          continue;",
-              "        }",
-              "        const key = normalizeForDedupe(sentence);",
-              "        if (key && seen.has(key)) {",
-              "          removedClosers += 1;",
-              "          continue;",
-              "        }",
-              "        if (key) seen.add(key);",
-              "        // The next customer-safe sentence after a scrubbed internal failure",
-              "        // must not retain a dangling contrast connector (\"Namun, ...\").",
-              "        const safeSentence = stripLeadingConnector",
-              "          ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, \"\"))",
-              "          : sentence;",
-              "        kept.push(safeSentence);",
-              "        stripLeadingConnector = false;",
-              "      }",
-          ])
-
-          if old_block in text:
-              if text.count(old_block) != 1:
-                  raise SystemExit("expected exactly one legacy connector block")
-              text = text.replace(old_block, new_block)
-          elif new_block not in text:
-              raise SystemExit("connector repair target not found and repaired form is absent")
-
-          path.write_text(text)
-          PY
 
       - name: Composer regression suite
         run: bunx vitest run tests/whatsapp-composer.test.ts
@@ -142,9 +49,6 @@ jobs:
       - name: Production build
         run: bun run build
 
-      - name: Changed-diff hygiene
-        run: git diff --check -- src/lib/sales/whatsapp-composer.core.ts
-
       - name: Functional lint excluding pre-existing style debt
         run: >-
           bunx eslint
@@ -152,19 +56,6 @@ jobs:
           tests/whatsapp-composer.test.ts
           --rule 'prettier/prettier: off'
           --rule 'no-useless-escape: off'
-
-      - name: Commit validated source repair to isolated branch
-        shell: bash
-        run: |
-          if git diff --quiet -- src/lib/sales/whatsapp-composer.core.ts; then
-            echo "Composer repair already committed."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/sales/whatsapp-composer.core.ts
-          git commit -m "fix: close WhatsApp composer P0 regressions"
-          git push origin HEAD:codex/p0-whatsapp-composer-closure
 
       - name: Full regression suite
         run: bunx vitest run
