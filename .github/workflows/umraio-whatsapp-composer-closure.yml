@@ -1,0 +1,151 @@
+name: UMRAIO WhatsApp Composer P0 Closure
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "src/lib/sales/whatsapp-composer.core.ts"
+      - "tests/whatsapp-composer.test.ts"
+      - ".github/workflows/umraio-whatsapp-composer-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  close-composer-p0:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'codex/p0-whatsapp-composer-closure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated closure branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/p0-whatsapp-composer-closure
+          fetch-depth: 0
+
+      - name: Use Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Frozen dependency install
+        run: bun install --frozen-lockfile
+
+      - name: Apply two deterministic composer repairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/lib/sales/whatsapp-composer.core.ts")
+          text = path.read_text()
+
+          old_pattern = r"(naik\s+taraf|upgrade)"
+          new_pattern = r"((?:di)?naik\s+taraf|upgrade)"
+          if new_pattern not in text:
+              count = text.count(old_pattern)
+              if count != 2:
+                  raise SystemExit(f"expected exactly 2 subscription-upgrade patterns, found {count}")
+              text = text.replace(old_pattern, new_pattern)
+          elif text.count(new_pattern) != 2:
+              raise SystemExit("subscription-upgrade repair is only partially applied")
+
+          old_block = '''      const kept: string[] = [];
+              let removedHere = false;
+              for (const sentence of block.sentences) {
+                if (isInternalFailureDisclosure(sentence)) {
+                  scrubbed += 1;
+                  removedHere = true;
+                  continue;
+                }
+                if (isGenericCloser(sentence)) {
+                  removedClosers += 1;
+                  continue;
+                }
+                const key = normalizeForDedupe(sentence);
+                if (key && seen.has(key)) {
+                  removedClosers += 1;
+                  continue;
+                }
+                if (key) seen.add(key);
+                // A sentence that followed a removed one must not open with a dangling
+                // contrast connector ("Namun, ...").
+                kept.push(removedHere && kept.length === 0 ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, "")) : sentence);
+              }
+          '''
+          new_block = '''      const kept: string[] = [];
+              let stripLeadingConnector = false;
+              for (const sentence of block.sentences) {
+                if (isInternalFailureDisclosure(sentence)) {
+                  scrubbed += 1;
+                  stripLeadingConnector = true;
+                  continue;
+                }
+                if (isGenericCloser(sentence)) {
+                  removedClosers += 1;
+                  continue;
+                }
+                const key = normalizeForDedupe(sentence);
+                if (key && seen.has(key)) {
+                  removedClosers += 1;
+                  continue;
+                }
+                if (key) seen.add(key);
+                // The next customer-safe sentence after a scrubbed internal failure
+                // must not retain a dangling contrast connector ("Namun, ...").
+                const safeSentence = stripLeadingConnector
+                  ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, ""))
+                  : sentence;
+                kept.push(safeSentence);
+                stripLeadingConnector = false;
+              }
+          '''
+
+          if old_block in text:
+              if text.count(old_block) != 1:
+                  raise SystemExit("expected exactly one legacy connector block")
+              text = text.replace(old_block, new_block)
+          elif new_block not in text:
+              raise SystemExit("connector repair target not found and repaired form is absent")
+
+          path.write_text(text)
+          PY
+
+      - name: Composer regression suite
+        run: bunx vitest run tests/whatsapp-composer.test.ts
+
+      - name: WhatsApp Text focused regressions
+        run: >-
+          bunx vitest run
+          tests/whatsapp-batch-p0-p1.test.ts
+          tests/whatsapp-incident-reply-reliability.test.ts
+          tests/whatsapp-composer.test.ts
+          tests/whatsapp-webhook-security.test.ts
+          tests/whatsapp-outbound-timeout.test.ts
+          tests/p0-1-duplicate-suppression.test.ts
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Production build
+        run: bun run build
+
+      - name: Changed-file lint
+        run: bunx eslint src/lib/sales/whatsapp-composer.core.ts tests/whatsapp-composer.test.ts
+
+      - name: Commit validated source repair to isolated branch
+        shell: bash
+        run: |
+          if git diff --quiet -- src/lib/sales/whatsapp-composer.core.ts; then
+            echo "Composer repair already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/sales/whatsapp-composer.core.ts
+          git commit -m "fix: close WhatsApp composer P0 regressions"
+          git push origin HEAD:codex/p0-whatsapp-composer-closure
+
+      - name: Full regression suite
+        run: bunx vitest run
