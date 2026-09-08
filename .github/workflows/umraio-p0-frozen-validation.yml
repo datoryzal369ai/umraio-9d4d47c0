@@ -1,4 +1,4 @@
-name: UMRAIO P0 frozen candidate validation
+name: UMRAIO P0 race fixture follow-up validation
 
 on:
   push:
@@ -6,7 +6,6 @@ on:
       - codex/umraio-p0-validation-runner-20260908
     paths:
       - .github/workflows/umraio-p0-frozen-validation.yml
-      - .github/validation/UMRAIO_P0_local_commits.bundle
   workflow_dispatch:
 
 permissions:
@@ -17,48 +16,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CANDIDATE_SHA: 1f18df31c7df1ed87146bbf504ccb1bd357a11f0
-  VERIFIED_BASE: 68cb9f6f85dfe6f8b9d0351f777bf907edbd118f
-  CANDIDATE_BRANCH: codex/umraio-p0-closure-20260908
+  CANDIDATE_SHA: 4633749b5d66cf1dc9417384934e6e2d95a9ed66
+  FROZEN_SHA: 1f18df31c7df1ed87146bbf504ccb1bd357a11f0
 
 jobs:
-  preserve:
-    if: "!contains(github.event.head_commit.message, '[baseline-only]')"
-    name: Preserve the exact frozen commit
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Verify bundle and preserve immutable candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          bundle=.github/validation/UMRAIO_P0_local_commits.bundle
-          printf '%s  %s\n' '79773b0306d03440e91dae01cea2218a10ecf91151e386181989e91fa0729231' "$bundle" | sha256sum --check
-          git bundle verify "$bundle"
-          git fetch "$bundle" HEAD
-          test "$(git rev-parse FETCH_HEAD)" = "$CANDIDATE_SHA"
-          git merge-base --is-ancestor "$VERIFIED_BASE" "$CANDIDATE_SHA"
-          remote_sha=$(git ls-remote --heads origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')
-          if [ -n "$remote_sha" ]; then
-            test "$remote_sha" = "$CANDIDATE_SHA" || { echo 'Existing branch differs; refusing to update it.'; exit 1; }
-          else
-            git push origin "$CANDIDATE_SHA:refs/heads/$CANDIDATE_BRANCH"
-          fi
-          test "$(git ls-remote --heads origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')" = "$CANDIDATE_SHA"
-          printf 'Frozen remote candidate: `%s`\n' "$CANDIDATE_SHA" >> "$GITHUB_STEP_SUMMARY"
-
   go:
-    name: Go ${{ matrix.mode }} at frozen SHA
-    needs: preserve
+    name: Go ${{ matrix.mode }} at follow-up SHA
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -66,14 +31,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1f18df31c7df1ed87146bbf504ccb1bd357a11f0
+          ref: 4633749b5d66cf1dc9417384934e6e2d95a9ed66
+          fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact test source
+      - name: Verify exact source and one-file scope
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test -z "$(git status --porcelain)"
+          git merge-base --is-ancestor "$FROZEN_SHA" HEAD
+          test "$(git diff --name-only "$FROZEN_SHA" HEAD)" = 'voice-gateway/internal/webrtc/media_diagnostics_test.go'
           git rev-parse HEAD
       - uses: actions/setup-go@v5
         with:
@@ -84,7 +52,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev
       - name: Run every Go test
-        id: tests
         working-directory: voice-gateway
         shell: bash
         env:
@@ -98,7 +65,7 @@ jobs:
           else
             go test -count=1 ./... | tee "$GITHUB_WORKSPACE/go-full.jsonl"
           fi
-      - name: Record results for every previously blocked test
+      - name: Record exact test results
         if: always()
         shell: python
         env:
@@ -123,12 +90,12 @@ jobs:
           TestSetRemoteDescriptionAcceptsNormalizedOffer'''.split()
           source = pathlib.Path('go-' + os.environ['TEST_MODE'] + '.jsonl')
           events = [json.loads(line) for line in source.read_text().splitlines()] if source.exists() else []
-          results = {event['Test']: event['Action'] for event in events if event.get('Test') and event['Action'] in ('pass', 'fail', 'skip')}
+          results = {e['Test']: e['Action'] for e in events if e.get('Test') and e['Action'] in ('pass', 'fail', 'skip')}
           counts = collections.Counter(result for name, result in results.items() if '/' not in name)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-            summary.write('Source SHA: `' + os.environ['CANDIDATE_SHA'] + '`\n\n')
-            summary.write('Top-level test totals: ' + json.dumps(dict(counts)) + '\n\n')
-            summary.write('| Previously blocked test | Result |\n|---|---|\n')
+            summary.write('Tested SHA: `' + os.environ['CANDIDATE_SHA'] + '`\n\n')
+            summary.write('Top-level tests: ' + json.dumps(dict(counts)) + '\n\n')
+            summary.write('| Required integration test | Result |\n|---|---|\n')
             for name in names:
               result = results.get(name, 'NOT EXECUTED')
               print(name + ': ' + result)
@@ -138,50 +105,76 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: umraio-p0-go-${{ matrix.mode }}-1f18df3
+          name: umraio-p0-followup-${{ matrix.mode }}-4633749
           path: go-${{ matrix.mode }}.jsonl
           if-no-files-found: warn
           retention-days: 14
 
-  baseline-race:
-    name: Baseline media diagnostics race comparison
-    if: contains(github.event.head_commit.message, '[baseline-only]')
+  repeated-race-and-vet:
+    name: Repeated race, vet and preservation checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 68cb9f6f85dfe6f8b9d0351f777bf907edbd118f
+          ref: 4633749b5d66cf1dc9417384934e6e2d95a9ed66
+          fetch-depth: 0
           persist-credentials: false
-      - name: Verify unchanged baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$VERIFIED_BASE"
-          test -z "$(git status --porcelain)"
-          git rev-parse HEAD
       - uses: actions/setup-go@v5
         with:
           go-version-file: voice-gateway/go.mod
           cache-dependency-path: voice-gateway/go.sum
+      - name: Verify source, formatting and unchanged assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain)"
+          test "$(git diff --name-only "$FROZEN_SHA" HEAD)" = 'voice-gateway/internal/webrtc/media_diagnostics_test.go'
+          test -z "$(gofmt -l voice-gateway/internal/webrtc/media_diagnostics_test.go)"
+          git diff --check "$FROZEN_SHA" HEAD
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          path = 'voice-gateway/internal/webrtc/media_diagnostics_test.go'
+          old = subprocess.check_output(['git', 'show', os.environ['FROZEN_SHA'] + ':' + path], text=True)
+          new = pathlib.Path(path).read_text()
+          marker = 'func TestMediaDiagnosticsEndToEnd'
+          assert new[new.index(marker):].replace('buf := &diagnosticLogBuffer{}', 'buf := &bytes.Buffer{}') == old[old.index(marker):]
+          print('Original test assertions unchanged; production source unchanged.')
+          PY
       - name: Install native Opus dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev
-      - name: Reproduce the newly observed race on the verified base
+      - name: Go vet
+        working-directory: voice-gateway
+        env:
+          CGO_ENABLED: '1'
+        run: go vet ./...
+      - name: Repeat repaired test under race detector twenty times
         working-directory: voice-gateway
         shell: bash
         env:
           CGO_ENABLED: '1'
         run: |
           set -euo pipefail
-          go test -race -count=10 -json -run '^TestMediaDiagnosticsEndToEnd$' ./internal/webrtc | tee "$GITHUB_WORKSPACE/go-baseline-race.jsonl"
+          go test -race -count=20 -json -run '^TestMediaDiagnosticsEndToEnd$' ./internal/webrtc | tee "$GITHUB_WORKSPACE/go-repeated-race.jsonl"
+      - name: Verify all twenty executions passed
+        if: always()
+        shell: python
+        run: |
+          import collections, json, os, pathlib
+          p = pathlib.Path('go-repeated-race.jsonl')
+          events = [json.loads(line) for line in p.read_text().splitlines()] if p.exists() else []
+          counts = collections.Counter(e['Action'] for e in events if e.get('Test') == 'TestMediaDiagnosticsEndToEnd' and e['Action'] in ('pass', 'fail', 'skip'))
+          print(dict(counts))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+            summary.write('Tested SHA: `' + os.environ['CANDIDATE_SHA'] + '`\n\nRepeated race: ' + json.dumps(dict(counts)) + '\n')
+          assert counts['pass'] == 20 and counts['fail'] == 0 and counts['skip'] == 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: umraio-p0-baseline-race-68cb9f6
-          path: go-baseline-race.jsonl
+          name: umraio-p0-followup-repeated-race-4633749
+          path: go-repeated-race.jsonl
           if-no-files-found: warn
           retention-days: 14
