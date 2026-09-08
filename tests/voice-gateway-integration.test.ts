@@ -612,8 +612,9 @@ describe("processGatewayCallback", () => {
 
   it("does not write anything when the answered rule is not satisfied", async () => {
     const { db, writes } = makeDb({ session: { ...baseSession, meta_accepted_at: null } });
-    const r = await processGatewayCallback({ db, payload: readyEvent });
-    expect(r).toEqual({ applied: false, rejection: "media_ready_without_meta_accept" });
+    await expect(processGatewayCallback({ db, payload: readyEvent })).rejects.toThrow(
+      "call_persistence_awaiting_meta_accept",
+    );
     expect(writes).toHaveLength(0);
   });
 

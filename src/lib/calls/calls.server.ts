@@ -472,6 +472,27 @@ async function maybeRequestAnswer(args: {
     console.error(
       `[calls] meta_accept_anchor_missing call_id=${event.callId} effect=media_ready_will_be_rejected action=inspect_database`,
     );
+    // Meta has accepted, but the Worker cannot safely process a turn or
+    // readiness without its persisted anchor. Close both legs; do not orphan
+    // the caller or confirm an acceptance the database never committed.
+    const stopped = await metaTerminateCall({
+      phoneNumberId,
+      accessToken: tenant.accessToken,
+      callId: event.callId,
+      ...fetchOpt,
+    });
+    timeline.mark("meta_terminate_completed_at");
+    await teardown("meta_accept_persistence_failed");
+    await markFailed(
+      db,
+      event.callId,
+      "meta_accept_persistence_failed",
+      now().toISOString(),
+      mergeCallTimings(timeline.snapshot(), {
+        meta_terminate_outcome: stopped.ok ? "ok" : `failed:${stopped.reason}`,
+      }),
+    );
+    return "negotiation_failed";
   }
 
   // 4) Post-accept notification. Exactly one greeting is started by the
@@ -557,6 +578,11 @@ export async function processGatewayCallback(args: {
     console.log(
       `[calls] gateway_callback_rejected call_id=${payload.call_id} event=${payload.event} reason=${decision.rejection}`,
     );
+    // Acceptance may commit just after a callback from an older gateway.
+    // Keep its nonce unconsumed and use the existing bounded retry path.
+    if (decision.rejection === "media_ready_without_meta_accept") {
+      throw new Error("call_persistence_awaiting_meta_accept");
+    }
     return { applied: false, rejection: decision.rejection };
   }
 
@@ -565,8 +591,6 @@ export async function processGatewayCallback(args: {
     const marks: CallTimings = {};
     if (decision.outcome === "answered") {
       marks.media_ready_at = decision.patch["media_ready_at"] as string;
-      if ((payload.inbound_packets ?? 0) > 0) marks.first_inbound_rtp_at = payload.timestamp;
-      if ((payload.outbound_packets ?? 0) > 0) marks.first_outbound_rtp_at = payload.timestamp;
     } else {
       marks.terminate_received_at = payload.timestamp;
       // Every failed/terminated session carries an explicit reason.
@@ -577,6 +601,12 @@ export async function processGatewayCallback(args: {
             ? "media_failed_unspecified"
             : "terminated_unspecified";
     }
+    // Counters prove packets existed, not when the first packet occurred.
+    // Only persist explicit measurements supplied by the media plane.
+    for (const key of ["first_inbound_rtp_at", "first_outbound_rtp_at"] as const) {
+      if (payload[key]) marks[key] = payload[key];
+    }
+    if (payload.media_ready_at) marks.media_ready_at = payload.media_ready_at;
     decision.patch["stage_timings"] = mergeCallTimings(session!.stage_timings, marks);
   }
 

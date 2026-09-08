@@ -34,6 +34,9 @@ export type GatewayCallbackPayload = {
   reason?: string;
   inbound_packets?: number;
   outbound_packets?: number;
+  first_inbound_rtp_at?: string;
+  first_outbound_rtp_at?: string;
+  media_ready_at?: string;
 };
 
 export type CallSessionRow = {
@@ -146,6 +149,12 @@ export function parseGatewayCallback(raw: unknown): GatewayCallbackPayload | nul
   if (inbound !== undefined) payload.inbound_packets = inbound;
   const outbound = num("outbound_packets");
   if (outbound !== undefined) payload.outbound_packets = outbound;
+  for (const key of ["first_inbound_rtp_at", "first_outbound_rtp_at", "media_ready_at"] as const) {
+    const value = str(key);
+    if (value && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.parse(timestamp)) {
+      payload[key] = value;
+    }
+  }
   return payload;
 }
 

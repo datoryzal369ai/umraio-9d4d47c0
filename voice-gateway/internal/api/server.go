@@ -338,6 +338,15 @@ func (s *Server) emit(name string, sess *session.Session, reason string) {
 		InboundPackets: st.InboundPackets, OutboundPackets: st.OutboundPackets,
 		Reason: reason,
 	}
+	if !st.FirstInboundAt.IsZero() {
+		ev.FirstInboundAt = st.FirstInboundAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !st.FirstOutboundAt.IsZero() {
+		ev.FirstOutboundAt = st.FirstOutboundAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !st.MediaReadyAt.IsZero() {
+		ev.MediaReadyAt = st.MediaReadyAt.UTC().Format(time.RFC3339Nano)
+	}
 	go func() {
 		started := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

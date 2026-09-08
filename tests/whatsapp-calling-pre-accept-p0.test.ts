@@ -360,8 +360,8 @@ describe("P0 — answered requires real media", () => {
     expect(state.session!["status"]).toBe("answered");
     const timings = state.session!["stage_timings"] as Record<string, unknown>;
     expect(timings["media_ready_at"]).toBe(now.toISOString());
-    expect(timings["first_inbound_rtp_at"]).toBe(now.toISOString());
-    expect(timings["first_outbound_rtp_at"]).toBe(now.toISOString());
+    expect(timings["first_inbound_rtp_at"]).toBeUndefined();
+    expect(timings["first_outbound_rtp_at"]).toBeUndefined();
   });
 });
 

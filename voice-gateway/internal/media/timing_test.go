@@ -65,6 +65,9 @@ func TestMediaMetricsTravelOnNextTurnRequest(t *testing.T) {
 	pushSilence(p, 5)
 	waitFor(t, "first reply audio", func() bool { return tr.count() >= 2 })
 	waitFor(t, "metrics recorded", func() bool { return p.LastMetrics() != nil })
+	// Metrics are recorded inside the first turn; wait for its lifecycle to
+	// release the turn slot before injecting an entire second utterance.
+	waitFor(t, "first turn completed", func() bool { p.mu.Lock(); defer p.mu.Unlock(); return !p.busy })
 
 	m := p.LastMetrics()
 	if m.TTSMs != 410 || m.TTSEncodeMs != 12 {

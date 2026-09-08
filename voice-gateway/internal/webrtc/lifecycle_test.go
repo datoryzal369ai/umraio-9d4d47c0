@@ -343,6 +343,7 @@ func TestConversationEndCallDoesNotSelfWait(t *testing.T) {
 		t.Fatalf("attach conversation pipeline: %v", err)
 	}
 
+	ms.handleConnectionState(pion.PeerConnectionStateConnected)
 	if got := ms.NotifyAccepted(); got != string(umedia.GreetingStarted) {
 		t.Fatalf("greeting outcome = %q, want %q", got, umedia.GreetingStarted)
 	}
@@ -358,4 +359,134 @@ func TestConversationEndCallDoesNotSelfWait(t *testing.T) {
 	if sess.TerminationReason() != "conversation_complete" {
 		t.Fatalf("conversation end reason = %q", sess.TerminationReason())
 	}
+}
+
+func markTransportReady(ms *MediaSession) {
+	ms.sess.MarkICEConnected(time.Now())
+	ms.sess.MarkOutboundReady()
+	ms.sess.RecordInbound(time.Now())
+	ms.maybeFireMediaReady()
+}
+
+func TestReadinessWaitsForAcceptanceAndRechecksExistingRTP(t *testing.T) {
+	for _, acceptedFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "transport_first", true: "acceptance_first"}[acceptedFirst], func(t *testing.T) {
+			ready := make(chan struct{}, 32)
+			ms, _ := newLifecycleMediaSession(t, &umedia.NoopPipeline{}, Hooks{
+				OnMediaReady: func(*session.Session) { ready <- struct{}{} },
+			})
+			if acceptedFirst {
+				ms.NotifyAccepted()
+			} else {
+				markTransportReady(ms)
+			}
+			if !ms.sess.Stats().MediaReadyAt.IsZero() {
+				t.Fatal("readiness fired before both transport and Worker acceptance")
+			}
+			if acceptedFirst {
+				markTransportReady(ms)
+			} else {
+				ms.NotifyAccepted() // No new RTP packet after this notification.
+			}
+			select {
+			case <-ready:
+			case <-time.After(time.Second):
+				t.Fatal("existing readiness was lost after acceptance")
+			}
+			var wg sync.WaitGroup
+			for i := 0; i < 16; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					ms.NotifyAccepted()
+					ms.maybeFireMediaReady()
+				}()
+			}
+			wg.Wait()
+			if len(ready) != 0 {
+				t.Fatal("duplicate readiness callback")
+			}
+			ms.Terminate("test_done")
+		})
+	}
+}
+
+func TestLateAcceptanceCannotReviveTerminatedSession(t *testing.T) {
+	ms, _ := newLifecycleMediaSession(t, &umedia.NoopPipeline{}, Hooks{})
+	markTransportReady(ms)
+	ms.Terminate("caller_terminated")
+	if got := ms.NotifyAccepted(); got != string(umedia.GreetingClosed) {
+		t.Fatalf("late acceptance returned %q", got)
+	}
+	ms.maybeFireMediaReady()
+	if !ms.sess.Stats().MediaReadyAt.IsZero() {
+		t.Fatal("readiness emitted after termination")
+	}
+}
+
+func TestGreetingWaitsForBothAcceptanceAndConnectedTransport(t *testing.T) {
+	for _, transportFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "acceptance_first", true: "transport_first"}[transportFirst], func(t *testing.T) {
+			client := &endCallTurnClient{}
+			pipe := umedia.NewConversationPipeline("call-lifecycle", client, umedia.ConversationConfig{Greet: true}, nil)
+			hook := make(chan string, 1)
+			ms, _ := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) { hook <- reason }})
+			if err := pipe.Attach(context.Background(), ms); err != nil {
+				t.Fatal(err)
+			}
+			if transportFirst {
+				ms.handleConnectionState(pion.PeerConnectionStateConnected)
+			} else if got := ms.NotifyAccepted(); got != "pending_transport" {
+				t.Fatalf("early acceptance = %q", got)
+			}
+			if pipe.Greeted() {
+				t.Fatal("greeting began before both boundaries")
+			}
+			if transportFirst {
+				ms.NotifyAccepted()
+			} else {
+				ms.handleConnectionState(pion.PeerConnectionStateConnected)
+			}
+			if got := awaitLifecycleHook(t, hook); got != "conversation_complete" {
+				t.Fatal(got)
+			}
+			if client.calls.Load() != 1 {
+				t.Fatalf("greeting count = %d", client.calls.Load())
+			}
+		})
+	}
+}
+
+func TestUnconnectedOutboundTrackCannotClaimSentAudio(t *testing.T) {
+	ms, sess := newLifecycleMediaSession(t, newLifecyclePipeline(false), Hooks{})
+	if err := ms.SendOpus(umedia.OpusFrame{Data: []byte{0x78, 0x01}}); err == nil {
+		t.Fatal("unconnected track reported success")
+	}
+	if sess.Stats().OutboundPackets != 0 || !sess.Stats().FirstOutboundAt.IsZero() {
+		t.Fatal("fabricated outbound evidence")
+	}
+}
+
+func TestAcceptanceDuringRecoverableDisconnectWaitsForReconnection(t *testing.T) {
+	ready := make(chan struct{}, 2)
+	ms, _ := newLifecycleMediaSession(t, &umedia.NoopPipeline{}, Hooks{
+		OnMediaReady: func(*session.Session) { ready <- struct{}{} },
+	})
+	markTransportReady(ms)
+	ms.handleConnectionState(pion.PeerConnectionStateDisconnected)
+	ms.NotifyAccepted()
+	if ms.sess.MediaReadyRule() || !ms.sess.Stats().MediaReadyAt.IsZero() {
+		t.Fatal("disconnected transport claimed readiness after acceptance")
+	}
+	ms.handleConnectionState(pion.PeerConnectionStateConnected)
+	select {
+	case <-ready:
+	case <-time.After(time.Second):
+		t.Fatal("reconnection lost readiness from already measured RTP")
+	}
+	ms.handleConnectionState(pion.PeerConnectionStateConnected)
+	if len(ready) != 0 {
+		t.Fatal("duplicate readiness on repeated connection notification")
+	}
+	ms.Terminate("test_done")
 }

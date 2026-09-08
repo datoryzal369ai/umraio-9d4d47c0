@@ -98,6 +98,32 @@ const farewell = () => ({
 });
 
 describe("Calling lifecycle persistence", () => {
+  it("retries early readiness with the same nonce after acceptance commits", async () => {
+    const { db, state } = database({ ...acceptedSession(), meta_accepted_at: null });
+    await expect(processGatewayCallback({ db, payload: ready() })).rejects.toThrow(
+      "call_persistence_awaiting_meta_accept",
+    );
+    expect(state.row?.callback_nonces).toEqual([]);
+    state.row!.meta_accepted_at = ACCEPTED_AT;
+    expect(await processGatewayCallback({ db, payload: ready() })).toEqual({
+      applied: true,
+      outcome: "answered",
+    });
+    expect(state.row?.callback_nonces).toEqual(["nonce-test"]);
+  });
+
+  it("stores measured first-packet times without replacing them with callback receipt time", async () => {
+    const { db, state } = database(acceptedSession());
+    const inbound = "2026-09-06T07:45:07.000Z";
+    const outbound = "2026-09-06T07:45:07.500Z";
+    await processGatewayCallback({
+      db,
+      payload: { ...ready(), first_inbound_rtp_at: inbound, first_outbound_rtp_at: outbound },
+    });
+    expect(state.row?.stage_timings.first_inbound_rtp_at).toBe(inbound);
+    expect(state.row?.stage_timings.first_outbound_rtp_at).toBe(outbound);
+  });
+
   it("surfaces a callback read failure so the unchanged nonce can retry", async () => {
     let failing = true;
     const { db, state } = database(acceptedSession(), { failRead: () => failing });
@@ -292,7 +318,7 @@ describe("post-accept persistence boundary", () => {
 
   it("does not orphan an accepted call when storing the acceptance anchor failed", async () => {
     let attempts = 0;
-    const { db } = database(null, {
+    const { db, state } = database(null, {
       failWrite: (patch) => {
         if (!patch.meta_accepted_at) return false;
         attempts += 1;
@@ -312,9 +338,12 @@ describe("post-accept persistence boundary", () => {
     };
     await expect(
       processCallEvent({ db, event: connect, phoneNumberId: PHONE, env, fetchImpl }),
-    ).resolves.toBe("meta_accepted");
+    ).resolves.toBe("negotiation_failed");
     expect(attempts).toBe(2);
-    expect(seen.filter((url) => url.endsWith("/accepted"))).toHaveLength(1);
+    expect(seen.some((url) => url.endsWith("/accepted"))).toBe(false);
+    expect(seen.some((url) => url.endsWith("/terminate"))).toBe(true);
+    expect(state.row?.status).toBe("failed");
+    expect(state.row?.termination_reason).toBe("meta_accept_persistence_failed");
   });
 
   it("continues after the existing acceptance retry commits successfully", async () => {

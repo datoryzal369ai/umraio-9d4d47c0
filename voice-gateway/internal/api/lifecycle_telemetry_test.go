@@ -36,6 +36,28 @@ type lifecycleTelemetryEmitter struct {
 	events chan callback.Event
 }
 
+func TestCallbackCarriesMeasuredPacketTimes(t *testing.T) {
+	emitter := &lifecycleTelemetryEmitter{events: make(chan callback.Event, 1)}
+	srv := &Server{Events: emitter, Logger: slog.Default(), Now: time.Now}
+	sess := session.New("ms_times", "call_times", "agency", "phone", time.Now())
+	inbound := time.Now().Add(-time.Second)
+	sess.RecordInbound(inbound)
+	sess.RecordOutbound()
+	outbound := sess.Stats().FirstOutboundAt
+	srv.emit(callback.EventTerminated, sess, "completed")
+	select {
+	case ev := <-emitter.events:
+		if ev.FirstInboundAt != inbound.UTC().Format(time.RFC3339Nano) || ev.FirstOutboundAt != outbound.UTC().Format(time.RFC3339Nano) {
+			t.Fatal("callback substituted emission time for packet time")
+		}
+		if ev.MediaReadyAt != "" {
+			t.Fatal("callback invented readiness")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("callback missing")
+	}
+}
+
 func (e *lifecycleTelemetryEmitter) Send(_ context.Context, ev callback.Event) error {
 	e.events <- ev
 	return e.err

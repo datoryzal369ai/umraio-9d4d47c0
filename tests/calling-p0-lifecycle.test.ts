@@ -105,6 +105,7 @@ function makeDb(options: {
         ilike: () => builder,
         limit: () => builder,
         maybeSingle: async () => {
+          if (table === "conversations") return { data: { id: "conv-1" }, error: null };
           if (table === "whatsapp_configs") {
             return { data: options.config === undefined ? { agency_id: AGENCY, access_token: "meta-token" } : options.config };
           }
