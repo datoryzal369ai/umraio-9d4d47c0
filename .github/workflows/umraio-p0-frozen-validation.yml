@@ -23,6 +23,7 @@ env:
 
 jobs:
   preserve:
+    if: "!contains(github.event.head_commit.message, '[baseline-only]')"
     name: Preserve the exact frozen commit
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -139,5 +140,48 @@ jobs:
         with:
           name: umraio-p0-go-${{ matrix.mode }}-1f18df3
           path: go-${{ matrix.mode }}.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+  baseline-race:
+    name: Baseline media diagnostics race comparison
+    if: contains(github.event.head_commit.message, '[baseline-only]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 68cb9f6f85dfe6f8b9d0351f777bf907edbd118f
+          persist-credentials: false
+      - name: Verify unchanged baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFIED_BASE"
+          test -z "$(git status --porcelain)"
+          git rev-parse HEAD
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: voice-gateway/go.mod
+          cache-dependency-path: voice-gateway/go.sum
+      - name: Install native Opus dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev
+      - name: Reproduce the newly observed race on the verified base
+        working-directory: voice-gateway
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -euo pipefail
+          go test -race -count=10 -json -run '^TestMediaDiagnosticsEndToEnd$' ./internal/webrtc | tee "$GITHUB_WORKSPACE/go-baseline-race.jsonl"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: umraio-p0-baseline-race-68cb9f6
+          path: go-baseline-race.jsonl
           if-no-files-found: warn
           retention-days: 14
