@@ -41,66 +41,77 @@ jobs:
           path = Path("src/lib/sales/whatsapp-composer.core.ts")
           text = path.read_text()
 
-          old_pattern = r"(naik\s+taraf|upgrade)"
-          new_pattern = r"((?:di)?naik\s+taraf|upgrade)"
-          if new_pattern not in text:
-              count = text.count(old_pattern)
-              if count != 2:
-                  raise SystemExit(f"expected exactly 2 subscription-upgrade patterns, found {count}")
-              text = text.replace(old_pattern, new_pattern)
-          elif text.count(new_pattern) != 2:
-              raise SystemExit("subscription-upgrade repair is only partially applied")
+          pattern_repairs = [
+              (
+                  r"(naik\s+taraf|upgrade|tamat|expired|luput|tidak\s+aktif|inactive|kredit|credit)",
+                  r"((?:di)?naik\s+taraf|upgrade|tamat|expired|luput|tidak\s+aktif|inactive|kredit|credit)",
+              ),
+              (
+                  r"(naik\s+taraf|upgrade)",
+                  r"((?:di)?naik\s+taraf|upgrade)",
+              ),
+          ]
+          for old_pattern, new_pattern in pattern_repairs:
+              if new_pattern not in text:
+                  count = text.count(old_pattern)
+                  if count != 1:
+                      raise SystemExit(f"expected exactly one pattern target {old_pattern!r}, found {count}")
+                  text = text.replace(old_pattern, new_pattern)
+              elif text.count(new_pattern) != 1:
+                  raise SystemExit(f"pattern repair is duplicated for {new_pattern!r}")
 
-          old_block = '''      const kept: string[] = [];
-              let removedHere = false;
-              for (const sentence of block.sentences) {
-                if (isInternalFailureDisclosure(sentence)) {
-                  scrubbed += 1;
-                  removedHere = true;
-                  continue;
-                }
-                if (isGenericCloser(sentence)) {
-                  removedClosers += 1;
-                  continue;
-                }
-                const key = normalizeForDedupe(sentence);
-                if (key && seen.has(key)) {
-                  removedClosers += 1;
-                  continue;
-                }
-                if (key) seen.add(key);
-                // A sentence that followed a removed one must not open with a dangling
-                // contrast connector ("Namun, ...").
-                kept.push(removedHere && kept.length === 0 ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, "")) : sentence);
-              }
-          '''
-          new_block = '''      const kept: string[] = [];
-              let stripLeadingConnector = false;
-              for (const sentence of block.sentences) {
-                if (isInternalFailureDisclosure(sentence)) {
-                  scrubbed += 1;
-                  stripLeadingConnector = true;
-                  continue;
-                }
-                if (isGenericCloser(sentence)) {
-                  removedClosers += 1;
-                  continue;
-                }
-                const key = normalizeForDedupe(sentence);
-                if (key && seen.has(key)) {
-                  removedClosers += 1;
-                  continue;
-                }
-                if (key) seen.add(key);
-                // The next customer-safe sentence after a scrubbed internal failure
-                // must not retain a dangling contrast connector ("Namun, ...").
-                const safeSentence = stripLeadingConnector
-                  ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, ""))
-                  : sentence;
-                kept.push(safeSentence);
-                stripLeadingConnector = false;
-              }
-          '''
+          old_block = "\n".join([
+              "      const kept: string[] = [];",
+              "      let removedHere = false;",
+              "      for (const sentence of block.sentences) {",
+              "        if (isInternalFailureDisclosure(sentence)) {",
+              "          scrubbed += 1;",
+              "          removedHere = true;",
+              "          continue;",
+              "        }",
+              "        if (isGenericCloser(sentence)) {",
+              "          removedClosers += 1;",
+              "          continue;",
+              "        }",
+              "        const key = normalizeForDedupe(sentence);",
+              "        if (key && seen.has(key)) {",
+              "          removedClosers += 1;",
+              "          continue;",
+              "        }",
+              "        if (key) seen.add(key);",
+              "        // A sentence that followed a removed one must not open with a dangling",
+              "        // contrast connector (\"Namun, ...\").",
+              "        kept.push(removedHere && kept.length === 0 ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, \"\")) : sentence);",
+              "      }",
+          ])
+          new_block = "\n".join([
+              "      const kept: string[] = [];",
+              "      let stripLeadingConnector = false;",
+              "      for (const sentence of block.sentences) {",
+              "        if (isInternalFailureDisclosure(sentence)) {",
+              "          scrubbed += 1;",
+              "          stripLeadingConnector = true;",
+              "          continue;",
+              "        }",
+              "        if (isGenericCloser(sentence)) {",
+              "          removedClosers += 1;",
+              "          continue;",
+              "        }",
+              "        const key = normalizeForDedupe(sentence);",
+              "        if (key && seen.has(key)) {",
+              "          removedClosers += 1;",
+              "          continue;",
+              "        }",
+              "        if (key) seen.add(key);",
+              "        // The next customer-safe sentence after a scrubbed internal failure",
+              "        // must not retain a dangling contrast connector (\"Namun, ...\").",
+              "        const safeSentence = stripLeadingConnector",
+              "          ? capitalizeFirst(sentence.replace(LEADING_CONNECTORS, \"\"))",
+              "          : sentence;",
+              "        kept.push(safeSentence);",
+              "        stripLeadingConnector = false;",
+              "      }",
+          ])
 
           if old_block in text:
               if text.count(old_block) != 1:
