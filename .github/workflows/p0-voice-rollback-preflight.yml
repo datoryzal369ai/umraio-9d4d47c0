@@ -1,0 +1,98 @@
+name: P0 Voice rollback preflight (NO DEPLOY)
+
+on:
+  push:
+    branches: [codex/p0-voice-rollback-preflight-20260909]
+    paths: [.github/workflows/p0-voice-rollback-preflight.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-voice-rollback-preflight-20260909
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP: umraio-voice-gateway
+      EXPECTED_BUILD: ae77a985e1262cdb734f69abd61ed8aa3ffbc53e
+      ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:fbfbf490d645a0b79808ead8e74abf631239f7d5f128afa1d2fff3eef2384d1b
+    steps:
+      - name: Check existing deployment credential availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FLY_API_TOKEN" || { echo '::error::Existing FLY_API_TOKEN unavailable'; exit 1; }
+          echo 'Existing deployment credential: present'
+
+      - name: Set up the existing Fly deployment client
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: latest
+
+      - name: Verify runtime identity and rollback image retrieval without deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          voice_tmp=$(mktemp -d)
+          export VOICE_PREFLIGHT_DIR="$voice_tmp"
+          export DOCKER_CONFIG="$voice_tmp/docker-auth"
+          mkdir -p "$DOCKER_CONFIG"
+          trap 'rm -rf "$voice_tmp"' EXIT
+          if ! flyctl image show --app "$FLY_APP" --json > "$voice_tmp/current-image.json" 2> "$voice_tmp/fly-error.log"; then
+            echo '::error::Unable to read current Fly image; no production changes made'
+            exit 1
+          fi
+          if ! curl --fail --silent --show-error --max-time 20 --max-redirs 0 'https://umraio-voice-gateway.fly.dev/health' -o "$voice_tmp/health.json" 2> "$voice_tmp/health-error.log"; then
+            echo '::error::Unable to read gateway health; no production changes made'
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['VOICE_PREFLIGHT_DIR'])
+          health = json.loads((root / 'health.json').read_text())
+          image = json.loads((root / 'current-image.json').read_text())
+          refs = []
+          def walk(value):
+              if isinstance(value, dict):
+                  for k, v in value.items():
+                      if k.lower() in {'ref', 'reference', 'tag', 'digest', 'registry', 'repository'} and isinstance(v, str):
+                          refs.append({k: v})
+                      elif isinstance(v, (dict, list)):
+                          walk(v)
+              elif isinstance(value, list):
+                  for v in value:
+                      walk(v)
+          walk(image)
+          report = {k: health.get(k) for k in ['status', 'build_version', 'webrtc', 'speech', 'active_sessions']}
+          report['current_image_metadata'] = refs
+          report['expected_rollback_image'] = os.environ['ROLLBACK_IMAGE']
+          print(json.dumps(report, sort_keys=True))
+          if health.get('build_version') != os.environ['EXPECTED_BUILD']:
+              raise SystemExit('Runtime differs from recorded rollback baseline; stop and review')
+          if health.get('status') != 'ok':
+              raise SystemExit('Gateway health is not ok; stop and review')
+          PY
+          if ! flyctl auth docker > "$voice_tmp/auth.log" 2>&1; then
+            echo '::error::Registry authentication unavailable; no production changes made'
+            exit 1
+          fi
+          if ! docker pull "$ROLLBACK_IMAGE" > "$voice_tmp/pull.log" 2>&1; then
+            echo '::error::Recorded rollback image is not retrievable; no production changes made'
+            exit 1
+          fi
+          docker image inspect "$ROLLBACK_IMAGE" --format '{{json .RepoDigests}}' > "$voice_tmp/digests.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['VOICE_PREFLIGHT_DIR'])
+          digests = json.loads((root / 'digests.json').read_text())
+          expected = os.environ['ROLLBACK_IMAGE']
+          if expected not in digests:
+              raise SystemExit('Pulled image digest mismatch; stop and review')
+          print(json.dumps({'rollback_image_retrievable': True, 'immutable_image': expected, 'deploy_executed': False, 'secret_bindings_changed': False}))
+          PY
