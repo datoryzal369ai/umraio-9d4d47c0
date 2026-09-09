@@ -44,8 +44,9 @@ type Hooks struct {
 
 // Engine builds peer connections with a fixed, audited configuration.
 type Engine struct {
-	api *pion.API
-	cfg Config
+	api     *pion.API
+	cfg     Config
+	iceLogs *iceLogFactory
 }
 
 func NewEngine(cfg Config) (*Engine, error) {
@@ -79,10 +80,12 @@ func NewEngine(cfg Config) (*Engine, error) {
 	}
 	// Only the log sink changes. All ICE, codec and transport settings above
 	// remain the production settings; raw Pion ICE messages are never formatted.
-	se.LoggerFactory = newICELogFactory(cfg.Logger)
+	iceLogs := newICELogFactory(cfg.Logger)
+	se.LoggerFactory = iceLogs
 	return &Engine{
-		api: pion.NewAPI(pion.WithMediaEngine(m), pion.WithSettingEngine(se)),
-		cfg: cfg,
+		api:     pion.NewAPI(pion.WithMediaEngine(m), pion.WithSettingEngine(se)),
+		cfg:     cfg,
+		iceLogs: iceLogs,
 	}, nil
 }
 
@@ -178,9 +181,11 @@ func (e *Engine) Establish(
 	}
 	mode := umedia.PipelineMode(pipeline)
 	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks, log: log, pipelineMode: mode}
-	ms.diagnostics = newICEDiagnostics(ms)
+	ms.diagnostics = newICEDiagnostics(ms, e.iceLogs)
+	pc.OnICECandidate(ms.diagnostics.bindLocal)
 	if transport := pc.SCTP(); transport != nil && transport.Transport() != nil {
 		transport.Transport().OnStateChange(func(st pion.DTLSTransportState) {
+			ms.diagnostics.observeState("dtls", st.String())
 			log.Info("dtls state observed", "session_id", s.ID, "dtls_state", st.String())
 		})
 	}
@@ -194,6 +199,7 @@ func (e *Engine) Establish(
 	_ = s.Advance(session.StateConnecting, "", time.Now())
 
 	pc.OnConnectionStateChange(func(st pion.PeerConnectionState) {
+		ms.diagnostics.observeState("peer", st.String())
 		log.Info("peer connection state", "call_id", s.CallID, "session_id", s.ID,
 			"peer_connection_state", st.String())
 		switch st {
@@ -211,11 +217,13 @@ func (e *Engine) Establish(
 	})
 
 	pc.OnICEConnectionStateChange(func(st pion.ICEConnectionState) {
+		ms.diagnostics.observeState("ice", st.String())
 		log.Info("ice connection state", "call_id", s.CallID, "session_id", s.ID,
 			"ice_connection_state", st.String())
 	})
 
 	pc.OnICEGatheringStateChange(func(st pion.ICEGatheringState) {
+		ms.diagnostics.observeState("gathering", st.String())
 		log.Info("ice gathering state", "call_id", s.CallID, "session_id", s.ID,
 			"ice_gathering_state", st.String())
 	})
@@ -472,8 +480,8 @@ func (ms *MediaSession) Terminate(reason string) {
 		ms.mu.Lock()
 		ms.closed = true
 		ms.mu.Unlock()
-		// Snapshot while the ICE agent and checklist still exist. No media,
-		// nomination, timeout or termination decision depends on diagnostics.
+		// Flush already-owned telemetry asynchronously. Never query or wait
+		// for Pion statistics while the peer connection is being closed.
 		if ms.diagnostics != nil {
 			ms.diagnostics.stop(reason)
 		}

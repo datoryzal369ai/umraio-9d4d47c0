@@ -8,8 +8,10 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/pion/ice/v4"
 	"github.com/pion/logging"
@@ -29,6 +31,8 @@ type iceLogFactory struct {
 	log      *slog.Logger
 	fallback logging.LoggerFactory
 	next     atomic.Uint64
+	owners   sync.Map
+	traces   sync.Map
 }
 
 func newICELogFactory(log *slog.Logger) *iceLogFactory {
@@ -38,15 +42,21 @@ func (f *iceLogFactory) NewLogger(scope string) logging.LeveledLogger {
 	if scope != "ice" {
 		return f.fallback.NewLogger(scope)
 	}
-	return &sanitizedICELogger{log: f.log, id: f.next.Add(1)}
+	return &sanitizedICELogger{log: f.log, id: f.next.Add(1), factory: f}
 }
 
 type sanitizedICELogger struct {
-	log      *slog.Logger
-	id       uint64
-	events   atomic.Uint64
-	expired  atomic.Uint64
-	failures atomic.Uint64
+	log            *slog.Logger
+	id             uint64
+	events         atomic.Uint64
+	expired        atomic.Uint64
+	failures       atomic.Uint64
+	factory        *iceLogFactory
+	owner          atomic.Pointer[iceDiagnostics]
+	role           atomic.Value
+	mu             sync.Mutex
+	pending        []iceTraceRecord
+	pendingDropped uint64
 }
 
 func (l *sanitizedICELogger) Trace(s string)            { l.observe(s) }
@@ -66,6 +76,7 @@ func (l *sanitizedICELogger) Errorf(s string, a ...any) { l.observe(s, a...) }
 func (l *sanitizedICELogger) observe(format string, args ...any) {
 	event := ""
 	fields := []any{"ice_trace_id", l.id}
+	var observedLocal, observedRemote ice.Candidate
 	candidates := func(a, b int) {
 		if len(args) <= a || len(args) <= b {
 			return
@@ -73,6 +84,7 @@ func (l *sanitizedICELogger) observe(format string, args ...any) {
 		local, lok := args[a].(ice.Candidate)
 		remote, rok := args[b].(ice.Candidate)
 		if lok && rok {
+			observedLocal, observedRemote = local, remote
 			fields = append(fields, "local_candidate", diagnosticCandidateID(local.ID()), "remote_candidate", diagnosticCandidateID(remote.ID()))
 			fields = append(fields, traceCandidateAttrs("local", local)...)
 			fields = append(fields, traceCandidateAttrs("remote", remote)...)
@@ -83,6 +95,7 @@ func (l *sanitizedICELogger) observe(format string, args ...any) {
 			return
 		}
 		if p, ok := args[0].(*ice.CandidatePair); ok && p != nil {
+			observedLocal, observedRemote = p.Local, p.Remote
 			fields = append(fields, "local_candidate", diagnosticCandidateID(p.Local.ID()), "remote_candidate", diagnosticCandidateID(p.Remote.ID()))
 		}
 	}
@@ -115,6 +128,7 @@ func (l *sanitizedICELogger) observe(format string, args ...any) {
 		if controlling {
 			role = "controlling"
 		}
+		l.role.Store(role)
 		event = "agent_started"
 		fields = append(fields, "ice_role", role, "nomination_mode", "regular", "nomination_mode_source", "pinned_pion_default")
 	case "Ping STUN from %s to %s":
@@ -180,6 +194,16 @@ func (l *sanitizedICELogger) observe(format string, args ...any) {
 	default:
 		return
 	}
+	// Copy only sanitized values before Pion releases ownership of the args.
+	record := iceTraceRecord{event: event, fields: fields, at: time.Now().UnixMilli()}
+	record.role, _ = l.role.Load().(string)
+	if observedLocal != nil {
+		record.local = candidateObservation("local", observedLocal)
+	}
+	if observedRemote != nil {
+		record.remote = candidateObservation("remote", observedRemote)
+	}
+	l.record(record)
 	// Bound verbosity per ICE logger. Counters above continue even at the cap.
 	n := l.events.Add(1)
 	if n > 4096 {
@@ -194,10 +218,7 @@ func (l *sanitizedICELogger) observe(format string, args ...any) {
 func traceCandidateAttrs(prefix string, c ice.Candidate) []any {
 	// Numeric foundations are safe to retain; arbitrary remote foundation text
 	// is not. Candidate extensions/username/address are deliberately never read.
-	foundation := "unavailable"
-	if n, err := strconv.ParseUint(c.Foundation(), 10, 32); err == nil {
-		foundation = strconv.FormatUint(n, 10)
-	}
+	foundation := safeFoundation(c.Foundation())
 	return []any{prefix + "_protocol", c.NetworkType().NetworkShort(), prefix + "_family", addressFamily(c.Address()), prefix + "_type", c.Type().String(), prefix + "_port", c.Port(), prefix + "_priority", c.Priority(), prefix + "_foundation", foundation}
 }
 func stunErrorClass(err error) string {
@@ -218,4 +239,63 @@ func stunErrorClass(err error) string {
 		return "timeout"
 	}
 	return "unclassified"
+}
+
+func safeFoundation(value string) string {
+	if n, err := strconv.ParseUint(value, 10, 32); err == nil {
+		return strconv.FormatUint(n, 10)
+	}
+	return "unavailable"
+}
+
+// A bounded pending buffer closes the callback-order race: ICE can log its
+// first check before OnICECandidate binds that local candidate to the session.
+// Records contain copied enums/counters/opaque IDs only, never Pion objects.
+type iceTraceRecord struct {
+	event, role           string
+	fields, local, remote []any
+	at                    int64
+}
+
+func (l *sanitizedICELogger) attach(d *iceDiagnostics) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.owner.Load() != nil {
+		return
+	}
+	l.owner.Store(d)
+	for _, r := range l.pending {
+		d.observeTrace(r)
+	}
+	l.pending = nil
+	if l.pendingDropped > 0 {
+		l.log.Warn("ice cache trace gap", "ice_trace_id", l.id, "dropped_before_binding", l.pendingDropped)
+	}
+}
+func (l *sanitizedICELogger) record(r iceTraceRecord) {
+	if owner := l.owner.Load(); owner != nil && owner.stopped.Load() {
+		return
+	}
+	var owner *iceDiagnostics
+	if len(r.local) > 1 && l.factory != nil {
+		id := r.local[1].(string)
+		l.factory.traces.Store(id, l)
+		if d, ok := l.factory.owners.Load(id); ok {
+			owner = d.(*iceDiagnostics)
+		}
+	}
+	if owner != nil {
+		l.attach(owner)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if d := l.owner.Load(); d != nil {
+		d.observeTrace(r)
+		return
+	}
+	if len(l.pending) < 256 {
+		l.pending = append(l.pending, r)
+	} else {
+		l.pendingDropped++
+	}
 }

@@ -120,6 +120,7 @@ func TestICEDiagnosticsCaptureCheckingBeforeTeardown(t *testing.T) {
 		t.Fatal("unbound local write incorrectly reported transport-ready")
 	}
 	ms.Terminate("caller_terminated")
+	waitDiagnosticFlush(t, ms.diagnostics)
 	snapshots := findEvents(buf, "ice session snapshot")
 	last := snapshots[len(snapshots)-1]
 	if last["trigger"] != "before_teardown" || last["media_ready"] != false || last["inbound_rtp_packets"] != float64(0) || last["peer_state"] == "closed" {
@@ -176,6 +177,7 @@ func TestICEDiagnosticsConnectedLoopbackPreservesMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	ms.Terminate("test_done")
+	waitDiagnosticFlush(t, ms.diagnostics)
 	if len(findEvents(buf, "first outbound opus on ready transport")) != 1 {
 		t.Fatal("missing first connected transport write")
 	}
@@ -190,5 +192,91 @@ func TestICEDiagnosticsConnectedLoopbackPreservesMedia(t *testing.T) {
 	}
 	if len(findEvents(buf, "media ready")) != 1 {
 		t.Fatal("media readiness behavior changed")
+	}
+}
+
+func waitDiagnosticFlush(t *testing.T, d *iceDiagnostics) {
+	t.Helper()
+	select {
+	case <-d.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("asynchronous diagnostic cache did not flush")
+	}
+}
+
+// The diagnostic writer may be blocked indefinitely. stop must return without
+// waiting for it or querying Pion; pc is deliberately nil in this test.
+func TestICEDiagnosticsStopDoesNotWaitForSampler(t *testing.T) {
+	buf := &diagnosticLogBuffer{}
+	ms := &MediaSession{sess: session.New("cache-only", "synthetic", "a", "p", time.Now()), log: slog.New(slog.NewJSONHandler(buf, nil))}
+	d := newICEDiagnostics(ms, nil)
+	ms.diagnostics = d
+	d.observeState("ice", "checking")
+	d.observeState("peer", "connecting")
+	d.mu.Lock()
+	d.emitMu.Lock()
+	returned := make(chan struct{})
+	go func() { d.stop("test"); close(returned) }()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		d.emitMu.Unlock()
+		d.mu.Unlock()
+		t.Fatal("teardown waited for diagnostic ownership")
+	}
+	// No observer may publish after the stop boundary.
+	d.emitMu.Unlock()
+	d.mu.Unlock()
+	d.observeState("peer", "closed")
+	waitDiagnosticFlush(t, d)
+	snapshots := findEvents(buf, "ice session snapshot")
+	if len(snapshots) != 1 || snapshots[0]["peer_state"] != "connecting" {
+		t.Fatal("last safe telemetry not retained")
+	}
+}
+func TestICETraceCacheRetainsChecksBeforeCandidateBinding(t *testing.T) {
+	buf := &diagnosticLogBuffer{}
+	log := slog.New(slog.NewJSONHandler(buf, nil))
+	f := newICELogFactory(log)
+	ms := &MediaSession{sess: session.New("late-bind", "synthetic", "a", "p", time.Now()), log: log}
+	d := newICEDiagnostics(ms, f)
+	ms.diagnostics = d
+	local, _ := ice.NewCandidateHost(&ice.CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 40000, Component: 1})
+	remote, _ := ice.NewCandidateHost(&ice.CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 40001, Component: 1})
+	l := f.NewLogger("ice").(*sanitizedICELogger)
+	l.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", false, forbiddenFormatter{}, forbiddenFormatter{})
+	l.Tracef("Ping STUN from %s to %s", local, remote)
+	l.Tracef("Ping STUN from %s to %s", local, remote)
+	l.attach(d)
+	d.stop("test")
+	waitDiagnosticFlush(t, d)
+	rows := findEvents(buf, "ice candidate pair observed")
+	if len(rows) != 1 || rows[0]["check_requests_attempted"] != float64(2) || rows[0]["ice_role"] != "controlled" {
+		t.Fatalf("lost early check/role: %+v", rows)
+	}
+}
+func TestICEDiagnosticsConcurrentObservationAndStop(t *testing.T) {
+	buf := &diagnosticLogBuffer{}
+	log := slog.New(slog.NewJSONHandler(buf, nil))
+	f := newICELogFactory(log)
+	ms := &MediaSession{sess: session.New("concurrent-cache", "synthetic", "a", "p", time.Now()), log: log}
+	d := newICEDiagnostics(ms, f)
+	ms.diagnostics = d
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 30; j++ {
+				d.observeState("ice", "checking")
+				d.snapshot("test", false)
+			}
+		}()
+	}
+	d.stop("test")
+	wg.Wait()
+	waitDiagnosticFlush(t, d)
+	if len(findEvents(buf, "ice diagnostic capture complete")) != 1 {
+		t.Fatal("cache flush must be exactly once")
 	}
 }
