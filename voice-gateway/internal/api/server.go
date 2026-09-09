@@ -86,6 +86,8 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/calls/{callID}/accepted", s.handleAccepted)
 	mux.HandleFunc("POST /v1/calls/{callID}/terminate", s.handleTerminate)
 	mux.HandleFunc("GET /v1/calls/{callID}", s.handleGet)
+	// Voice-note PCM -> OGG/Opus conversion (HMAC-authenticated, call-agnostic).
+	mux.HandleFunc("POST /v1/audio/opus", s.handleAudioOpus)
 }
 
 // authenticate validates the request HMAC and the single-call session token.
