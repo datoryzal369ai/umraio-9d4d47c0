@@ -33,8 +33,9 @@ const MaxAudioBodyBytes = 8 * 1024 * 1024
 
 // AudioConvertTimeout bounds a single conversion, and AudioQueueTimeout bounds
 // the wait for a free slot. Their sum stays inside the client's 30 s budget.
-const AudioConvertTimeout = 20 * time.Second
-const AudioQueueTimeout = 8 * time.Second
+// They are vars so tests can shorten them; production never reassigns them.
+var AudioConvertTimeout = 20 * time.Second
+var AudioQueueTimeout = 8 * time.Second
 
 
 // maxConcurrentConversions keeps CPU-heavy complexity-10 encodes from starving
