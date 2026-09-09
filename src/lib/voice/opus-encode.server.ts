@@ -136,14 +136,64 @@ async function instantiateFromBytes(bytes: Uint8Array<ArrayBuffer>): Promise<Opu
   }
 }
 
+/**
+ * STAGED LOADER DIAGNOSTICS
+ *
+ * Every loader attempt records a sanitized stage record so a failure can be
+ * attributed exactly (asset missing vs. import rejected vs. wrong value type vs.
+ * instantiate/import-object mismatch vs. embedder code-generation ban) instead
+ * of collapsing into a single ambiguous `not_packaged`. No secret, env value or
+ * audio content is ever recorded.
+ */
+export type OpusLoaderStage = {
+  stage: string;
+  ok: boolean;
+  detail?: string;
+};
+
+let loaderStages: OpusLoaderStage[] = [];
+
+export function opusLoaderStages(): OpusLoaderStage[] {
+  return loaderStages;
+}
+
+function note(stage: string, ok: boolean, detail?: string) {
+  loaderStages.push(detail ? { stage, ok, detail } : { stage, ok });
+}
+
+/** Error text without paths that could leak deployment internals. */
+function sanitize(error: unknown): string {
+  const err = error as Error | undefined;
+  const name = err?.name ?? "Error";
+  const message = String(err?.message ?? error ?? "unknown")
+    .replace(/[A-Za-z]:\\[^\s]+|\/[^\s]*\//g, "<path>")
+    .slice(0, 200);
+  return `${name}: ${message}`;
+}
+
 async function loadCompiledModule(): Promise<OpusExports | null> {
+  let mod: unknown;
   try {
-    const mod = ((await import("./opus/opus.wasm?cfmodule")) as { default?: unknown }).default;
-    if (!(mod instanceof WebAssembly.Module)) return null;
-    const instance = await WebAssembly.instantiate(mod, OPUS_IMPORTS);
+    mod = ((await import("./opus/opus.wasm?cfmodule")) as { default?: unknown }).default;
+    note("module_import", true);
+  } catch (error) {
+    note("module_import", false, sanitize(error));
+    return null;
+  }
+
+  const kind = mod === null || mod === undefined ? String(mod) : typeof mod;
+  const ctor = (mod as { constructor?: { name?: string } })?.constructor?.name ?? "none";
+  const isModule = mod instanceof WebAssembly.Module;
+  note("module_type", isModule, `typeof=${kind} constructor=${ctor} instanceof_Module=${isModule}`);
+  if (!isModule) return null;
+
+  try {
+    const instance = await WebAssembly.instantiate(mod as WebAssembly.Module, OPUS_IMPORTS);
+    note("module_instantiate", true);
     wasmSource = "compiled_module";
     return finishInstance(instance);
-  } catch {
+  } catch (error) {
+    note("module_instantiate", false, sanitize(error));
     return null;
   }
 }
@@ -152,11 +202,16 @@ async function loadHostedModule(): Promise<OpusExports | null> {
   const origin = process.env["PUBLIC_SITE_URL"] ?? "https://umraio.com";
   try {
     const response = await fetch(`${origin}/wasm/opus.wasm`);
+    note("hosted_fetch", response.ok, `status=${response.status}`);
     if (!response.ok) return null;
-    const exports = await instantiateFromBytes(new Uint8Array(await response.arrayBuffer()));
+    const buffer = await response.arrayBuffer();
+    note("hosted_bytes", buffer.byteLength > 0, `bytes=${buffer.byteLength}`);
+    const exports = await instantiateFromBytes(new Uint8Array(buffer));
+    note("hosted_instantiate", Boolean(exports));
     if (exports) wasmSource = "hosted_asset";
     return exports;
-  } catch {
+  } catch (error) {
+    note("hosted_fetch", false, sanitize(error));
     return null;
   }
 }
@@ -172,11 +227,17 @@ export function opusAllowsByteCompilation(): boolean {
 }
 
 async function loadOpusExports(): Promise<OpusExports | null> {
+  loaderStages = [];
+  note("embedded_asset", OPUS_WASM_BASE64.length > 0, `base64_chars=${OPUS_WASM_BASE64.length}`);
+
   const compiled = await loadCompiledModule();
   if (compiled) return compiled;
   if (!opusAllowsByteCompilation()) {
     wasmSource = "unavailable";
-    console.error("[voice] opus_wasm_unavailable source=compiled_module reason=not_packaged");
+    const last = loaderStages.filter((s) => !s.ok).at(-1);
+    console.error(
+      `[voice] opus_wasm_unavailable source=compiled_module stage=${last?.stage ?? "unknown"} detail=${last?.detail ?? "none"}`,
+    );
     return null;
   }
   const hosted = await loadHostedModule();
@@ -187,16 +248,17 @@ async function loadOpusExports(): Promise<OpusExports | null> {
       base64ToBytes(OPUS_WASM_BASE64),
       OPUS_IMPORTS,
     );
+    note("base64_instantiate", true);
     wasmSource = "runtime_compile";
     return finishInstance(instance);
   } catch (error) {
+    note("base64_instantiate", false, sanitize(error));
     wasmSource = "unavailable";
-    console.error(
-      `[voice] opus_wasm_instantiate_failed source=base64 reason=${(error as Error)?.name ?? "unknown"}`,
-    );
+    console.error(`[voice] opus_wasm_instantiate_failed source=base64 reason=${sanitize(error)}`);
     return null;
   }
 }
+
 
 
 function opusExports(): Promise<OpusExports | null> {
