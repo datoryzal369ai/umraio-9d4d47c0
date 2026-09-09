@@ -338,8 +338,8 @@ export const minimaxVoiceEngine: VoiceEngine = {
     if (requireOggOpus || resolveMinimaxContainer() === "ogg_opus") {
       const pcm = await requestMinimaxAudio(config, requestBody("pcm"));
       if (pcm.ok) {
-        const { encodePcmToOggOpus } = await import("./opus-encode.server");
-        const encoded = await encodePcmToOggOpus(pcm.bytes);
+        const { encodeVoiceNotePcm } = await import("./voice-note-encode.server");
+        const encoded = await encodeVoiceNotePcm(pcm.bytes);
         if (encoded.ok) {
           return {
             ok: true,
@@ -350,7 +350,7 @@ export const minimaxVoiceEngine: VoiceEngine = {
         }
         // The PCM call already succeeded — the ONLY retry is the MP3 container.
         console.error(
-          `[voice] minimax_opus_encode_failed reason=${encoded.reason} fallback=${requireOggOpus ? "none" : "mp3"}`,
+          `[voice] minimax_opus_encode_failed reason=${encoded.reason} encoder=${encoded.source} fallback=${requireOggOpus ? "none" : "mp3"}`,
         );
         // A live call cannot use MP3: retrying it only adds seconds of latency
         // before the caller-audible fallback engine runs.
