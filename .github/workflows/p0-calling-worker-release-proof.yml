@@ -1,0 +1,49 @@
+name: P0 Calling Worker release proof
+on:
+  push:
+    branches: [codex/p0-calling-secure-release-20260909]
+    paths: [.github/workflows/p0-calling-worker-release-proof.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Verify only the released Calling patch identity and current gateway health
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,time,urllib.request
+          expected='5a99d0166560afc8c0cfa9c9bb3171105e3f7ec6'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):return None
+          opener=urllib.request.build_opener(NoRedirect())
+          def read(url):
+              with opener.open(url,timeout=15) as r:
+                  return json.loads(r.read(65536))
+          def values(obj):
+              if isinstance(obj,dict):
+                  for value in obj.values():yield from values(value)
+              elif isinstance(obj,list):
+                  for value in obj:yield from values(value)
+              else:yield obj
+          keys={'source','source_commit','source_commit_sha','commit','commit_sha','git_sha','build_version','version','environment','env','build_time','built_at','deployed_at','status'}
+          def safe(obj):
+              if not isinstance(obj,dict):return {}
+              return {k:v for k,v in obj.items() if k in keys and isinstance(v,(str,int,float,bool))}
+          for attempt in range(18):
+              try:
+                  worker=read('https://umraio.com/api/public/health/build')
+                  if expected in list(values(worker)):break
+              except Exception:
+                  worker={}
+              time.sleep(5)
+          else:
+              print(json.dumps({'calling_worker_release':'NOT_VERIFIED','observed_build':safe(worker)}))
+              raise SystemExit(1)
+          gateway=read('https://umraio-voice-gateway.fly.dev/health')
+          print(json.dumps({'calling_worker_release':'PASS','expected_commit_observed':expected,'observed_build':safe(worker),'gateway':{k:gateway.get(k) for k in ['status','build_version','webrtc','speech','active_sessions']},'mutations':0,'builds':0,'lovable_credits_used':0,'audible_acceptance':'PENDING_FOUNDER'}))
+          assert gateway.get('status')=='ok' and gateway.get('build_version')=='336242aef606cfbfd7a214922858768d510a63fb'
+          PY
