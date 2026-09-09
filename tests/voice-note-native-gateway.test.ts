@@ -79,7 +79,7 @@ describe("signed converter request", () => {
       await signGatewayRequest(SECRET, ts, String(call.init.body)),
     );
     // Signed bodies must never follow a redirect.
-    expect(call.init.redirect).toBe("error");
+    expect(call.init.redirect).toBe("manual");
     expect(JSON.parse(String(call.init.body))).toEqual({ pcm_base64: bytesToBase64(pcm) });
     expect(String(call.init.body)).not.toContain(SECRET);
   });
@@ -134,6 +134,16 @@ describe("signed converter request", () => {
             jsonResponse({ ogg_base64: bytesToBase64(new Uint8Array(400).fill(0x49)) })) as unknown as typeof fetch,
         },
         reason: "gateway_invalid_container",
+      },
+      {
+        name: "redirect",
+        args: {
+          gatewayUrl: URL_BASE,
+          secret: SECRET,
+          fetchImpl: (async () =>
+            new Response(null, { status: 302, headers: { location: "http://evil.test" } })) as unknown as typeof fetch,
+        },
+        reason: "gateway_redirect_rejected",
       },
       {
         name: "oversized",

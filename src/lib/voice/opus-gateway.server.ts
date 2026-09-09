@@ -122,8 +122,9 @@ export async function encodeOggOpusViaGateway(
         [GATEWAY_SIGNATURE_HEADER]: await signGatewayRequest(args.secret, ts, body),
       },
       body,
-      // A signed body must never be replayed to a redirect target.
-      redirect: "error",
+      // A signed body must never be replayed to a redirect target. Workers only
+      // support "follow" | "manual", so redirects are surfaced and rejected below.
+      redirect: "manual",
       signal: AbortSignal.timeout(args.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     });
   } catch (e) {
@@ -134,6 +135,9 @@ export async function encodeOggOpusViaGateway(
     return { ok: false, reason: "gateway_unavailable" };
   }
 
+  if (response.status >= 300 && response.status < 400) {
+    return { ok: false, reason: "gateway_redirect_rejected" };
+  }
   if (!response.ok) return { ok: false, reason: `gateway_http_${response.status}` };
 
   const declared = Number(response.headers.get("content-length") ?? "0");
