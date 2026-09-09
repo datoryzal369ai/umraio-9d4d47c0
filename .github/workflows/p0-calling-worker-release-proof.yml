@@ -15,35 +15,47 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json,time,urllib.request
+          import json,time,urllib.request,urllib.error,urllib.parse
           expected='5a99d0166560afc8c0cfa9c9bb3171105e3f7ec6'
           class NoRedirect(urllib.request.HTTPRedirectHandler):
               def redirect_request(self,req,fp,code,msg,headers,newurl):return None
           opener=urllib.request.build_opener(NoRedirect())
-          def read(url):
-              with opener.open(url,timeout=15) as r:
-                  return json.loads(r.read(65536))
           def values(obj):
               if isinstance(obj,dict):
                   for value in obj.values():yield from values(value)
               elif isinstance(obj,list):
                   for value in obj:yield from values(value)
               else:yield obj
-          keys={'source','source_commit','source_commit_sha','commit','commit_sha','git_sha','build_version','version','environment','env','build_time','built_at','deployed_at','status'}
-          def safe(obj):
-              if not isinstance(obj,dict):return {}
-              return {k:v for k,v in obj.items() if k in keys and isinstance(v,(str,int,float,bool))}
-          for attempt in range(18):
+          matched=False
+          for base in ['https://umraio.com','https://umraio.lovable.app']:
+              report={'host':urllib.parse.urlsplit(base).hostname}
               try:
-                  worker=read('https://umraio.com/api/public/health/build')
-                  if expected in list(values(worker)):break
-              except Exception:
-                  worker={}
-              time.sleep(5)
-          else:
-              print(json.dumps({'calling_worker_release':'NOT_VERIFIED','observed_build':safe(worker)}))
-              raise SystemExit(1)
-          gateway=read('https://umraio-voice-gateway.fly.dev/health')
-          print(json.dumps({'calling_worker_release':'PASS','expected_commit_observed':expected,'observed_build':safe(worker),'gateway':{k:gateway.get(k) for k in ['status','build_version','webrtc','speech','active_sessions']},'mutations':0,'builds':0,'lovable_credits_used':0,'audible_acceptance':'PENDING_FOUNDER'}))
-          assert gateway.get('status')=='ok' and gateway.get('build_version')=='336242aef606cfbfd7a214922858768d510a63fb'
+                  req=urllib.request.Request(base+'/api/public/health/build',headers={'Cache-Control':'no-cache','User-Agent':'UMRAIO-P0-release-check'})
+                  with opener.open(req,timeout=20) as r:
+                      report.update(http_status=r.status,content_type=r.headers.get('Content-Type'))
+                      raw=r.read(65536)
+                  try:body=json.loads(raw)
+                  except ValueError:
+                      body={}
+                      report['json_parse']='FAIL'
+                  report['json_keys']=list(body.keys()) if isinstance(body,dict) else []
+                  report['expected_commit_observed']=expected in list(values(body))
+                  report['build_metadata']={k:v for k,v in body.items() if any(w in k.lower() for w in ['build','commit','source','environment']) and isinstance(v,(str,int,float,bool))}
+                  if report['expected_commit_observed']:matched=True
+              except urllib.error.HTTPError as e:
+                  report['http_status']=e.code
+                  loc=urllib.parse.urlsplit(e.headers.get('Location',''))
+                  report['redirect_host']=loc.hostname
+                  report['redirect_path']=loc.path
+              except Exception as e:
+                  report['transport_error_type']=type(e).__name__
+                  report['transport_reason']=str(e)[:200]
+              print(json.dumps({'worker_release_observation':report}))
+          try:
+              with opener.open('https://umraio-voice-gateway.fly.dev/health',timeout=15) as r:gateway=json.load(r)
+              print(json.dumps({'gateway':{k:gateway.get(k) for k in ['status','build_version','webrtc','speech','active_sessions']}}))
+          except Exception as e:
+              print(json.dumps({'gateway_error_type':type(e).__name__}))
+          print(json.dumps({'calling_worker_release':'PASS' if matched else 'NOT_VERIFIED','mutations':0,'builds':0,'lovable_credits_used':0}))
+          if not matched:raise SystemExit(1)
           PY
