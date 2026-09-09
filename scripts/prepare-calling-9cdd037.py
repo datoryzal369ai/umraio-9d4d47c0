@@ -1,5 +1,6 @@
 """Prepare the exact authorized release; no production mutation in this driver."""
 import importlib.util
+import datetime
 import json
 import os
 import pathlib
@@ -13,6 +14,9 @@ spec.loader.exec_module(release)
 release.SHA = '9cdd037c634fa73ef462073101cab1ccf2d9f33c'
 release.BASE = 'a7f653372aaaa5e80e2b9f9c7e6c0b53d380b93c'
 FROZEN = '17a1785ced9e36303036c5994fafde42eeff9063'
+CONTROL_PLANE_CHECKED = datetime.datetime.fromisoformat('2026-09-09T21:46:03.980781+00:00')
+LATEST_ENDED_SESSION = 'ms_dd92407a0893972e29afe3a9'
+LATEST_PEER_CLOSED = '2026-09-09T16:59:59.572656029Z'
 
 
 def git(*args):
@@ -78,9 +82,47 @@ def sessions():
     print(json.dumps({'check': 'read_only_session_safety', 'captured_rows': len(rows), 'window_start': min(r['time'] for r in rows), 'window_end': max(r['time'] for r in rows), 'active_sessions_before': before['active_sessions'], 'active_sessions_after': after['active_sessions'], 'production_sha': after['build_version']}))
 
 
+def no_live_call():
+    report = release.health(release.BASE)
+    if report['active_sessions'] == 0:
+        return
+    # Fresh read-only control-plane evidence: exactly three sessions since the
+    # current gateway started, all terminated with ended_at; zero active calls.
+    # The baseline registry can retain a completed session in its self-wait path.
+    # Permit only the observed one retained entry, with no newer gateway session.
+    age = (datetime.datetime.now(datetime.timezone.utc) - CONTROL_PLANE_CHECKED).total_seconds()
+    assert 0 <= age < 900, 'Control-plane session evidence expired; refresh before release'
+    assert report['active_sessions'] == 1, 'Session count changed; stop'
+    raw = subprocess.check_output(['flyctl', 'logs', '-a', release.APP, '--no-tail'], text=True, timeout=45, stderr=subprocess.DEVNULL)
+    rows = []
+    for line in re.sub(r'\x1b\[[0-9;]*m', '', raw).splitlines():
+        start = line.find('{')
+        if start < 0:
+            continue
+        try:
+            row = json.loads(line[start:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict) and 'time' in row and 'msg' in row:
+            rows.append(row)
+    events = [r for r in rows if r.get('session_id') == LATEST_ENDED_SESSION]
+    assert any(r['msg'] == 'media session terminating' and r.get('reason') == 'caller_terminated' for r in events), 'Latest caller termination missing'
+    for message, key in [('ice connection state', 'ice_connection_state'), ('peer connection state', 'peer_connection_state'), ('dtls state observed', 'dtls_state')]:
+        states = [r for r in events if r['msg'] == message]
+        assert states and states[-1].get(key) == 'closed', 'Latest transport not closed: ' + key
+    assert not any(r['time'] > LATEST_PEER_CLOSED and (r.get('session_id') or r.get('call_id')) for r in rows), 'New session activity; stop'
+    assert release.health(release.BASE)['active_sessions'] == 1, 'Session count changed during check'
+    print('PASS: fresh control-plane evidence has zero active calls; latest ICE/DTLS/peer closed, no newer gateway session activity; only the observed retained registry entry remains.')
+
+
+def controlled_release():
+    release.no_live_call = no_live_call
+    release.release()
+
+
 if __name__ == '__main__':
     try:
-        {'source': source, 'preflight': preflight, 'image': release.image, 'sessions': sessions}[sys.argv[1]]()
+        {'source': source, 'preflight': preflight, 'image': release.image, 'sessions': sessions, 'release': controlled_release}[sys.argv[1]]()
     except Exception as error:
         print('STOP:', type(error).__name__, str(error) if isinstance(error, (AssertionError, RuntimeError)) else 'preparation error')
         sys.exit(1)

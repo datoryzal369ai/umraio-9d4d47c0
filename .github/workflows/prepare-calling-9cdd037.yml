@@ -1,7 +1,7 @@
-name: Controlled Calling release - session safety check
+name: Controlled exact Calling gateway release 9cdd037
 
-# Artifact preparation only. No production update, publish, secret setter or merge.
-# Publication is gated until Lovable is synced to the exact authorized candidate.
+# Authorized image-only gateway release. Reuse the prepared immutable artifact.
+# Worker publication is performed separately after its exact source is verified.
 on:
   push:
     branches: [codex/release-calling-9cdd037]
@@ -22,7 +22,7 @@ jobs:
     env:
       CANDIDATE: 9cdd037c634fa73ef462073101cab1ccf2d9f33c
       ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:5c009948bad5d77321a0ce3522bf3aaec66977ee3a291b010e5b0fca454a2266
-      CANDIDATE_IMAGE: registry.fly.io/umraio-voice-gateway:calling-9cdd037c634fa73ef462073101cab1ccf2d9f33c
+      CANDIDATE_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:676344eb825bd9e1dadb60ddd0a7761e9fe4c366d50c70ce8a28d28cf52f7c71
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -34,15 +34,33 @@ jobs:
           path: candidate
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify exact source and existing successful validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 release-driver/scripts/prepare-calling-9cdd037.py source
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
         with:
           version: 0.4.101
-      - name: Read-only gateway session safety evidence
+      - name: Preserve current machine rollback and verify live baselines
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: python3 release-driver/scripts/prepare-calling-9cdd037.py sessions
-      - name: Confirm no source or production mutation
+        run: python3 release-driver/scripts/prepare-calling-9cdd037.py preflight
+      - name: Retrieve prepared candidate and rollback artifacts without rebuilding
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl auth docker >/dev/null
+          docker pull "$ROLLBACK_IMAGE"
+          docker pull "$CANDIDATE_IMAGE"
+          docker run --rm --network none --entrypoint /bin/sh "$CANDIDATE_IMAGE" -c \
+            'grep -aq "ice session snapshot" /gateway && grep -aq "ice candidate pair observed" /gateway && grep -aq "ice diagnostic capture complete" /gateway'
+          python3 release-driver/scripts/prepare-calling-9cdd037.py image
+      - name: Release image only with session guard and automatic health rollback
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 release-driver/scripts/prepare-calling-9cdd037.py release
+      - name: Confirm exact runtime source remains unchanged
         run: |
           git -C candidate diff --exit-code
           git -C release-driver diff --exit-code
-          echo 'Session evidence captured. Existing artifact reused; NO build, deployment, merge, Worker publication, secret or network change.'
+          echo 'Exact gateway image released. No rebuild, merge, Worker publication, secret or network change.'
