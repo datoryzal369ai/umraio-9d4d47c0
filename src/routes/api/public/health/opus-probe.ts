@@ -11,11 +11,42 @@ import { createFileRoute } from '@tanstack/react-router'
 export const Route = createFileRoute('/api/public/health/opus-probe')({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
         const runtime = {
           navigator: typeof navigator === 'undefined' ? 'none' : String((navigator as { userAgent?: string }).userAgent ?? 'unknown'),
           node_env: process.env['NODE_ENV'] ?? 'unset',
           has_process_versions: typeof process !== 'undefined' && Boolean((process as { versions?: unknown }).versions),
+        }
+
+        /**
+         * NATIVE CONVERTER PROBE — off by default so this public endpoint never
+         * generates a real media-plane request. It is enabled only by an
+         * explicit non-production opt-in used by the isolated local harness.
+         */
+        const wantsGateway = new URL(request.url).searchParams.get('mode') === 'gateway'
+        if (wantsGateway && process.env['OPUS_PROBE_ALLOW_GATEWAY'] === '1') {
+          const { encodeVoiceNotePcm } = await import('@/lib/voice/voice-note-encode.server')
+          const pcm = syntheticPcm()
+          const out = await encodeVoiceNotePcm(pcm)
+          return Response.json({
+            ok: out.ok,
+            runtime,
+            mode: 'gateway',
+            encoder: out.source,
+            ...(out.ok
+              ? {
+                  mime_type: 'audio/ogg',
+                  container: {
+                    magic: String.fromCharCode(...out.bytes.subarray(0, 4)),
+                    opus_head: String.fromCharCode(...out.bytes.subarray(28, 36)),
+                    bytes: out.bytes.byteLength,
+                  },
+                }
+              : { reason: out.reason }),
+          })
+        }
+        if (wantsGateway) {
+          return Response.json({ ok: false, runtime, mode: 'gateway', reason: 'gateway_probe_disabled' })
         }
 
         const { OPUS_WASM_BASE64 } = await import('@/lib/voice/opus/opus-wasm.base64')
