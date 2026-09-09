@@ -64,7 +64,13 @@ function makeDb(options: {
         update: (payload: any) => {
           writes.push({ table, op: "update", payload });
           if (state.session) state.session = { ...state.session, ...payload };
-          const chain: any = { eq: () => chain, then: (r: any) => Promise.resolve(null).then(r) };
+          const chain: any = {
+            eq: () => chain,
+            is: () => chain,
+            select: () => chain,
+            maybeSingle: async () => ({ data: state.session, error: null }),
+            then: (r: any) => Promise.resolve(null).then(r),
+          };
           return chain;
         },
       };
@@ -606,8 +612,9 @@ describe("processGatewayCallback", () => {
 
   it("does not write anything when the answered rule is not satisfied", async () => {
     const { db, writes } = makeDb({ session: { ...baseSession, meta_accepted_at: null } });
-    const r = await processGatewayCallback({ db, payload: readyEvent });
-    expect(r).toEqual({ applied: false, rejection: "media_ready_without_meta_accept" });
+    await expect(processGatewayCallback({ db, payload: readyEvent })).rejects.toThrow(
+      "call_persistence_awaiting_meta_accept",
+    );
     expect(writes).toHaveLength(0);
   });
 

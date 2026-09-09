@@ -16,7 +16,8 @@ const db = {
   outboundSends: 0,
 };
 
-vi.mock("@/integrations/supabase/client.server", () => {
+// Mock the SDK boundary so concurrent lazy imports use one real client wrapper.
+vi.mock("@supabase/supabase-js", () => {
   const table = (name: string) => {
     const filters: Row = {};
     const chain: Record<string, unknown> = {};
@@ -39,7 +40,9 @@ vi.mock("@/integrations/supabase/client.server", () => {
           )
         ) {
           const dup = { error: { code: "23505", message: "duplicate key" } };
-          return Object.assign(Promise.resolve(dup), chain);
+          // Preserve the insert result. Assigning the query chain here
+          // overwrote Promise.then and hid the real 23505 from the handler.
+          return Promise.resolve(dup);
         }
         if (!row["created_at"]) row["created_at"] = new Date().toISOString();
         db.messages.push(row);
@@ -87,13 +90,13 @@ vi.mock("@/integrations/supabase/client.server", () => {
     return chain;
   };
   return {
-    supabaseAdmin: {
+    createClient: () => ({
       from: (name: string) => table(name),
       rpc: async (_fn: string, args: { token: string }) => ({
         data: args.token === CRON_SECRET,
         error: null,
       }),
-    },
+    }),
   };
 });
 
@@ -168,6 +171,8 @@ let errSpy: ReturnType<typeof vi.spyOn>;
 const logged: string[] = [];
 
 beforeEach(() => {
+  vi.stubEnv("SUPABASE_URL", "https://supabase.test");
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
   db.messages = [];
   db.aiCalls = 0;
   db.outboundSends = 0;
@@ -199,6 +204,7 @@ afterEach(() => {
   logSpy.mockRestore();
   errSpy.mockRestore();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("C1 — autonomy hooks require server-only CRON_SECRET", () => {

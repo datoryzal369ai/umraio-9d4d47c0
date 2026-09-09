@@ -25,6 +25,9 @@ type Event struct {
 	Nonce           string `json:"nonce"`
 	InboundPackets  uint64 `json:"inbound_packets,omitempty"`
 	OutboundPackets uint64 `json:"outbound_packets,omitempty"`
+	FirstInboundAt  string `json:"first_inbound_rtp_at,omitempty"`
+	FirstOutboundAt string `json:"first_outbound_rtp_at,omitempty"`
+	MediaReadyAt    string `json:"media_ready_at,omitempty"`
 	Reason          string `json:"reason,omitempty"`
 }
 

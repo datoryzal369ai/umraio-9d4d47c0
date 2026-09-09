@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,7 +31,27 @@ func (p *modedPipeline) Attach(ctx context.Context, t umedia.Transport) error {
 	return p.countingPipeline.Attach(ctx, t)
 }
 
-func logLines(buf *bytes.Buffer) []map[string]any {
+// Snapshot reads and slog writes share one lock. This is a test fixture only.
+type diagnosticLogBuffer struct {
+	mu   sync.Mutex
+	data bytes.Buffer
+}
+
+func (b *diagnosticLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.data.Write(p)
+}
+
+func (b *diagnosticLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.data.String()
+}
+
+type diagnosticLogText interface{ String() string }
+
+func logLines(buf diagnosticLogText) []map[string]any {
 	var out []map[string]any
 	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
 		if l == "" {
@@ -44,7 +65,7 @@ func logLines(buf *bytes.Buffer) []map[string]any {
 	return out
 }
 
-func findEvents(buf *bytes.Buffer, msg string) []map[string]any {
+func findEvents(buf diagnosticLogText, msg string) []map[string]any {
 	var out []map[string]any
 	for _, m := range logLines(buf) {
 		if m["msg"] == msg {
@@ -95,7 +116,7 @@ func TestMediaReadyRequiresInboundRTP(t *testing.T) {
 // exactly once, outbound Opus counted, termination stats correct, and no
 // sensitive material anywhere in the diagnostics.
 func TestMediaDiagnosticsEndToEnd(t *testing.T) {
-	buf := &bytes.Buffer{}
+	buf := &diagnosticLogBuffer{}
 	log := slog.New(slog.NewJSONHandler(buf, nil))
 	e, err := NewEngine(Config{NegotiateTO: 10 * time.Second, Logger: log})
 	if err != nil {
@@ -111,6 +132,7 @@ func TestMediaDiagnosticsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("establish: %v", err)
 	}
+	ms.NotifyAccepted()
 	if err := caller.SetRemoteDescription(pion.SessionDescription{Type: pion.SDPTypeAnswer, SDP: answer}); err != nil {
 		t.Fatalf("caller answer: %v", err)
 	}

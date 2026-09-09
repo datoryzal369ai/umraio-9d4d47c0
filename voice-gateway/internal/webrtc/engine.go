@@ -102,6 +102,7 @@ type MediaSession struct {
 	outbound     atomic.Uint64
 	trackFired   atomic.Bool
 	accepted     atomic.Bool
+	connected    atomic.Bool
 	outboundErrs atomic.Uint64
 }
 
@@ -183,22 +184,7 @@ func (e *Engine) Establish(
 
 	_ = s.Advance(session.StateConnecting, "", time.Now())
 
-	pc.OnConnectionStateChange(func(st pion.PeerConnectionState) {
-		log.Info("peer connection state", "call_id", s.CallID, "session_id", s.ID,
-			"peer_connection_state", st.String())
-		switch st {
-		case pion.PeerConnectionStateConnected:
-			s.MarkICEConnected(time.Now())
-			s.MarkOutboundReady()
-			ms.logTransportDiagnostics()
-			ms.maybeFireMediaReady()
-		case pion.PeerConnectionStateFailed:
-			_ = s.Advance(session.StateFailed, "ice_failed", time.Now())
-			ms.Terminate("ice_failed")
-		case pion.PeerConnectionStateDisconnected, pion.PeerConnectionStateClosed:
-			ms.Terminate("peer_disconnected")
-		}
-	})
+	pc.OnConnectionStateChange(ms.handleConnectionState)
 
 	pc.OnICEConnectionStateChange(func(st pion.ICEConnectionState) {
 		log.Info("ice connection state", "call_id", s.CallID, "session_id", s.ID,
@@ -333,8 +319,11 @@ func (ms *MediaSession) readInbound(remote *pion.TrackRemote) {
 	}
 }
 
-// maybeFireMediaReady applies session.MediaReadyRule and emits at most once.
+// Consume the one-shot only after the Worker confirms persisted acceptance.
 func (ms *MediaSession) maybeFireMediaReady() {
+	if !ms.accepted.Load() {
+		return
+	}
 	now := time.Now()
 	if !ms.sess.TryFireMediaReady(now) {
 		return
@@ -361,8 +350,8 @@ func (ms *MediaSession) logTransportDiagnostics() {
 		remoteFam = addressFamily(pair.Remote.Address)
 	}
 	dtls := "unknown"
-	if t := ms.pc.SCTP(); t != nil && t.Transport() != nil {
-		dtls = t.Transport().State().String()
+	if t := audioDTLSTransport(ms.pc); t != nil {
+		dtls = t.State().String()
 	}
 	ms.log.Info("transport diagnostics", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
 		"selected_pair_type", pairType,
@@ -375,11 +364,26 @@ func (ms *MediaSession) logTransportDiagnostics() {
 }
 
 func selectedPair(pc *pion.PeerConnection) (*pion.ICECandidatePair, error) {
-	transport := pc.SCTP()
-	if transport == nil || transport.Transport() == nil || transport.Transport().ICETransport() == nil {
+	transport := audioDTLSTransport(pc)
+	if transport == nil || transport.ICETransport() == nil {
 		return nil, errors.New("webrtc: no ice transport")
 	}
-	return transport.Transport().ICETransport().GetSelectedCandidatePair()
+	return transport.ICETransport().GetSelectedCandidatePair()
+}
+
+// Audio-only calls need not negotiate SCTP. Inspect the actual RTP transport.
+func audioDTLSTransport(pc *pion.PeerConnection) *pion.DTLSTransport {
+	for _, sender := range pc.GetSenders() {
+		if transport := sender.Transport(); transport != nil {
+			return transport
+		}
+	}
+	for _, receiver := range pc.GetReceivers() {
+		if transport := receiver.Transport(); transport != nil {
+			return transport
+		}
+	}
+	return nil
 }
 
 // addressFamily reduces an address to an enum. The address itself is discarded.
@@ -406,6 +410,16 @@ func (ms *MediaSession) NotifyAccepted() string {
 		return string(umedia.GreetingClosed)
 	}
 	ms.accepted.Store(true)
+	// Pre-accept may already have established transport and delivered RTP.
+	// Recheck now even if no fresh caller packet arrives after acceptance.
+	ms.maybeFireMediaReady()
+	return ms.maybeStartGreeting()
+}
+
+func (ms *MediaSession) maybeStartGreeting() string {
+	if !ms.accepted.Load() || !ms.connected.Load() {
+		return "pending_transport"
+	}
 	greeter, ok := ms.pipeline.(umedia.Greeter)
 	if !ok {
 		ms.log.Info("post_accept_greeting", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
@@ -421,6 +435,56 @@ func (ms *MediaSession) NotifyAccepted() string {
 // Accepted reports whether the control plane confirmed the Meta accept.
 func (ms *MediaSession) Accepted() bool { return ms.accepted.Load() }
 
+// handleConnectionState applies only lifecycle consequences. In particular,
+// Pion's Disconnected state is transient and may recover to Connected; Failed
+// and Closed are the terminal signals. Negotiation and media-ready rules remain
+// owned by their existing paths.
+func (ms *MediaSession) handleConnectionState(st pion.PeerConnectionState) {
+	action, terminal, recoverable := "observe", false, false
+	switch st {
+	case pion.PeerConnectionStateConnected:
+		action = "mark_connected"
+	case pion.PeerConnectionStateDisconnected:
+		action, recoverable = "await_recovery", true
+	case pion.PeerConnectionStateFailed:
+		action, terminal = "fail_and_cleanup", true
+	case pion.PeerConnectionStateClosed:
+		action, terminal = "close_and_cleanup", true
+	}
+	ms.log.Info("peer connection state",
+		"call_id", ms.sess.CallID,
+		"session_id", ms.sess.ID,
+		"peer_connection_state", st.String(),
+		"lifecycle_action", action,
+		"terminal", terminal,
+		"recoverable", recoverable)
+
+	switch st {
+	case pion.PeerConnectionStateConnected:
+		ms.connected.Store(true)
+		ms.sess.MarkICEConnected(time.Now())
+		ms.sess.MarkOutboundReady()
+		ms.logTransportDiagnostics()
+		ms.maybeFireMediaReady()
+		// Start once both conditions hold, independent of inbound RTP. This
+		// prevents the initial greeting being sent to an unbound track.
+		ms.maybeStartGreeting()
+	case pion.PeerConnectionStateDisconnected:
+		ms.connected.Store(false)
+		ms.sess.MarkTransportDisconnected()
+		// Deliberately wait for Pion to report Connected, Failed or Closed.
+		// A transient network interruption must not end an otherwise live call.
+		return
+	case pion.PeerConnectionStateFailed:
+		ms.connected.Store(false)
+		_ = ms.sess.Advance(session.StateFailed, "ice_failed", time.Now())
+		ms.Terminate("ice_failed")
+	case pion.PeerConnectionStateClosed:
+		ms.connected.Store(false)
+		ms.Terminate("peer_closed")
+	}
+}
+
 // SendOpus implements media.Transport.
 func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	ms.mu.Lock()
@@ -428,6 +492,9 @@ func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	ms.mu.Unlock()
 	if closed {
 		return ErrClosed
+	}
+	if !ms.connected.Load() {
+		return errors.New("webrtc: outbound transport not connected")
 	}
 	d := frame.Duration
 	if d <= 0 {
@@ -454,7 +521,10 @@ func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	return nil
 }
 
-// Terminate implements media.Transport and is idempotent.
+// Terminate implements media.Transport and is idempotent. State becomes
+// terminal synchronously, while resource cleanup runs on its own goroutine.
+// This is required when a pipeline turn itself requests termination: calling
+// pipeline.Close inline would make that goroutine wait on its own WaitGroup.
 func (ms *MediaSession) Terminate(reason string) {
 	ms.closeOnce.Do(func() {
 		ms.mu.Lock()
@@ -462,22 +532,50 @@ func (ms *MediaSession) Terminate(reason string) {
 		ms.mu.Unlock()
 		now := time.Now()
 		pre := ms.sess.Stats()
+		effectiveReason := reason
+		if session.IsTerminal(pre.State) && pre.Reason != "" {
+			effectiveReason = pre.Reason
+		}
 		ms.log.Info("media session terminating", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
 			"state", string(pre.State),
 			"inbound_packets", pre.InboundPackets, "outbound_packets", pre.OutboundPackets,
 			"media_ready", !pre.MediaReadyAt.IsZero(),
 			"pipeline_mode", ms.pipelineMode,
-			"reason", reason)
+			"reason", effectiveReason)
 		if !session.IsTerminal(ms.sess.State()) {
-			_ = ms.sess.Advance(session.StateTerminating, reason, now)
-			_ = ms.sess.Advance(session.StateTerminated, reason, now)
+			_ = ms.sess.Advance(session.StateTerminating, effectiveReason, now)
+			_ = ms.sess.Advance(session.StateTerminated, effectiveReason, now)
 		}
-		ms.pipeline.Close(reason)
-		_ = ms.pc.Close()
-		if ms.hooks.OnTerminated != nil {
-			go ms.hooks.OnTerminated(ms.sess, reason)
+		// Failed and Closed callbacks are dispatched independently by Pion. A
+		// failure may therefore land while this cleanup path is transitioning;
+		// prefer the final stored terminal reason for the callback.
+		post := ms.sess.Stats()
+		if session.IsTerminal(post.State) && post.Reason != "" {
+			effectiveReason = post.Reason
 		}
+		go ms.finishTerminate(effectiveReason)
 	})
+}
+
+func (ms *MediaSession) finishTerminate(reason string) {
+	if ms.pipeline != nil {
+		ms.pipeline.Close(reason)
+	}
+	if ms.pc != nil {
+		_ = ms.pc.Close()
+	}
+	post := ms.sess.Stats()
+	ms.log.Info("media session cleanup complete",
+		"call_id", ms.sess.CallID,
+		"session_id", ms.sess.ID,
+		"state", string(post.State),
+		"inbound_packets", post.InboundPackets,
+		"outbound_packets", post.OutboundPackets,
+		"pipeline_mode", ms.pipelineMode,
+		"reason", reason)
+	if ms.hooks.OnTerminated != nil {
+		ms.hooks.OnTerminated(ms.sess, reason)
+	}
 }
 
 // ConnectionState exposes the raw peer state for health reporting.

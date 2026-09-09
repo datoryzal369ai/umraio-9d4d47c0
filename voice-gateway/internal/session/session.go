@@ -60,6 +60,7 @@ type Session struct {
 	inboundPackets  uint64
 	outboundPackets uint64
 	firstInboundAt  time.Time
+	firstOutboundAt time.Time
 	mediaReadyAt    time.Time
 	mediaReadyFired bool
 	outboundReady   bool
@@ -133,6 +134,15 @@ func (s *Session) MarkOutboundReady() {
 	s.mu.Unlock()
 }
 
+// MarkTransportDisconnected clears current readiness without ending a
+// recoverable session or discarding the measured packet history.
+func (s *Session) MarkTransportDisconnected() {
+	s.mu.Lock()
+	s.iceConnected = false
+	s.outboundReady = false
+	s.mu.Unlock()
+}
+
 // RecordInbound counts a genuinely received RTP audio packet.
 func (s *Session) RecordInbound(now time.Time) {
 	s.mu.Lock()
@@ -146,6 +156,9 @@ func (s *Session) RecordInbound(now time.Time) {
 func (s *Session) RecordOutbound() {
 	s.mu.Lock()
 	s.outboundPackets++
+	if s.firstOutboundAt.IsZero() {
+		s.firstOutboundAt = time.Now()
+	}
 	s.mu.Unlock()
 }
 
@@ -161,12 +174,10 @@ func (s *Session) MediaReadyRule() bool {
 
 // TryFireMediaReady reports true exactly once, the first time the rule holds.
 func (s *Session) TryFireMediaReady(now time.Time) bool {
-	if !s.MediaReadyRule() {
-		return false
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.mediaReadyFired {
+	// Check and consume under one lock so termination cannot slip between.
+	if s.mediaReadyFired || !s.iceConnected || !s.outboundReady || s.inboundPackets == 0 || IsTerminal(s.state) {
 		return false
 	}
 	s.mediaReadyFired = true
@@ -184,6 +195,8 @@ type Stats struct {
 	StateChangedAt  time.Time `json:"state_changed_at"`
 	InboundPackets  uint64    `json:"inbound_packets"`
 	OutboundPackets uint64    `json:"outbound_packets"`
+	FirstInboundAt  time.Time `json:"first_inbound_rtp_at,omitzero"`
+	FirstOutboundAt time.Time `json:"first_outbound_rtp_at,omitzero"`
 	MediaReadyAt    time.Time `json:"media_ready_at,omitzero"`
 	Reason          string    `json:"termination_reason,omitempty"`
 }
@@ -195,6 +208,7 @@ func (s *Session) Stats() Stats {
 		SessionID: s.ID, CallID: s.CallID, State: s.state,
 		CreatedAt: s.CreatedAt, StateChangedAt: s.stateChangedAt,
 		InboundPackets: s.inboundPackets, OutboundPackets: s.outboundPackets,
+		FirstInboundAt: s.firstInboundAt, FirstOutboundAt: s.firstOutboundAt,
 		MediaReadyAt: s.mediaReadyAt, Reason: s.terminationRsn,
 	}
 }

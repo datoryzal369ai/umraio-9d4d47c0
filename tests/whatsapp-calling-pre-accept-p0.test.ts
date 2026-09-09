@@ -69,6 +69,8 @@ function makeDb(initial?: Record<string, unknown> | null) {
           const chain: any = {
             eq: () => chain,
             is: () => chain,
+            select: () => chain,
+            maybeSingle: async () => ({ data: state.session, error: null }),
             then: (r: any) => Promise.resolve(null).then(r),
           };
           return chain;
@@ -358,8 +360,8 @@ describe("P0 — answered requires real media", () => {
     expect(state.session!["status"]).toBe("answered");
     const timings = state.session!["stage_timings"] as Record<string, unknown>;
     expect(timings["media_ready_at"]).toBe(now.toISOString());
-    expect(timings["first_inbound_rtp_at"]).toBe(now.toISOString());
-    expect(timings["first_outbound_rtp_at"]).toBe(now.toISOString());
+    expect(timings["first_inbound_rtp_at"]).toBeUndefined();
+    expect(timings["first_outbound_rtp_at"]).toBeUndefined();
   });
 });
 

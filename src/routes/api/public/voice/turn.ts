@@ -61,6 +61,7 @@ export const Route = createFileRoute("/api/public/voice/turn")({
                   voice_id: result.voiceId ?? "",
                   language_boost: result.languageBoost ?? "",
                   end_call: result.endCall,
+                  awaiting_completion: result.awaitingCompletion === true,
                   reason: result.reason ?? "",
                 }
               : {
