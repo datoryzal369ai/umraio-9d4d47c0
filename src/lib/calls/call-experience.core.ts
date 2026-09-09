@@ -116,7 +116,7 @@ const FAREWELLS_EN = [
  * hang up is the defect this guard removes.
  */
 const HANGUP_COMMAND =
-  /\b(?:putuskan(?:lah)?(?:\s+(?:talian|panggilan))?|tamatkan(?:lah)?\s+(?:talian|panggilan|call)|hang\s?up|hangup|end\s+(?:the\s+|this\s+)?call|letak(?:kan)?\s+(?:telefon|phone))\b/i;
+  /\b(?:putuskan(?:lah)?\s+(?:talian|panggilan)\b|putuskanlah\b(?=\s*(?:[,.!?]|$))|tamatkan(?:lah)?\s+(?:talian|panggilan|call)\b|hang\s?up\b|hangup\b|end\s+(?:the\s+|this\s+)?call\b|letak(?:kan)?\s+(?:telefon|phone)\b)/i;
 
 /** Never treat a refusal to hang up as a command. */
 const HANGUP_NEGATED =
@@ -125,11 +125,15 @@ const HANGUP_NEGATED =
 /** A question or report ABOUT a dropped line is not an instruction. */
 const HANGUP_REPORT = /\?\s*$|\b(tadi|tadian|sebentar tadi|just now|earlier)\b/i;
 
+/** A direct polite request may end in "?" without being a dropped-line report. */
+const HANGUP_POLITE_REQUEST =
+  /^\s*(?:boleh(?:kan)?(?:\s+awak|\s+anda)?|can\s+you|could\s+you|would\s+you)\s+(?:please\s+)?(?:putuskan(?:lah)?\s+(?:talian|panggilan)|tamatkan(?:lah)?\s+(?:talian|panggilan|call)|hang\s?up|end\s+(?:the\s+|this\s+)?call)(?:\s+please)?\s*\?\s*$/i;
+
 export function isExplicitHangupCommand(transcript: string): boolean {
   const text = transcript.trim();
   if (!text) return false;
   if (HANGUP_NEGATED.test(text)) return false;
-  if (HANGUP_REPORT.test(text)) return false;
+  if (HANGUP_REPORT.test(text) && !HANGUP_POLITE_REQUEST.test(text)) return false;
   return HANGUP_COMMAND.test(text);
 }
 

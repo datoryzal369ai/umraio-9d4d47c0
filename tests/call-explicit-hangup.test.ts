@@ -39,7 +39,8 @@ describe("explicit hangup command", () => {
   it.each([
     "Awak putuskanlah.",
     "Putuskan talian ya.",
-    "Boleh tamatkan panggilan.",
+    "Boleh tamatkan panggilan?",
+    "Can you end the call please?",
     "You can hang up now",
     "End the call please",
     "Letak telefon ya.",
@@ -53,6 +54,8 @@ describe("explicit hangup command", () => {
     "Okey okey, dah. Awak putuskan tadian?",
     "Talian tadi terputus sebentar.",
     "Saya nak tamatkan tempahan umrah saya.",
+    "Saya nak putuskan tempahan umrah saya.",
+    "Saya nak putuskan jumlah bayaran.",
     "Berapa harga pakej sepuluh hari?",
   ])("does not treat %s as a hangup command", (phrase) => {
     expect(isExplicitHangupCommand(phrase)).toBe(false);
