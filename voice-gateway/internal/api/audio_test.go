@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/umraio/voice-gateway/internal/auth"
 	umedia "github.com/umraio/voice-gateway/internal/media"
@@ -35,9 +36,9 @@ func convertRequest(t *testing.T, mux *http.ServeMux, body []byte, sign bool) *h
 	t.Helper()
 	req := httptest.NewRequest("POST", "/v1/audio/opus", bytes.NewReader(body))
 	if sign {
-		ts := fixedNow()
-		req.Header.Set(auth.TimestampHeader, strconv.FormatInt(ts.Unix(), 10))
-		req.Header.Set(auth.SignatureHeader, auth.SignRequest(secret, ts.Unix(), body))
+		ts := time.Now().Unix()
+		req.Header.Set(auth.TimestampHeader, strconv.FormatInt(ts, 10))
+		req.Header.Set(auth.SignatureHeader, auth.SignRequest(secret, ts, body))
 	}
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -61,9 +62,9 @@ func TestAudioOpusRequiresSignature(t *testing.T) {
 	// Tampered body must not verify either.
 	body := envelope(t, tonePCM(0.2))
 	req := httptest.NewRequest("POST", "/v1/audio/opus", bytes.NewReader(append(body[:len(body)-1], []byte("X\"}")...)))
-	ts := fixedNow()
-	req.Header.Set(auth.TimestampHeader, strconv.FormatInt(ts.Unix(), 10))
-	req.Header.Set(auth.SignatureHeader, auth.SignRequest(secret, ts.Unix(), body))
+	ts := time.Now().Unix()
+	req.Header.Set(auth.TimestampHeader, strconv.FormatInt(ts, 10))
+	req.Header.Set(auth.SignatureHeader, auth.SignRequest(secret, ts, body))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
