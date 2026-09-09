@@ -193,6 +193,51 @@ describe("B. internal failures are never disclosed to the customer", () => {
     expect(text).not.toMatch(/kuota ai/i);
   });
 
+  it.each([
+    "Langganan perlu dinaik taraf untuk ciri suara.",
+    "Sila naik taraf langganan untuk ciri suara.",
+    "Perlu dinaik taraf langganan untuk ciri suara.",
+  ])("scrubs subscription upgrade disclosure end to end: %s", (disclosure) => {
+    const result = composeWhatsappReply(`Deposit RM 1,000. ${disclosure} Namun, saya boleh bantu dengan pakej ini.`);
+    expect(result.scrubbedSentences).toBe(1);
+    expect(result.text).toBe("Deposit RM 1,000. Saya boleh bantu dengan pakej ini.");
+    expect(result.emptyAfterScrub).toBe(false);
+    expect(composeWhatsappReply(result.text).text).toBe(result.text);
+  });
+
+  it.each([
+    "Bilik boleh dinaik taraf dengan tambahan RM 800.",
+    "Naik taraf pakej termasuk hotel lebih dekat.",
+  ])("preserves legitimate booking upgrades: %s", (text) => {
+    expect(isInternalFailureDisclosure(text)).toBe(false);
+    expect(composeWhatsappReply(text).text).toBe(text);
+  });
+
+  it("cleans only the dangling connector and preserves later meaningful contrast", () => {
+    const result = composeWhatsappReply(
+      "Deposit RM 1,000. Langganan perlu dinaik taraf untuk ciri suara. " +
+      "Namun, saya boleh terangkan pakej. Namun, bilik single dikenakan tambahan RM 800.",
+    );
+    expect(result.scrubbedSentences).toBe(1);
+    expect(result.text).toBe("Deposit RM 1,000. Saya boleh terangkan pakej. Namun, bilik single dikenakan tambahan RM 800.");
+    expect(composeWhatsappReply(result.text).text).toBe(result.text);
+  });
+
+  it("retains a contrast connector when no disclosure was removed", () => {
+    const text = "Pakej termasuk makan. Namun, makan tambahan tidak termasuk.";
+    expect(composeWhatsappReply(text).text).toBe(text);
+  });
+
+  it("deduplicates the cleaned continuation without changing safe content", () => {
+    const result = composeWhatsappReply(
+      "Saya boleh terangkan pakej. Langganan perlu dinaik taraf untuk ciri suara. Namun, saya boleh terangkan pakej.",
+    );
+    expect(result.text).toBe("Saya boleh terangkan pakej.");
+    expect(result.scrubbedSentences).toBe(1);
+    expect(result.removedClosers).toBe(1);
+    expect(composeWhatsappReply(result.text).text).toBe(result.text);
+  });
+
   it("returns an empty, flagged result when the whole reply was a disclosure", () => {
     const { text, emptyAfterScrub, scrubbedSentences } = composeWhatsappReply(
       "Maaf, kredit audio saya perlu ditambah semula. Sistem mengalami ralat teknikal.",
