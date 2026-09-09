@@ -69,11 +69,11 @@ export type CallerAddress = { honorific: string | null; name: string | null; spo
  * invents "Dato'" for a customer who never gave one.
  */
 export function resolveAddress(knownName: string | null | undefined): CallerAddress {
-  const raw = (knownName ?? "").replace(/\s+/g, " ").trim();
+  const raw = (knownName ?? "").replace(/[’‘]/g, "\'").replace(/\s+/g, " ").trim();
   if (!raw) return { honorific: null, name: null, spoken: null };
 
   for (const title of HONORIFICS) {
-    const pattern = new RegExp(`^${title.replace(/[.'()]/g, "\\$&")}\\b\\.?\\s*`, "i");
+    const pattern = new RegExp(`^${title.replace(/[.'()]/g, "\\$&")}(?=\\s|$)\\s*`, "i");
     if (pattern.test(raw)) {
       const rest = raw.replace(pattern, "").trim();
       const spoken = rest ? `${title} ${rest.split(" ")[0]}` : title;
@@ -166,11 +166,7 @@ const DEPTH: Record<CognitiveLevel, string[]> = {
   ],
 };
 
-const ACK_MS = [
-  "sekejap ya, saya semak yang itu dulu.",
-  "beri saya sedikit masa ya, saya nak pastikan maklumat ini betul.",
-  "saya semak perkara itu sekejap ya.",
-];
+const ACK_MS = ["Kejap ya, saya tengok dulu.", "Okay, saya periksa dulu ya.", "Baik, sekejap ya."];
 const ACK_EN = [
   "one moment please, let me check that first.",
   "give me a short moment, I want to get this exactly right.",
@@ -191,12 +187,13 @@ export function buildAcknowledgement(args: {
   language: string;
   seed: number;
 }): string {
-  const lead = args.address.spoken ? `Baik ${args.address.spoken}, ` : "Baik, ";
+  const title = args.address.honorific;
   if (english(args.language)) {
-    const leadEn = args.address.spoken ? `Certainly ${args.address.spoken}, ` : "Certainly, ";
+    const leadEn = title ? `Okay ${title}, ` : "Okay, ";
     return leadEn + pick(ACK_EN, args.seed);
   }
-  return lead + pick(ACK_MS, args.seed);
+  const text = pick(ACK_MS, args.seed);
+  return title ? text.replace(/ya\b/, `ya ${title}`) : text;
 }
 
 /**
@@ -258,11 +255,11 @@ export function depthInstruction(route: CognitiveRoute): string[] {
     );
   } else if (route.level === 3) {
     lines.push(
-      "You have already acknowledged the caller. Now give the reasoned answer in two or three short spoken sentences, then one clear next step.",
+      "Give the answer in one or two short spoken sentences. Any processing acknowledgement is handled separately; never repeat it.",
     );
   } else {
     lines.push(
-      "You have already told the caller you are checking. Answer only from verified context; if the information is not verified, say plainly what you will confirm on WhatsApp instead of guessing.",
+      "Answer briefly from verified context only. Any processing acknowledgement is handled separately. Say what you can confirm on WhatsApp instead of guessing.",
     );
   }
   return lines;

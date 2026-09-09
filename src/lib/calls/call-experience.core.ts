@@ -27,6 +27,7 @@ export function buildCallOpening(args: {
   language: string;
   disclosureAlreadySpoken?: boolean;
   knownName?: string | null;
+  variant?: number;
 }): CallOpening {
   const brand = args.agencyName?.trim() || "UMRAIO";
   const english = args.language.toLowerCase().startsWith("en");
@@ -34,23 +35,23 @@ export function buildCallOpening(args: {
   const name = args.knownName?.trim() ? ` ${args.knownName.trim()}` : "";
 
   if (english) {
-    const parts = [`Assalamualaikum${name}, thank you for calling ${brand}.`];
+    const parts = [`Assalamualaikum${name}. I'm RAIŌ from ${brand}.`];
     if (needDisclosure) {
       parts.push(
-        "Just to let you know, this call may be recorded for quality, training and AI improvement.",
+        "This AI call may be recorded for quality and training.",
       );
     }
-    parts.push("I'm RAIŌ. How may I help you?");
+    parts.push(pick(["How can I help?", "How are you? What can I help with?", "Yes, what would you like to ask?"], args.variant ?? 0));
     return { text: parts.join(" "), disclosureSpoken: true };
   }
 
-  const parts = [`Assalamualaikum${name}, terima kasih kerana menghubungi ${brand}.`];
+  const parts = [`Assalamualaikum${name}. Saya RAIŌ, AI dari ${brand}.`];
   if (needDisclosure) {
     parts.push(
-      "Untuk makluman, perbualan ini mungkin dirakam bagi tujuan kualiti, latihan dan penambahbaikan sistem AI kami.",
+      "Panggilan ini mungkin dirakam untuk kualiti dan latihan.",
     );
   }
-  parts.push("Saya RAIŌ. Apa yang boleh saya bantu?");
+  parts.push(pick(["Ya, macam mana saya boleh bantu?", "Apa khabar? Nak tanya apa hari ini?", "Ya, apa yang boleh saya bantu?"], args.variant ?? 0));
   return { text: parts.join(" "), disclosureSpoken: true };
 }
 
@@ -69,6 +70,7 @@ export type ClosingState = (typeof CLOSING_STATES)[number];
 
 export type ClosingAction =
   | { action: "continue"; state: ClosingState }
+  | { action: "await_termination"; state: "farewell" }
   | { action: "completion_check"; state: "completion_check"; text: string }
   | { action: "farewell"; state: "farewell"; text: string };
 
@@ -90,7 +92,7 @@ const CONTINUES =
 
 const COMPLETION_CHECKS_MS = [
   "Baik, sebelum kita tamatkan panggilan ni, ada apa-apa lagi yang saya boleh bantu?",
-  "Yang lain semua okay? Ada apa-apa lagi yang encik nak saya semak?",
+  "Yang lain semua okay? Ada apa-apa lagi yang perlu saya periksa?",
   "Selain daripada tu, ada apa-apa lagi yang boleh saya tolong?",
 ];
 const COMPLETION_CHECKS_EN = [
@@ -99,24 +101,58 @@ const COMPLETION_CHECKS_EN = [
   "Anything else I can assist you with today?",
 ];
 const FAREWELLS_MS = [
-  "Baik, terima kasih. Kalau ada apa-apa nanti terus WhatsApp atau hubungi kami ya. Assalamualaikum.",
-  "Terima kasih banyak. Saya akan susulkan melalui WhatsApp. Jaga diri, assalamualaikum.",
+  "Baik, terima kasih ya. Assalamualaikum.",
+  "Terima kasih. Jaga diri ya, assalamualaikum.",
 ];
 const FAREWELLS_EN = [
-  "Thank you. If anything comes up, just WhatsApp or call us anytime. Assalamualaikum.",
-  "Thanks so much. I'll follow up on WhatsApp. Take care, assalamualaikum.",
+  "Thank you. Take care, assalamualaikum.",
+  "Thanks for calling. Assalamualaikum.",
 ];
+
+/**
+ * EXPLICIT HANGUP COMMAND (Calling only).
+ *
+ * A direct instruction to end THIS call ("awak putuskanlah", "tamatkan
+ * panggilan", "hang up", "end the call"). It outranks every other closing
+ * branch: asking one more completion check after the caller has told RAIŌ to
+ * hang up is the defect this guard removes.
+ */
+const HANGUP_COMMAND =
+  /\b(?:putuskan(?:lah)?\s+(?:talian|panggilan)\b|putuskanlah\b(?=\s*(?:[,.!?]|$))|tamatkan(?:lah)?\s+(?:talian|panggilan|call)\b|hang\s?up\b|hangup\b|end\s+(?:the\s+|this\s+)?call\b|letak(?:kan)?\s+(?:telefon|phone)\b)/i;
+
+/** Never treat a refusal to hang up as a command. */
+const HANGUP_NEGATED =
+  /\b(?:jangan|janganlah|tak\s+payah|tak\s+usah|usah|belum|don'?t|do\s+not|no\s+need\s+to|please\s+don'?t)\b[^.?!]{0,24}?(?:putus|tamatkan|hang\s?up|hangup|end\s+(?:the\s+|this\s+)?call|letak)/i;
+
+/** A question or report ABOUT a dropped line is not an instruction. */
+const HANGUP_REPORT = /\?\s*$|\b(tadi|tadian|sebentar tadi|just now|earlier)\b/i;
+
+/** A direct polite request may end in "?" without being a dropped-line report. */
+const HANGUP_POLITE_REQUEST =
+  /^\s*(?:boleh(?:kan)?(?:\s+awak|\s+anda)?|can\s+you|could\s+you|would\s+you)\s+(?:please\s+)?(?:putuskan(?:lah)?\s+(?:talian|panggilan)|tamatkan(?:lah)?\s+(?:talian|panggilan|call)|hang\s?up|end\s+(?:the\s+|this\s+)?call)(?:\s+please)?\s*\?\s*$/i;
+
+export function isExplicitHangupCommand(transcript: string): boolean {
+  const text = transcript.trim();
+  if (!text) return false;
+  if (HANGUP_NEGATED.test(text)) return false;
+  if (HANGUP_REPORT.test(text) && !HANGUP_POLITE_REQUEST.test(text)) return false;
+  return HANGUP_COMMAND.test(text);
+}
+
+// Whole-turn completion only. A thank-you followed by business is not a goodbye.
+const NATURAL_FAREWELL = /^(?:(?:ok(?:ay|ey)?|baik(?:lah)?)[,\s]+)?(?:terima kasih(?:\s+ya)?|itu (?:sahaja|saja|je)|(?:dah|sudah) cukup|(?:dah\s+)?(?:tak ada|takde|tiada)(?:\s+apa(?:-apa)? lagi|\s+lagi|\s+dah)?|bye|goodbye|that'?s all)[\s.!]*$/i;
 
 function pick(list: string[], seed: number): string {
   return list[Math.abs(seed) % list.length] as string;
 }
 
+
 /**
  * One deterministic step of the closing machine.
  *
- * A call is NEVER ended just because the caller went quiet or said "thanks":
- * RAIŌ asks a completion check first, and only an explicit confirmation (or a
- * hard turn limit) reaches the farewell.
+ * Silence alone never initiates closing. An unambiguous whole-turn farewell
+ * can end naturally; thanks followed by new business must stay open.
+ * Pending work blocks inferred completion.
  */
 export function advanceClosing(args: {
   state: ClosingState;
@@ -131,6 +167,12 @@ export function advanceClosing(args: {
   const english = args.language.toLowerCase().startsWith("en");
   const seed = args.turnCount;
 
+  // Persisted farewell is a commitment, not an invitation to ask again.
+  // Only a fresh, nonempty caller utterance can reopen conversation.
+  if (args.state === "farewell" && !text) {
+    return { action: "await_termination", state: "farewell" };
+  }
+
   // Hard ceiling — still spoken, never a silent hang-up.
   if (args.turnCount >= args.maxTurns) {
     return {
@@ -140,7 +182,22 @@ export function advanceClosing(args: {
     };
   }
 
+  // Explicit instruction to hang up wins over pending work and over any
+  // further completion check: speak the farewell, then end the call.
+  if (isExplicitHangupCommand(text)) {
+    return {
+      action: "farewell",
+      state: "farewell",
+      text: pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed),
+    };
+  }
+
   if (args.pendingWork) return { action: "continue", state: "active" };
+
+  if (NATURAL_FAREWELL.test(text)) {
+    return { action: "farewell", state: "farewell", text: pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed) };
+  }
+
 
   if (args.state === "completion_check") {
     if (text && CONTINUES.test(text) && !EXPLICIT_DONE.test(text)) {
@@ -198,6 +255,10 @@ export type TurnLatency = {
     tts_encode_ms?: number;
     playback_start_ms?: number;
     speech_end_to_first_audio_ms?: number;
+    acknowledgement_first_audio_ms?: number;
+    playback_complete_ms?: number;
+    accepted_to_greeting_ms?: number;
+    ready_to_greeting_ms?: number;
   };
 };
 
@@ -248,5 +309,9 @@ function summarizeMediaLatency(entries: TurnLatency[]): Record<string, number> {
   add("media_tts_encode_ms", pick("tts_encode_ms"));
   add("playback_start_ms", pick("playback_start_ms"));
   add("speech_end_to_first_audio_ms", pick("speech_end_to_first_audio_ms"));
+  add("acknowledgement_first_audio_ms", pick("acknowledgement_first_audio_ms"));
+  add("playback_complete_ms", pick("playback_complete_ms"));
+  add("accepted_to_greeting_ms", pick("accepted_to_greeting_ms"));
+  add("ready_to_greeting_ms", pick("ready_to_greeting_ms"));
   return out;
 }

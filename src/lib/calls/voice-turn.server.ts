@@ -25,6 +25,8 @@ import { resolveVoiceLanguage } from "@/lib/voice/language.core";
 import { prepareSpokenResponse } from "@/lib/voice/tts.core";
 import { languageBoostFor, MINIMAX_DEFAULT_VOICE_ID } from "@/lib/voice/minimax.server";
 import { synthesizeCallSpeech } from "./call-audio.server";
+import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
+import type { CallingAcknowledgement } from "./call-stream.server";
 import {
   advanceClosing,
   appendLatency,
@@ -45,6 +47,7 @@ import {
   honorificInstruction,
   resolveAddress,
   routeTurn,
+  buildAcknowledgement,
 } from "./cognitive-router.core";
 import {
   EMPTY_CALLER_CONTEXT,
@@ -82,6 +85,7 @@ export type VoiceTurnResult =
       languageBoost?: string;
       endCall: boolean;
       reason?: string;
+      backchannelTexts?: string[];
     }
   | { ok: false; reason: string };
 
@@ -151,6 +155,8 @@ async function reason(args: {
     "recommend only what the agency's real catalogue supports, and move to one clear next step.",
     "Never deliver a monologue and never repeat the caller's sentence back to them.",
     "Vary your openers — do not begin every turn with the same word.",
+    "Speak naturally, with short BM/Manglish sentences when appropriate. Avoid formal written customer-service wording.",
+    "Do not use the spoken word semak. Use cek, periksa or tengok naturally. Do not add processing filler to the substantive answer.",
     "If the caller asks whether you are human, say plainly that you are RAIŌ, the UMRAIO AI executive.",
   ];
   if (args.behaviourLines.length) {
@@ -215,6 +221,8 @@ export async function handleVoiceTurn(args: {
   db: Db;
   payload: VoiceTurnRequest;
   now?: () => Date;
+  onAcknowledgement?: ((ack: CallingAcknowledgement) => void) | undefined;
+  signal?: AbortSignal;
 }): Promise<VoiceTurnResult> {
   const { db, payload } = args;
   const now = args.now ?? (() => new Date());
@@ -234,19 +242,26 @@ export async function handleVoiceTurn(args: {
   }
   const row = session!;
 
+  // A duplicate system greeting must not reopen a committed farewell.
+  // Only a fresh utterance from the gateway's VAD can resume this call.
+  if (readClosingState(row.closing_state) === "farewell" && payload.kind === "greeting") {
+    return { ok: false, reason: "farewell_committed" };
+  }
+
   // Agency voice configuration lives in agency_settings — the authoritative
   // store for voice_persona, voice_controls, voice_name and voice_language.
   // agency_id comes from the Worker's own session row, never from the client.
-  const { data: settings } = await db
+  const settingsQuery = db
     .from("agency_settings")
     .select("voice_persona, voice_controls, voice_name, voice_language")
     .eq("agency_id", row.agency_id)
     .maybeSingle();
-  const { data: agency } = await db
+  const agencyQuery = db
     .from("agencies")
     .select("name")
     .eq("id", row.agency_id)
     .maybeSingle();
+  const [{ data: settings }, { data: agency }] = await Promise.all([settingsQuery, agencyQuery]);
   const agencyLanguage = resolveVoiceLanguage((settings as any)?.voice_language ?? null);
   const agencyName = ((agency as any)?.name as string | null) ?? null;
   const voicePersona = {
@@ -328,7 +343,8 @@ export async function handleVoiceTurn(args: {
       agencyName,
       language,
       disclosureAlreadySpoken: row.disclosure_spoken === true,
-      knownName: context.knownName,
+      knownName: address.spoken,
+      variant: Array.from(row.call_id).reduce((sum, char) => sum + char.charCodeAt(0), 0),
     });
     replyText = opening.text;
     fastPath = true;
@@ -343,6 +359,9 @@ export async function handleVoiceTurn(args: {
       pendingWork,
     });
     nextClosingState = closing.state;
+    if (closing.action === "await_termination") {
+      return { ok: false, reason: "farewell_committed" };
+    }
     if (closing.action !== "continue") {
       replyText = closing.text;
       fastPath = true;
@@ -356,7 +375,7 @@ export async function handleVoiceTurn(args: {
 
   if (!replyText) {
     const reasoningStartedAt = Date.now();
-    replyText = await reason({
+    const pendingAnswer = reason({
       agencyId: row.agency_id,
       callId: row.call_id,
       agencyName,
@@ -374,12 +393,19 @@ export async function handleVoiceTurn(args: {
         ...honorificInstruction(address),
       ],
     });
+    // ASR has completed and a non-reflex answer is pending. Stream an ACK
+    // only if it is still pending at the threshold, never prepend it later.
+    const answer = await withCallingBackchannel({
+      answer: pendingAnswer,
+      signal: args.signal,
+      emit: args.onAcknowledgement && !synthesizeInWorker() ? () => args.onAcknowledgement?.({
+        text: callingSpokenText(buildAcknowledgement({ address, language, seed: payload.sequence })),
+        voiceId: MINIMAX_DEFAULT_VOICE_ID,
+        languageBoost: languageBoostFor(language),
+      }) : undefined,
+    });
+    replyText = answer.answer;
     reasoningMs = Date.now() - reasoningStartedAt;
-    // ZERO-SILENCE POLICY: a deep turn opens with the acknowledgement the
-    // caller was owed while RAIŌ was thinking, then the reasoned answer.
-    if (replyText && route.acknowledgement) {
-      replyText = `${route.acknowledgement} ${replyText}`;
-    }
   }
   if (!replyText) {
     console.log(`[calls] voice_turn_reasoning_failed call_id=${payload.call_id}`);
@@ -389,7 +415,7 @@ export async function handleVoiceTurn(args: {
   // 3. RAIŌ™ voice presentation. Speech is rendered by the media plane with
   //    the LOCKED MiniMax identity unless a Node-capable runtime opts in.
   const spoken = prepareSpokenResponse({ replyText, language, persona: voicePersona });
-  const speech = spoken.spokenText.trim() || replyText;
+  const speech = callingSpokenText(spoken.spokenText.trim() || replyText);
   let replyOggBase64: string | null = null;
   if (synthesizeInWorker()) {
     const ttsStartedAt = Date.now();
@@ -409,6 +435,7 @@ export async function handleVoiceTurn(args: {
   }
 
   // 4. CALL MEMORY — transcript, language, intents, outcome, latency.
+  args.signal?.throwIfAborted();
   const additions: VoiceTranscriptTurn[] = [];
   if (transcript) {
     additions.push({
@@ -435,7 +462,8 @@ export async function handleVoiceTurn(args: {
     total_ms: Date.now() - startedAt,
     fast_path: fastPath,
     level: route.level,
-    acknowledged: Boolean(route.acknowledgement) && !fastPath,
+    // A queued ACK is not evidence that the caller heard it.
+    acknowledged: false,
     // Additive media-plane instrumentation reported by the gateway.
     ...(payload.media_metrics ? { media: payload.media_metrics } : {}),
   };
@@ -492,6 +520,8 @@ export async function handleVoiceTurn(args: {
     // speak with a substitute voice or a provider default.
     voiceId: MINIMAX_DEFAULT_VOICE_ID,
     languageBoost: languageBoostFor(language),
+    ...(payload.kind === "greeting" ? { backchannelTexts: [0, 1, 2].map(seed =>
+      callingSpokenText(buildAcknowledgement({ address, language, seed }))) } : {}),
     endCall,
     ...(endCall ? { reason: "conversation_complete" } : {}),
   };
