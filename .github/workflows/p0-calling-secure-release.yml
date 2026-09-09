@@ -1,0 +1,184 @@
+name: P0 Calling secure binding release on existing 336242a image
+
+on:
+  push:
+    branches: [codex/p0-calling-secure-release-20260909]
+    paths: [.github/workflows/p0-calling-secure-release.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-gateway-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      NO_COLOR: "1"
+    steps:
+      - name: Checkout locked runtime configuration
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 336242aef606cfbfd7a214922858768d510a63fb
+          persist-credentials: false
+
+      - name: Set up existing Fly deployment client
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: latest
+
+      - name: Prepare bounded credential release and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          cat > "$RUNNER_TEMP/p0-calling-release.cjs" <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          const cp = require('node:child_process');
+          const root = process.env.RUNNER_TEMP;
+          const app = 'umraio-voice-gateway';
+          const source = '336242aef606cfbfd7a214922858768d510a63fb';
+          const image = 'registry.fly.io/umraio-voice-gateway@sha256:aad59bf42aa1cf495f0c464f98e87f6ce24f80838e0276f6f66c01053eb84bc1';
+          const target = 'MINIMAX_TTS_API_KEY';
+          const envelopePath = path.join(root, 'p0-calling-fly-binding-rollback.json');
+          const marker = path.join(root, 'p0-calling-mutation-started');
+          function fail(reason) { throw new Error(reason); }
+          function fly(args, input) {
+            const result = cp.spawnSync('flyctl', args, {input, encoding: null, timeout: 420000, maxBuffer: 16 << 20, env: process.env, stdio: ['pipe','pipe','pipe']});
+            if (result.status !== 0) {
+              const errorText = (result.stderr || Buffer.alloc(0)).toString();
+              const category = /unauthorized|forbidden|permission denied|not authorized/i.test(errorText) ? 'access_denied' : /timed out|timeout/i.test(errorText) ? 'timeout' : 'command_failed';
+              fail('Fly ' + args.slice(0,2).join(' ') + ' ' + category + '; output suppressed to protect bindings');
+            }
+            return result.stdout;
+          }
+          function jsonFly(args) { return JSON.parse(fly(args).toString()); }
+          async function health() {
+            const r = await fetch('https://' + app + '.fly.dev/health', {redirect:'error', signal:AbortSignal.timeout(15000)});
+            if (!r.ok) fail('Gateway health HTTP failure');
+            return r.json();
+          }
+          function assertHealth(h, idle) {
+            if (h.status !== 'ok' || h.build_version !== source || h.webrtc !== 'up' || h.speech !== 'up') fail('Working 336242a runtime gate failed');
+            if (idle && h.active_sessions !== 0) fail('Active call present; no credential change allowed');
+          }
+          function bindings() {
+            const rows = jsonFly(['secrets','list','--app',app,'--json']);
+            if (!Array.isArray(rows) || !rows.length || rows.some(s=>s.status!=='Deployed')) fail('Pending or unknown secret deployment; no mutation allowed');
+            if (!rows.some(s=>s.name===target)) fail('Existing Calling binding unavailable');
+            return rows;
+          }
+          function unrelated(rows) { return rows.filter(s=>s.name!==target).map(s=>[s.name,s.digest]).sort((a,b)=>a[0].localeCompare(b[0])); }
+          function wrapping(salt, context) {
+            if (!process.env.FLY_API_TOKEN) fail('Existing unchanged rollback wrapping binding unavailable');
+            return Buffer.from(crypto.hkdfSync('sha256', Buffer.from(process.env.FLY_API_TOKEN), salt, Buffer.from(context), 32));
+          }
+          function restore() {
+            const e = JSON.parse(fs.readFileSync(envelopePath,'utf8'));
+            const key = wrapping(Buffer.from(e.salt_base64,'base64'),e.context);
+            const decipher = crypto.createDecipheriv('aes-256-gcm',key,Buffer.from(e.nonce_base64,'base64'));
+            decipher.setAAD(Buffer.from(e.aad_base64,'base64'));
+            decipher.setAuthTag(Buffer.from(e.tag_base64,'base64'));
+            const value = Buffer.concat([decipher.update(Buffer.from(e.ciphertext_base64,'base64')),decipher.final()]);
+            key.fill(0);
+            return value;
+          }
+          function deploy() {
+            fly(['deploy','--app',app,'--config','voice-gateway/fly.toml','--image',image,'--no-public-ips','--ha=false','--update-only','--wait-timeout','5m','--yes']);
+          }
+          async function verify() {
+            let h;
+            for(let n=0;n<18;n++) {
+              try { h=await health();assertHealth(h,false);break; } catch(e) { if(n===17)throw e;await new Promise(r=>setTimeout(r,5000)); }
+            }
+            const r=await fetch('https://'+app+'.fly.dev/ready',{redirect:'error',signal:AbortSignal.timeout(15000)});
+            if(!r.ok)fail('Gateway readiness failed');
+            const after=bindings();
+            const before=JSON.parse(fs.readFileSync(path.join(root,'p0-unrelated-bindings.json'),'utf8'));
+            if(JSON.stringify(before)!==JSON.stringify(unrelated(after)))fail('Unrelated secret binding changed');
+            return h;
+          }
+          function report(data) {
+            console.log(JSON.stringify(data));
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,JSON.stringify(data,null,2)+'\n');
+          }
+          async function main() {
+            const mode=process.argv[2];
+            if(mode==='preserve') {
+              assertHealth(await health(),true);
+              const before=bindings();
+              fs.writeFileSync(path.join(root,'p0-unrelated-bindings.json'),JSON.stringify(unrelated(before)),{mode:0o600});
+              const machines=jsonFly(['machine','list','--app',app,'--json']);
+              const running=machines.filter(m=>m.state==='started');
+              if(!running.length)fail('No running gateway machine for credential rollback');
+              const machine=running[0];
+              const old=fly(['ssh','console','--app',app,'--machine',machine.id,'--quiet','--command',"/bin/sh -c 'test -n \"$MINIMAX_TTS_API_KEY\" && printf \"%s\" \"$MINIMAX_TTS_API_KEY\"'"]);
+              if(!old.length || old.length>16384 || old.includes(10) || old.includes(13) || old.includes(0))fail('Secure old-binding capture invalid; production unchanged');
+              const context='UMRAIO-P0-CALLING-FLY-ROLLBACK-v1';
+              const salt=crypto.randomBytes(32),nonce=crypto.randomBytes(12),key=wrapping(salt,context);
+              const aad=Buffer.from(JSON.stringify({version:1,app,secret_name:target,source_checkpoint:source,rollback_image:image,created_at:new Date().toISOString(),workflow_run:process.env.GITHUB_RUN_ID}));
+              const cipher=crypto.createCipheriv('aes-256-gcm',key,nonce);cipher.setAAD(aad);
+              const encrypted=Buffer.concat([cipher.update(old),cipher.final()]);
+              const e={algorithm:'AES-256-GCM',kdf:'HKDF-SHA256',wrapping_binding:'existing unchanged GitHub FLY_API_TOKEN',context,salt_base64:salt.toString('base64'),nonce_base64:nonce.toString('base64'),aad_base64:aad.toString('base64'),ciphertext_base64:encrypted.toString('base64'),tag_base64:cipher.getAuthTag().toString('base64')};
+              fs.writeFileSync(envelopePath,JSON.stringify(e,null,2),{mode:0o600});
+              const recovered=restore();
+              if(!crypto.timingSafeEqual(old,recovered))fail('Old Fly binding rollback recovery failed');
+              old.fill(0);recovered.fill(0);key.fill(0);
+              report({fly_credential_rollback:'SEALED_AND_RECOVERY_VERIFIED',rollback_image:image,production_changed:false,new_credential_read:false});
+            } else if(mode==='release') {
+              assertHealth(await health(),true);
+              const before=JSON.parse(fs.readFileSync(path.join(root,'p0-unrelated-bindings.json'),'utf8'));
+              if(JSON.stringify(unrelated(bindings()))!==JSON.stringify(before))fail('Bindings changed since rollback gate');
+              if(!process.env.MINIMAX_TTS_API_KEY || /[\r\n\0]/.test(process.env.MINIMAX_TTS_API_KEY))fail('New secure binding unavailable or invalid for secret import');
+              fs.writeFileSync(marker,'credential import attempted',{mode:0o600});
+              const input=Buffer.from(target+'='+process.env.MINIMAX_TTS_API_KEY+'\n');
+              try { fly(['secrets','import','--app',app,'--stage'],input); } finally { input.fill(0);delete process.env.MINIMAX_TTS_API_KEY; }
+              deploy();
+              const h=await verify();
+              report({calling_binding_release:'PASS',source,image,changed_binding:target,unrelated_bindings:'UNCHANGED',builds_run:0,voice_note_path:'LOCKED_UNCHANGED',runtime_status:h.status,calling_audible:'PENDING_REAL_FOUNDER_CALL',rollback:'PRESERVED'});
+            } else if(mode==='rollback') {
+              if(!fs.existsSync(marker)){report({rollback:'NOT_REQUIRED',production_changed:false});return;}
+              const old=restore();
+              const input=Buffer.concat([Buffer.from(target+'='),old,Buffer.from('\n')]);
+              try { fly(['secrets','import','--app',app,'--stage'],input); } finally { old.fill(0);input.fill(0); }
+              deploy();await verify();
+              report({rollback:'RESTORED_AND_VERIFIED',source,image,voice_note_path:'LOCKED_UNCHANGED'});
+            } else fail('Unknown operation');
+          }
+          main().catch(e=>{console.error(JSON.stringify({operation:process.argv[2],status:'FAIL',reason:e.message && /^(Fly |Working |Active |Pending |Existing |Unrelated |Gateway |Secure |Old |No running |Bindings |New secure |Unknown )/.test(e.message)?e.message:'Secure Calling operation failed; details suppressed'}));process.exitCode=1;});
+          JS
+          node --check "$RUNNER_TEMP/p0-calling-release.cjs"
+
+      - name: Preserve current Fly credential rollback without exposing its value
+        id: preserve
+        shell: bash
+        run: node "$RUNNER_TEMP/p0-calling-release.cjs" preserve
+
+      - name: Preserve only encrypted old Fly binding
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p0-calling-fly-binding-rollback-${{ github.run_id }}
+          path: ${{ runner.temp }}/p0-calling-fly-binding-rollback.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Align only Calling credential and release existing immutable image
+        id: release
+        timeout-minutes: 9
+        env:
+          MINIMAX_TTS_API_KEY: ${{ secrets.MINIMAX_TTS_API_KEY }}
+        shell: bash
+        run: node "$RUNNER_TEMP/p0-calling-release.cjs" release
+
+      - name: Restore old Fly credential and unchanged 336242a image on failure
+        if: failure() && steps.release.outcome != 'skipped'
+        timeout-minutes: 9
+        shell: bash
+        run: node "$RUNNER_TEMP/p0-calling-release.cjs" rollback
