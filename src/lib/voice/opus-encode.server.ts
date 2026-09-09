@@ -91,7 +91,7 @@ export function opusWasmSource(): string {
  * WASI/env stubs required by the embedded libopus build. None of these
  * functions is ever actually called.
  */
-const OPUS_IMPORTS: WebAssembly.Imports = {
+export const OPUS_IMPORTS: WebAssembly.Imports = {
   wasi_snapshot_preview1: {
     fd_seek: () => 0,
     fd_write: () => 0,
@@ -114,89 +114,122 @@ function finishInstance(instance: WebAssembly.Instance): OpusExports {
 /**
  * MODULE SOURCE ORDER
  *
- * 1. PRECOMPILED MODULE IMPORT (production). The serverless runtime forbids
- *    compiling WebAssembly from bytes at runtime ("Wasm code generation
- *    disallowed by embedder"), so `fetch(...)` + `WebAssembly.instantiate(bytes)`
- *    can NEVER work there. The supported path is importing the `.wasm` file so
- *    the bundler ships an already-compiled `WebAssembly.Module`, which may be
- *    instantiated at runtime. The import is dynamic so Node/vitest, where the
- *    loader has no `.wasm` handler, simply fall through.
- * 2. Hosted asset fetch, then the embedded base64 build — both compile from
- *    bytes and therefore only apply to dev/node/test runtimes.
+ * 1. Hosted asset fetch of `/wasm/opus.wasm`, then the embedded base64 build.
+ *    Both compile from bytes, so both only work in runtimes that allow it
+ *    (node, vitest, dev). The published serverless runtime forbids it.
  */
-async function instantiateFromBytes(bytes: Uint8Array<ArrayBuffer>): Promise<OpusExports | null> {
-  try {
-    const { instance } = (await WebAssembly.instantiate(
-      bytes,
-      OPUS_IMPORTS,
-    )) as WebAssembly.WebAssemblyInstantiatedSource;
-    return finishInstance(instance);
-  } catch {
-    return null;
-  }
+
+
+/**
+ * STAGED LOADER DIAGNOSTICS
+ *
+ * Every loader attempt records a sanitized stage record so a failure can be
+ * attributed exactly (asset missing vs. import rejected vs. wrong value type vs.
+ * instantiate/import-object mismatch vs. embedder code-generation ban) instead
+ * of collapsing into a single ambiguous `not_packaged`. No secret, env value or
+ * audio content is ever recorded.
+ */
+export type OpusLoaderStage = {
+  stage: string;
+  ok: boolean;
+  detail?: string;
+};
+
+let loaderStages: OpusLoaderStage[] = [];
+
+export function opusLoaderStages(): OpusLoaderStage[] {
+  return loaderStages;
 }
 
-async function loadCompiledModule(): Promise<OpusExports | null> {
-  try {
-    const mod = ((await import("./opus/opus.wasm?cfmodule")) as { default?: unknown }).default;
-    if (!(mod instanceof WebAssembly.Module)) return null;
-    const instance = await WebAssembly.instantiate(mod, OPUS_IMPORTS);
-    wasmSource = "compiled_module";
-    return finishInstance(instance);
-  } catch {
-    return null;
-  }
+function note(stage: string, ok: boolean, detail?: string) {
+  loaderStages.push(detail ? { stage, ok, detail } : { stage, ok });
 }
 
+/** Error text without paths that could leak deployment internals. */
+function sanitize(error: unknown): string {
+  const err = error as Error | undefined;
+  const name = err?.name ?? "Error";
+  const message = String(err?.message ?? error ?? "unknown")
+    .replace(/[A-Za-z]:\\[^\s]+|\/[^\s]*\//g, "<path>")
+    .slice(0, 200);
+  return `${name}: ${message}`;
+}
+
+/**
+ * ASSET LOADER — the binary lives at `public/wasm/opus.wasm` and is fetched by
+ * URL. Importing `.wasm` from source is not supported on this deployment stack
+ * (it puts the binary in the server bundle and breaks the deploy), so the
+ * precompiled-module import has been removed entirely.
+ */
 async function loadHostedModule(): Promise<OpusExports | null> {
   const origin = process.env["PUBLIC_SITE_URL"] ?? "https://umraio.com";
   try {
     const response = await fetch(`${origin}/wasm/opus.wasm`);
+    note("hosted_fetch", response.ok, `status=${response.status}`);
     if (!response.ok) return null;
-    const exports = await instantiateFromBytes(new Uint8Array(await response.arrayBuffer()));
-    if (exports) wasmSource = "hosted_asset";
-    return exports;
-  } catch {
+    const buffer = await response.arrayBuffer();
+    note("hosted_bytes", buffer.byteLength > 0, `bytes=${buffer.byteLength}`);
+    try {
+      const { instance } = (await WebAssembly.instantiate(
+        new Uint8Array(buffer),
+        OPUS_IMPORTS,
+      )) as WebAssembly.WebAssemblyInstantiatedSource;
+      note("hosted_instantiate", true);
+      wasmSource = "hosted_asset";
+      return finishInstance(instance);
+    } catch (error) {
+      note("hosted_instantiate", false, sanitize(error));
+      return null;
+    }
+  } catch (error) {
+    note("hosted_fetch", false, sanitize(error));
     return null;
   }
 }
 
 /**
- * Byte-compilation is impossible in the serverless runtime, so in production the
- * precompiled module is the ONLY accepted source. Falling through to the hosted
- * or embedded byte paths there would just fail slowly and hide the real cause,
- * so the encoder reports unavailable and the voice note fails closed instead.
+ * The serverless runtime forbids compiling WebAssembly from bytes
+ * ("Wasm code generation disallowed by embedder"), which is the ONLY remaining
+ * loader path now that source `.wasm` imports are not permitted on this stack.
+ * The encoder therefore fails closed in production and the media-plane
+ * (native libopus) encoder is the viable alternative.
  */
 export function opusAllowsByteCompilation(): boolean {
   return process.env["NODE_ENV"] !== "production";
 }
 
 async function loadOpusExports(): Promise<OpusExports | null> {
-  const compiled = await loadCompiledModule();
-  if (compiled) return compiled;
-  if (!opusAllowsByteCompilation()) {
-    wasmSource = "unavailable";
-    console.error("[voice] opus_wasm_unavailable source=compiled_module reason=not_packaged");
-    return null;
-  }
+  loaderStages = [];
+  note("embedded_asset", OPUS_WASM_BASE64.length > 0, `base64_chars=${OPUS_WASM_BASE64.length}`);
+
   const hosted = await loadHostedModule();
   if (hosted) return hosted;
+  if (!opusAllowsByteCompilation()) {
+    wasmSource = "unavailable";
+    const last = loaderStages.filter((s) => !s.ok).at(-1);
+    console.error(
+      `[voice] opus_wasm_unavailable source=hosted_asset stage=${last?.stage ?? "unknown"} detail=${last?.detail ?? "none"}`,
+    );
+    return null;
+  }
+
   try {
     // Runtimes that still allow compiling from bytes (node, vitest, dev).
     const { instance } = await WebAssembly.instantiate(
       base64ToBytes(OPUS_WASM_BASE64),
       OPUS_IMPORTS,
     );
+    note("base64_instantiate", true);
     wasmSource = "runtime_compile";
     return finishInstance(instance);
   } catch (error) {
+    note("base64_instantiate", false, sanitize(error));
     wasmSource = "unavailable";
-    console.error(
-      `[voice] opus_wasm_instantiate_failed source=base64 reason=${(error as Error)?.name ?? "unknown"}`,
-    );
+    console.error(`[voice] opus_wasm_instantiate_failed source=base64 reason=${sanitize(error)}`);
     return null;
   }
 }
+
 
 
 function opusExports(): Promise<OpusExports | null> {

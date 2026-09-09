@@ -38,30 +38,6 @@ const pkgVersion = (() => {
   }
 })();
 
-/**
- * WORKER WASM MODULE — the serverless runtime forbids compiling WebAssembly
- * from bytes at runtime ("Wasm code generation disallowed by embedder"), so the
- * libopus binary used by the RAIŌ voice note MUST be uploaded as a precompiled
- * module. This plugin keeps `./opus/opus.wasm?cfmodule` as a RELATIVE, EXTERNAL
- * import in the server chunk (no inlining, no runtime compile);
- * scripts/finalize-worker-wasm.mjs then places the binary next to the chunk and
- * registers the `CompiledWasm` upload rule.
- * Nothing here touches the client build, Text, Calling or MCP/Astra.
- */
-function workerWasmModule() {
-  return {
-    name: "umraio-worker-wasm-module",
-    apply: "build" as const,
-    enforce: "pre" as const,
-    resolveId(source: string) {
-      if (source.endsWith("opus.wasm?cfmodule")) {
-        return { id: "./opus.wasm", external: "relative" as const };
-      }
-      return null;
-    },
-  };
-}
-
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
@@ -69,7 +45,7 @@ export default defineConfig({
     server: { entry: "server" },
   },
   vite: {
-    plugins: [mcpPlugin(), workerWasmModule()],
+    plugins: [mcpPlugin()],
     define: {
       __BUILD_COMMIT__: JSON.stringify(buildCommit(true)),
       __BUILD_COMMIT_SHA__: JSON.stringify(buildCommit(false)),
