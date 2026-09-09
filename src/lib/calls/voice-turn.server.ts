@@ -68,6 +68,7 @@ import {
   type VoiceTranscriptTurn,
   type VoiceTurnRequest,
   type VoiceTurnSessionRow,
+  isVoiceCommercialExecutionIntent,
 } from "./voice-turn.core";
 
 type Db = { from: (table: string) => any };
@@ -81,9 +82,78 @@ export type VoiceTurnResult =
       voiceId?: string;
       languageBoost?: string;
       endCall: boolean;
+      /** Ask the gateway to request the reasoned second stage after playback. */
+      continueTurn?: boolean;
       reason?: string;
     }
   | { ok: false; reason: string };
+
+/**
+ * Stage one of a caller utterance. ASR is necessarily complete before we know
+ * whether an acknowledgement is useful, but reasoning and commercial work
+ * have not started. The caller's words are durably checkpointed and the media
+ * plane can speak the acknowledgement before requesting stage two.
+ */
+export async function prepareVoiceTurn(args: {
+  db: Db;
+  payload: VoiceTurnRequest;
+  now?: () => Date;
+}): Promise<VoiceTurnResult> {
+  const { db, payload } = args;
+  const now = args.now ?? (() => new Date());
+  const { data } = await db
+    .from("whatsapp_call_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("call_id", payload.call_id)
+    .maybeSingle();
+  const row = (data as VoiceTurnSessionRow | null) ?? null;
+  const gate = gateVoiceTurn(row);
+  if (!gate.allow) return { ok: false, reason: gate.reason };
+
+  const bytes = payload.audio_ogg_base64 ? base64ToBytes(payload.audio_ogg_base64) : null;
+  if (!bytes) return { ok: false, reason: "invalid_audio" };
+  const { data: settings } = await db
+    .from("agency_settings")
+    .select("voice_language")
+    .eq("agency_id", row!.agency_id)
+    .maybeSingle();
+  const agencyLanguage = resolveVoiceLanguage((settings as any)?.voice_language ?? null);
+  const asrStartedAt = Date.now();
+  const asr = await transcribeAudio({ bytes, mimeType: "audio/ogg", language: agencyLanguage });
+  const asrMs = Date.now() - asrStartedAt;
+  if (!asr.ok) return { ok: false, reason: `asr_${asr.kind}` };
+  const transcript = asr.text.trim();
+  if (!transcript) return { ok: false, reason: "asr_empty_transcript" };
+  const language = detectSpokenLanguage(transcript, agencyLanguage);
+  const route = routeTurn({
+    transcript,
+    language,
+    address: resolveAddress(null),
+    seed: payload.sequence,
+  });
+  const history = readTranscript(row!.transcript);
+  const checkpoint = appendTranscript(history, [
+    {
+      role: "customer",
+      text: transcript,
+      at: now().toISOString(),
+      duration_ms: payload.duration_ms,
+    },
+  ]);
+  await db.from("whatsapp_call_sessions").update({ transcript: checkpoint }).eq("id", row!.id);
+  console.log(
+    `[calls] voice_turn_prepared call_id=${payload.call_id} asr=${asrMs}ms level=${route.level} acknowledged=${Boolean(route.acknowledgement)}`,
+  );
+  return {
+    ok: true,
+    replyOggBase64: null,
+    text: route.acknowledgement ?? "",
+    voiceId: MINIMAX_DEFAULT_VOICE_ID,
+    languageBoost: languageBoostFor(language),
+    endCall: false,
+    continueTurn: true,
+  };
+}
 
 /**
  * SPEECH OWNERSHIP — the serverless control plane cannot compile an Opus
@@ -118,6 +188,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 /** Reasoning through the existing intelligence gateway (RÉNAIO.CORE™ seam). */
 async function reason(args: {
+  db: Db;
   agencyId: string;
   callId: string;
   agencyName: string | null;
@@ -131,13 +202,17 @@ async function reason(args: {
   contextFacts: Record<string, unknown>;
   /** Style-only behaviour guidance from the internal perception layer. */
   behaviourLines: string[];
+  conversationId: string | null;
 }): Promise<string | null> {
   const gateway = createIntelligenceGateway();
   const messages = args.history.slice(-8).map((turn) => ({
     role: turn.role === "customer" ? ("user" as const) : ("assistant" as const),
     content: turn.text,
   }));
-  if (args.transcript) messages.push({ role: "user", content: args.transcript });
+  const lastMessage = messages[messages.length - 1];
+  if (args.transcript && !(lastMessage?.role === "user" && lastMessage.content === args.transcript)) {
+    messages.push({ role: "user", content: args.transcript });
+  }
 
   const systemLines = [
     buildVoiceSystemPrompt({
@@ -160,6 +235,17 @@ async function reason(args: {
     systemLines.push("", "CUSTOMER RELATIONSHIP MEMORY (authoritative, never invent beyond it):", ...args.contextLines);
   }
 
+  const commercial = isVoiceCommercialExecutionIntent(args.transcript) && args.conversationId
+    ? await import("@/lib/sales-ai.server").then(({ governedVoiceCommercialTools }) =>
+        governedVoiceCommercialTools(args.db as never, args.conversationId!),
+      )
+    : { tools: {}, allowedTools: [] as string[] };
+  if (isVoiceCommercialExecutionIntent(args.transcript)) {
+    systemLines.push(
+      "COMMERCIAL FAST LANE: execute an allowed tool when verified package and pax are already known. Ask only the smallest genuinely missing clarification.",
+      "Never say a quotation was created or sent unless the tool result proves it. No payment-link tool is available here: never invent a link or claim payment preparation succeeded.",
+    );
+  }
   const result = await gateway.generate({
     taskType: "customer_reply",
     system: systemLines.join("\n"),
@@ -176,8 +262,9 @@ async function reason(args: {
         language: args.language,
         ...args.contextFacts,
       },
-      allowedTools: [],
+      allowedTools: commercial.allowedTools,
     },
+    ...(commercial.allowedTools.length ? { tools: commercial.tools, maxSteps: 6 } : {}),
   });
   const text = result.ok ? (result.data ?? "").trim() : "";
   return text.length > 0 ? text : null;
@@ -295,6 +382,11 @@ export async function handleVoiceTurn(args: {
     transcript = asr.text.trim();
     if (!transcript) return { ok: false, reason: "asr_empty_transcript" };
     language = detectSpokenLanguage(transcript, agencyLanguage);
+  } else if (payload.kind === "continuation") {
+    const checkpoint = [...history].reverse().find((turn) => turn.role === "customer");
+    if (!checkpoint) return { ok: false, reason: "continuation_missing_transcript" };
+    transcript = checkpoint.text;
+    language = detectSpokenLanguage(transcript, agencyLanguage);
   }
 
   const context = await contextPromise;
@@ -357,6 +449,7 @@ export async function handleVoiceTurn(args: {
   if (!replyText) {
     const reasoningStartedAt = Date.now();
     replyText = await reason({
+      db,
       agencyId: row.agency_id,
       callId: row.call_id,
       agencyName,
@@ -373,13 +466,9 @@ export async function handleVoiceTurn(args: {
         ...depthInstruction(route),
         ...honorificInstruction(address),
       ],
+      conversationId: row.conversation_id ?? context.conversationId,
     });
     reasoningMs = Date.now() - reasoningStartedAt;
-    // ZERO-SILENCE POLICY: a deep turn opens with the acknowledgement the
-    // caller was owed while RAIŌ was thinking, then the reasoned answer.
-    if (replyText && route.acknowledgement) {
-      replyText = `${route.acknowledgement} ${replyText}`;
-    }
   }
   if (!replyText) {
     console.log(`[calls] voice_turn_reasoning_failed call_id=${payload.call_id}`);
@@ -410,7 +499,7 @@ export async function handleVoiceTurn(args: {
 
   // 4. CALL MEMORY — transcript, language, intents, outcome, latency.
   const additions: VoiceTranscriptTurn[] = [];
-  if (transcript) {
+  if (transcript && payload.kind !== "continuation") {
     additions.push({
       role: "customer",
       text: transcript,
