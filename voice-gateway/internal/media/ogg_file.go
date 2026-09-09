@@ -52,7 +52,7 @@ func WriteOggOpusFile(packets [][]byte, channels uint8, frameSamples48, preSkip 
 	out = append(out, oggPage(0x00, 0, 1, [][]byte{opusTags()})...)
 
 	seq := uint32(2)
-	granule := int64(preSkip)
+	granule := int64(0)
 	const perPage = 25
 	for i := 0; i < len(packets); i += perPage {
 		end := min(i+perPage, len(packets))
@@ -70,7 +70,7 @@ func WriteOggOpusFile(packets [][]byte, channels uint8, frameSamples48, preSkip 
 		seq++
 	}
 	if len(packets) == 0 {
-		out = append(out, oggPage(0x04, int64(preSkip), seq, [][]byte{{}})...)
+		out = append(out, oggPage(0x04, 0, seq, [][]byte{{}})...)
 	}
 	return out
 }
