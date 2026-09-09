@@ -12,7 +12,7 @@ export const MAX_TURN_AUDIO_BASE64 = 3 * 1024 * 1024;
 /** Ceiling for one call's stored transcript (turns), keeps the row bounded. */
 export const MAX_STORED_TURNS = 60;
 
-export type VoiceTurnKind = "greeting" | "utterance";
+export type VoiceTurnKind = "greeting" | "utterance" | "silence";
 
 /**
  * Additive, sanitized media-plane instrumentation sent by the gateway.
@@ -70,11 +70,12 @@ export function parseVoiceTurnRequest(input: unknown): VoiceTurnRequest | null {
   const record = input as Record<string, unknown>;
   const callId = typeof record["call_id"] === "string" ? record["call_id"].trim() : "";
   const kind = record["kind"];
-  if (!callId || (kind !== "greeting" && kind !== "utterance")) return null;
+  if (!callId || (kind !== "greeting" && kind !== "utterance" && kind !== "silence")) return null;
 
   const audio = typeof record["audio_ogg_base64"] === "string" ? record["audio_ogg_base64"] : "";
   if (audio.length > MAX_TURN_AUDIO_BASE64) return null;
   if (kind === "utterance" && audio.length === 0) return null;
+  if (kind === "silence" && audio.length > 0) return null;
 
   const sequence = Number(record["sequence"]);
   const durationMs = Number(record["duration_ms"]);

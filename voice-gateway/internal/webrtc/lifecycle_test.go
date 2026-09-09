@@ -1,0 +1,492 @@
+package webrtc
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	pion "github.com/pion/webrtc/v4"
+
+	umedia "github.com/umraio/voice-gateway/internal/media"
+	"github.com/umraio/voice-gateway/internal/session"
+)
+
+type lifecyclePipeline struct {
+	closes       atomic.Int64
+	startedOnce  sync.Once
+	closeStarted chan struct{}
+	closeRelease chan struct{}
+}
+
+type blockingLifecycleLog struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *blockingLifecycleLog) Enabled(context.Context, slog.Level) bool { return true }
+func (h *blockingLifecycleLog) Handle(_ context.Context, record slog.Record) error {
+	if record.Message == "media session terminating" {
+		h.once.Do(func() { close(h.entered) })
+		<-h.release
+	}
+	return nil
+}
+func (h *blockingLifecycleLog) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *blockingLifecycleLog) WithGroup(string) slog.Handler      { return h }
+
+func newLifecyclePipeline(blockClose bool) *lifecyclePipeline {
+	p := &lifecyclePipeline{
+		closeStarted: make(chan struct{}),
+	}
+	if blockClose {
+		p.closeRelease = make(chan struct{})
+	}
+	return p
+}
+
+func (p *lifecyclePipeline) Attach(context.Context, umedia.Transport) error { return nil }
+func (p *lifecyclePipeline) OnInbound(umedia.OpusFrame)                     {}
+func (p *lifecyclePipeline) Close(string) {
+	p.closes.Add(1)
+	p.startedOnce.Do(func() { close(p.closeStarted) })
+	if p.closeRelease != nil {
+		<-p.closeRelease
+	}
+}
+
+func newLifecycleMediaSession(
+	t *testing.T,
+	pipeline umedia.Pipeline,
+	hooks Hooks,
+) (*MediaSession, *session.Session) {
+	t.Helper()
+	pc, err := pion.NewPeerConnection(pion.Configuration{})
+	if err != nil {
+		t.Fatalf("peer connection: %v", err)
+	}
+	t.Cleanup(func() { _ = pc.Close() })
+
+	out, err := pion.NewTrackLocalStaticSample(
+		pion.RTPCodecCapability{MimeType: pion.MimeTypeOpus, ClockRate: 48000, Channels: 2},
+		"audio",
+		"lifecycle-test",
+	)
+	if err != nil {
+		t.Fatalf("outbound track: %v", err)
+	}
+
+	sess := session.New("ms_lifecycle", "call-lifecycle", "agency", "phone", time.Now())
+	ms := &MediaSession{
+		pc:           pc,
+		out:          out,
+		sess:         sess,
+		pipeline:     pipeline,
+		hooks:        hooks,
+		log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		pipelineMode: umedia.PipelineMode(pipeline),
+	}
+	return ms, sess
+}
+
+func awaitLifecycleHook(t *testing.T, hook <-chan string) string {
+	t.Helper()
+	select {
+	case reason := <-hook:
+		return reason
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for terminal hook")
+		return ""
+	}
+}
+
+func assertNoAdditionalLifecycleHook(t *testing.T, hook <-chan string) {
+	t.Helper()
+	select {
+	case reason := <-hook:
+		t.Fatalf("terminal hook fired more than once; extra reason=%q", reason)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestTransientDisconnectedDoesNotTerminateAndCanReconnect(t *testing.T) {
+	pipe := newLifecyclePipeline(false)
+	var hooks atomic.Int64
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hooks.Add(1)
+		hook <- reason
+	}})
+
+	ms.handleConnectionState(pion.PeerConnectionStateDisconnected)
+	ms.handleConnectionState(pion.PeerConnectionStateConnected)
+
+	if session.IsTerminal(sess.State()) {
+		t.Fatalf("transient disconnect terminated session: %s", sess.State())
+	}
+	if pipe.closes.Load() != 0 {
+		t.Fatalf("pipeline closed %d times during recoverable disconnect", pipe.closes.Load())
+	}
+	if hooks.Load() != 0 {
+		t.Fatalf("terminal hook fired %d times during recoverable disconnect", hooks.Load())
+	}
+	if sess.MediaReadyRule() {
+		t.Fatal("reconnection without inbound RTP must not claim media readiness")
+	}
+
+	ms.Terminate("test_cleanup")
+	if got := awaitLifecycleHook(t, hook); got != "test_cleanup" {
+		t.Fatalf("cleanup hook reason = %q", got)
+	}
+}
+
+func TestFailedRemainsFailedAndCleansUpExactlyOnce(t *testing.T) {
+	pipe := newLifecyclePipeline(false)
+	var hooks atomic.Int64
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hooks.Add(1)
+		hook <- reason
+	}})
+
+	ms.handleConnectionState(pion.PeerConnectionStateFailed)
+	ms.handleConnectionState(pion.PeerConnectionStateClosed)
+	ms.Terminate("duplicate_terminate")
+
+	if got := awaitLifecycleHook(t, hook); got != "ice_failed" {
+		t.Fatalf("terminal hook reason = %q, want ice_failed", got)
+	}
+	assertNoAdditionalLifecycleHook(t, hook)
+	if sess.State() != session.StateFailed {
+		t.Fatalf("failed state overwritten during cleanup: %s", sess.State())
+	}
+	if sess.TerminationReason() != "ice_failed" {
+		t.Fatalf("failure reason = %q, want ice_failed", sess.TerminationReason())
+	}
+	if pipe.closes.Load() != 1 {
+		t.Fatalf("pipeline close count = %d, want 1", pipe.closes.Load())
+	}
+	if hooks.Load() != 1 {
+		t.Fatalf("terminal hook count = %d, want 1", hooks.Load())
+	}
+}
+
+func TestClosedAfterFailurePreservesFailureReason(t *testing.T) {
+	pipe := newLifecyclePipeline(false)
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hook <- reason
+	}})
+	if err := sess.Advance(session.StateFailed, "remote_description_failed", time.Now()); err != nil {
+		t.Fatalf("mark session failed: %v", err)
+	}
+
+	ms.handleConnectionState(pion.PeerConnectionStateClosed)
+
+	if got := awaitLifecycleHook(t, hook); got != "remote_description_failed" {
+		t.Fatalf("terminal hook reason = %q, want original failure reason", got)
+	}
+	if sess.State() != session.StateFailed {
+		t.Fatalf("failed state overwritten during closed cleanup: %s", sess.State())
+	}
+	if sess.TerminationReason() != "remote_description_failed" {
+		t.Fatalf("failure reason overwritten: %q", sess.TerminationReason())
+	}
+	if pipe.closes.Load() != 1 {
+		t.Fatalf("pipeline close count = %d, want 1", pipe.closes.Load())
+	}
+}
+
+func TestConcurrentClosedCleanupUsesFinalFailureReason(t *testing.T) {
+	pipe := newLifecyclePipeline(false)
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hook <- reason
+	}})
+	logHandler := &blockingLifecycleLog{entered: make(chan struct{}), release: make(chan struct{})}
+	ms.log = slog.New(logHandler)
+	defer func() {
+		select {
+		case <-logHandler.release:
+		default:
+			close(logHandler.release)
+		}
+	}()
+
+	go ms.handleConnectionState(pion.PeerConnectionStateClosed)
+	select {
+	case <-logHandler.entered:
+	case <-time.After(time.Second):
+		t.Fatal("closed cleanup did not reach the terminal transition")
+	}
+	if err := sess.Advance(session.StateFailed, "ice_failed", time.Now()); err != nil {
+		t.Fatalf("concurrent failure transition: %v", err)
+	}
+	close(logHandler.release)
+
+	if got := awaitLifecycleHook(t, hook); got != "ice_failed" {
+		t.Fatalf("terminal hook reason = %q, want final concurrent failure reason", got)
+	}
+	if sess.State() != session.StateFailed {
+		t.Fatalf("concurrent failure state overwritten: %s", sess.State())
+	}
+	if pipe.closes.Load() != 1 {
+		t.Fatalf("pipeline close count = %d, want 1", pipe.closes.Load())
+	}
+}
+
+func TestClosedPerformsTerminalCleanupExactlyOnce(t *testing.T) {
+	pipe := newLifecyclePipeline(false)
+	var hooks atomic.Int64
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hooks.Add(1)
+		hook <- reason
+	}})
+
+	ms.handleConnectionState(pion.PeerConnectionStateClosed)
+	ms.handleConnectionState(pion.PeerConnectionStateClosed)
+	ms.Terminate("duplicate_terminate")
+
+	if got := awaitLifecycleHook(t, hook); got != "peer_closed" {
+		t.Fatalf("terminal hook reason = %q, want peer_closed", got)
+	}
+	assertNoAdditionalLifecycleHook(t, hook)
+	if sess.State() != session.StateTerminated {
+		t.Fatalf("closed session state = %s, want TERMINATED", sess.State())
+	}
+	if sess.TerminationReason() != "peer_closed" {
+		t.Fatalf("termination reason = %q, want peer_closed", sess.TerminationReason())
+	}
+	if pipe.closes.Load() != 1 {
+		t.Fatalf("pipeline close count = %d, want 1", pipe.closes.Load())
+	}
+	if hooks.Load() != 1 {
+		t.Fatalf("terminal hook count = %d, want 1", hooks.Load())
+	}
+	if err := ms.SendOpus(umedia.OpusFrame{Data: []byte{0xf8, 0xff, 0xfe}}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("SendOpus after cleanup error = %v, want ErrClosed", err)
+	}
+}
+
+func TestTerminateReturnsBeforeBlockingPipelineClose(t *testing.T) {
+	pipe := newLifecyclePipeline(true)
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hook <- reason
+	}})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(pipe.closeRelease) }) }
+	defer release()
+
+	returned := make(chan struct{})
+	go func() {
+		ms.Terminate("caller_hangup")
+		close(returned)
+	}()
+
+	select {
+	case <-returned:
+	case <-time.After(250 * time.Millisecond):
+		release()
+		<-returned
+		t.Fatal("Terminate blocked on pipeline.Close")
+	}
+	select {
+	case <-pipe.closeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("asynchronous pipeline cleanup did not start")
+	}
+	if sess.State() != session.StateTerminated {
+		t.Fatalf("state before resource cleanup = %s, want TERMINATED", sess.State())
+	}
+	select {
+	case reason := <-hook:
+		t.Fatalf("terminal hook fired before pipeline.Close finished: %q", reason)
+	default:
+	}
+
+	release()
+	if got := awaitLifecycleHook(t, hook); got != "caller_hangup" {
+		t.Fatalf("terminal hook reason = %q", got)
+	}
+	if pipe.closes.Load() != 1 {
+		t.Fatalf("pipeline close count = %d, want 1", pipe.closes.Load())
+	}
+}
+
+type endCallTurnClient struct {
+	calls atomic.Int64
+}
+
+func (c *endCallTurnClient) Turn(context.Context, umedia.TurnRequest) (*umedia.TurnResponse, error) {
+	c.calls.Add(1)
+	return &umedia.TurnResponse{EndCall: true, Reason: "conversation_complete"}, nil
+}
+
+func TestConversationEndCallDoesNotSelfWait(t *testing.T) {
+	client := &endCallTurnClient{}
+	pipe := umedia.NewConversationPipeline("call-lifecycle", client, umedia.ConversationConfig{
+		Greet:       true,
+		TurnTimeout: time.Second,
+	}, nil)
+	hook := make(chan string, 1)
+	ms, sess := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) {
+		hook <- reason
+	}})
+	if err := pipe.Attach(context.Background(), ms); err != nil {
+		t.Fatalf("attach conversation pipeline: %v", err)
+	}
+
+	ms.handleConnectionState(pion.PeerConnectionStateConnected)
+	if got := ms.NotifyAccepted(); got != string(umedia.GreetingStarted) {
+		t.Fatalf("greeting outcome = %q, want %q", got, umedia.GreetingStarted)
+	}
+	if got := awaitLifecycleHook(t, hook); got != "conversation_complete" {
+		t.Fatalf("terminal hook reason = %q", got)
+	}
+	if client.calls.Load() != 1 {
+		t.Fatalf("turn calls = %d, want 1", client.calls.Load())
+	}
+	if sess.State() != session.StateTerminated {
+		t.Fatalf("conversation end state = %s, want TERMINATED", sess.State())
+	}
+	if sess.TerminationReason() != "conversation_complete" {
+		t.Fatalf("conversation end reason = %q", sess.TerminationReason())
+	}
+}
+
+func markTransportReady(ms *MediaSession) {
+	ms.sess.MarkICEConnected(time.Now())
+	ms.sess.MarkOutboundReady()
+	ms.sess.RecordInbound(time.Now())
+	ms.maybeFireMediaReady()
+}
+
+func TestReadinessWaitsForAcceptanceAndRechecksExistingRTP(t *testing.T) {
+	for _, acceptedFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "transport_first", true: "acceptance_first"}[acceptedFirst], func(t *testing.T) {
+			ready := make(chan struct{}, 32)
+			ms, _ := newLifecycleMediaSession(t, &umedia.NoopPipeline{}, Hooks{
+				OnMediaReady: func(*session.Session) { ready <- struct{}{} },
+			})
+			if acceptedFirst {
+				ms.NotifyAccepted()
+			} else {
+				markTransportReady(ms)
+			}
+			if !ms.sess.Stats().MediaReadyAt.IsZero() {
+				t.Fatal("readiness fired before both transport and Worker acceptance")
+			}
+			if acceptedFirst {
+				markTransportReady(ms)
+			} else {
+				ms.NotifyAccepted() // No new RTP packet after this notification.
+			}
+			select {
+			case <-ready:
+			case <-time.After(time.Second):
+				t.Fatal("existing readiness was lost after acceptance")
+			}
+			var wg sync.WaitGroup
+			for i := 0; i < 16; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					ms.NotifyAccepted()
+					ms.maybeFireMediaReady()
+				}()
+			}
+			wg.Wait()
+			if len(ready) != 0 {
+				t.Fatal("duplicate readiness callback")
+			}
+			ms.Terminate("test_done")
+		})
+	}
+}
+
+func TestLateAcceptanceCannotReviveTerminatedSession(t *testing.T) {
+	ms, _ := newLifecycleMediaSession(t, &umedia.NoopPipeline{}, Hooks{})
+	markTransportReady(ms)
+	ms.Terminate("caller_terminated")
+	if got := ms.NotifyAccepted(); got != string(umedia.GreetingClosed) {
+		t.Fatalf("late acceptance returned %q", got)
+	}
+	ms.maybeFireMediaReady()
+	if !ms.sess.Stats().MediaReadyAt.IsZero() {
+		t.Fatal("readiness emitted after termination")
+	}
+}
+
+func TestGreetingWaitsForBothAcceptanceAndConnectedTransport(t *testing.T) {
+	for _, transportFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "acceptance_first", true: "transport_first"}[transportFirst], func(t *testing.T) {
+			client := &endCallTurnClient{}
+			pipe := umedia.NewConversationPipeline("call-lifecycle", client, umedia.ConversationConfig{Greet: true}, nil)
+			hook := make(chan string, 1)
+			ms, _ := newLifecycleMediaSession(t, pipe, Hooks{OnTerminated: func(_ *session.Session, reason string) { hook <- reason }})
+			if err := pipe.Attach(context.Background(), ms); err != nil {
+				t.Fatal(err)
+			}
+			if transportFirst {
+				ms.handleConnectionState(pion.PeerConnectionStateConnected)
+			} else if got := ms.NotifyAccepted(); got != "pending_transport" {
+				t.Fatalf("early acceptance = %q", got)
+			}
+			if pipe.Greeted() {
+				t.Fatal("greeting began before both boundaries")
+			}
+			if transportFirst {
+				ms.NotifyAccepted()
+			} else {
+				ms.handleConnectionState(pion.PeerConnectionStateConnected)
+			}
+			if got := awaitLifecycleHook(t, hook); got != "conversation_complete" {
+				t.Fatal(got)
+			}
+			if client.calls.Load() != 1 {
+				t.Fatalf("greeting count = %d", client.calls.Load())
+			}
+		})
+	}
+}
+
+func TestUnconnectedOutboundTrackCannotClaimSentAudio(t *testing.T) {
+	ms, sess := newLifecycleMediaSession(t, newLifecyclePipeline(false), Hooks{})
+	if err := ms.SendOpus(umedia.OpusFrame{Data: []byte{0x78, 0x01}}); err == nil {
+		t.Fatal("unconnected track reported success")
+	}
+	if sess.Stats().OutboundPackets != 0 || !sess.Stats().FirstOutboundAt.IsZero() {
+		t.Fatal("fabricated outbound evidence")
+	}
+}
+
+func TestAcceptanceDuringRecoverableDisconnectWaitsForReconnection(t *testing.T) {
+	ready := make(chan struct{}, 2)
+	ms, _ := newLifecycleMediaSession(t, &umedia.NoopPipeline{}, Hooks{
+		OnMediaReady: func(*session.Session) { ready <- struct{}{} },
+	})
+	markTransportReady(ms)
+	ms.handleConnectionState(pion.PeerConnectionStateDisconnected)
+	ms.NotifyAccepted()
+	if ms.sess.MediaReadyRule() || !ms.sess.Stats().MediaReadyAt.IsZero() {
+		t.Fatal("disconnected transport claimed readiness after acceptance")
+	}
+	ms.handleConnectionState(pion.PeerConnectionStateConnected)
+	select {
+	case <-ready:
+	case <-time.After(time.Second):
+		t.Fatal("reconnection lost readiness from already measured RTP")
+	}
+	ms.handleConnectionState(pion.PeerConnectionStateConnected)
+	if len(ready) != 0 {
+		t.Fatal("duplicate readiness on repeated connection notification")
+	}
+	ms.Terminate("test_done")
+}

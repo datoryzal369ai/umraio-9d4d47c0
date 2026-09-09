@@ -154,7 +154,7 @@ func (s *Server) handleOffer(w http.ResponseWriter, r *http.Request) {
 	hooks := gwrtc.Hooks{
 		OnMediaReady: func(sn *session.Session) { s.emit(callback.EventMediaReady, sn, "") },
 		OnTerminated: func(sn *session.Session, reason string) {
-			s.emit(callback.EventTerminated, sn, reason)
+			s.emit(terminalCallbackEvent(sn.State()), sn, reason)
 			s.forget(sn.CallID)
 		},
 	}
@@ -316,6 +316,16 @@ func failureReason(name, reason string) string {
 	}
 }
 
+// terminalCallbackEvent keeps cleanup exactly once while preserving FAILED as
+// a failure at the control-plane boundary. All other terminal cleanup is a
+// normal media_terminated event.
+func terminalCallbackEvent(state session.State) string {
+	if state == session.StateFailed {
+		return callback.EventMediaFailed
+	}
+	return callback.EventTerminated
+}
+
 func (s *Server) emit(name string, sess *session.Session, reason string) {
 	if s.Events == nil {
 		return
@@ -328,17 +338,38 @@ func (s *Server) emit(name string, sess *session.Session, reason string) {
 		InboundPackets: st.InboundPackets, OutboundPackets: st.OutboundPackets,
 		Reason: reason,
 	}
+	if !st.FirstInboundAt.IsZero() {
+		ev.FirstInboundAt = st.FirstInboundAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !st.FirstOutboundAt.IsZero() {
+		ev.FirstOutboundAt = st.FirstOutboundAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !st.MediaReadyAt.IsZero() {
+		ev.MediaReadyAt = st.MediaReadyAt.UTC().Format(time.RFC3339Nano)
+	}
 	go func() {
+		started := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.Events.Send(ctx, ev); err != nil {
 			// Status only — never the response body, payload, SDP or credentials.
-			s.Logger.Warn("callback failed",
+			s.Logger.Warn("callback delivery",
+				"outcome", "failed",
 				"error_class", errClass(err),
 				"http_status", callback.StatusOf(err),
+				"duration_ms", time.Since(started).Milliseconds(),
 				"call_id", ev.CallID,
+				"session_id", ev.SessionID,
 				"event", name)
+			return
 		}
+		s.Logger.Info("callback delivery",
+			"outcome", "delivered",
+			"http_status", 0,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"call_id", ev.CallID,
+			"session_id", ev.SessionID,
+			"event", name)
 	}()
 }
 

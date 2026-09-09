@@ -48,12 +48,12 @@ function clip(text: string, max = 160): string {
  */
 export async function hydrateCallerContext(
   db: Db,
-  args: { agencyId: string; callerPhone: string },
+  args: { agencyId: string; callerPhone: string; conversationId?: string | null },
 ): Promise<CallerContext> {
   const tail = phoneTail(args.callerPhone ?? "");
   if (!tail) return EMPTY_CALLER_CONTEXT;
 
-  const { data: leads } = await db
+  const { data: leads, error: leadError } = await db
     .from("leads")
     .select(
       "id, full_name, phone, stage, temperature, pax, preferred_month, package_interest, budget_myr, total_budget_myr, preferred_language, conversational_style, traveller_needs, tags",
@@ -62,17 +62,25 @@ export async function hydrateCallerContext(
     .ilike("phone", `%${tail}`)
     .order("last_contact_at", { ascending: false, nullsFirst: false })
     .limit(1);
+  if (leadError) {
+    logDbError("context_lead", null, leadError);
+    throw new Error("call_context_lead_failed");
+  }
   const lead = (Array.isArray(leads) ? leads[0] : null) ?? null;
   if (!lead) return EMPTY_CALLER_CONTEXT;
 
-  const [{ data: conversations }, { data: quotations }] = await Promise.all([
-    db
-      .from("conversations")
-      .select("id, channel, conversation_state, last_message_at")
-      .eq("agency_id", args.agencyId)
-      .eq("lead_id", lead.id)
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(1),
+  let conversationQuery = db
+    .from("conversations")
+    .select("id, channel, conversation_state, last_message_at")
+    .eq("agency_id", args.agencyId)
+    .eq("lead_id", lead.id)
+    .eq("channel", "whatsapp");
+  if (args.conversationId) conversationQuery = conversationQuery.eq("id", args.conversationId);
+  const [
+    { data: conversations, error: conversationError },
+    { data: quotations, error: quotationError },
+  ] = await Promise.all([
+    conversationQuery.order("last_message_at", { ascending: false, nullsFirst: false }).limit(1),
     db
       .from("quotations")
       .select("quotation_number, status, total, deposit_amount, number_of_pilgrims, created_at")
@@ -82,17 +90,26 @@ export async function hydrateCallerContext(
       .order("created_at", { ascending: false })
       .limit(1),
   ]);
+  if (conversationError) {
+    logDbError("context_conversation", null, conversationError);
+    throw new Error("call_context_conversation_failed");
+  }
+  if (quotationError) logDbError("context_quotation", null, quotationError);
   const conversation = (Array.isArray(conversations) ? conversations[0] : null) ?? null;
   const quotation = (Array.isArray(quotations) ? quotations[0] : null) ?? null;
 
   let recent: Array<{ sender: string; body: string; modality?: string | null }> = [];
   if (conversation?.id) {
-    const { data: messages } = await db
+    const { data: messages, error: messageError } = await db
       .from("messages")
       .select("sender, body, modality, created_at")
       .eq("conversation_id", conversation.id)
       .order("created_at", { ascending: false })
       .limit(10);
+    if (messageError) {
+      logDbError("context_messages", null, messageError);
+      throw new Error("call_context_messages_failed");
+    }
     recent = Array.isArray(messages) ? [...messages].reverse() : [];
   }
 
@@ -178,6 +195,7 @@ export type CallMemoryOutcome =
   | "lookup_failed"
   | "update_failed"
   | "insert_failed"
+  | "linkage_failed"
   | "threw";
 
 type DbError = { code?: string | null; message?: string | null } | null | undefined;
@@ -204,10 +222,22 @@ export async function persistCallMemory(
   const marker = args.callId ? callMemoryMarker(args.callId) : null;
   const body = marker ? `${args.summary.trim()}\n${marker}` : args.summary.trim();
   try {
+    const linked = await db
+      .from("conversations")
+      .select("id")
+      .eq("id", args.conversationId)
+      .eq("agency_id", args.agencyId)
+      .eq("channel", "whatsapp")
+      .maybeSingle();
+    if (linked?.error || !linked?.data) {
+      logDbError("conversation_link", args.callId, linked?.error ?? { code: "not_found" });
+      return "linkage_failed";
+    }
     if (marker) {
       const lookup = (await db
         .from("messages")
         .select("id")
+        .eq("agency_id", args.agencyId)
         .eq("conversation_id", args.conversationId)
         .eq("modality", CALL_MEMORY_MODALITY)
         .ilike("body", `%${marker}%`)
@@ -219,7 +249,12 @@ export async function persistCallMemory(
       }
       const existingId = lookup?.data?.id;
       if (existingId) {
-        const updated = (await db.from("messages").update({ body }).eq("id", existingId)) as {
+        const updated = (await db
+          .from("messages")
+          .update({ body })
+          .eq("id", existingId)
+          .eq("agency_id", args.agencyId)
+          .eq("conversation_id", args.conversationId)) as {
           error?: DbError;
         } | null;
         if (updated?.error) {
@@ -287,4 +322,3 @@ export async function finalizeCallMemory(
     return "threw";
   }
 }
-

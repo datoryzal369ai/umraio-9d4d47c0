@@ -81,6 +81,7 @@ export type VoiceTurnResult =
       voiceId?: string;
       languageBoost?: string;
       endCall: boolean;
+      awaitingCompletion?: boolean;
       reason?: string;
     }
   | { ok: false; reason: string };
@@ -233,6 +234,11 @@ export async function handleVoiceTurn(args: {
     return { ok: false, reason: gate.reason };
   }
   const row = session!;
+  // A signed silence event is meaningful only after our completion question.
+  // Ordinary quiet must never be converted into a customer transcript.
+  if (payload.kind === "silence" && readClosingState(row.closing_state) !== "completion_check") {
+    return { ok: false, reason: "silence_not_awaited" };
+  }
 
   // Agency voice configuration lives in agency_settings — the authoritative
   // store for voice_persona, voice_controls, voice_name and voice_language.
@@ -270,8 +276,14 @@ export async function handleVoiceTurn(args: {
   const contextPromise: Promise<CallerContext> = hydrateCallerContext(db, {
     agencyId: row.agency_id,
     callerPhone: row.caller_phone,
+    conversationId: row.conversation_id ?? null,
   })
-    .catch(() => EMPTY_CALLER_CONTEXT)
+    .catch((error) => {
+      console.error(
+        `[calls] call_context_failed call_id=${row.call_id} code=${error instanceof Error ? error.name : "unknown"}`,
+      );
+      return EMPTY_CALLER_CONTEXT;
+    })
     .then((ctx) => {
       contextMs = Date.now() - contextStartedAt;
       return ctx;
@@ -447,7 +459,7 @@ export async function handleVoiceTurn(args: {
   // into the WhatsApp thread.
   const summary = buildCallSummary({ turns, intents, outcome, language });
 
-  await db
+  const memoryWrite = await db
     .from("whatsapp_call_sessions")
     .update({
       transcript: turns,
@@ -465,16 +477,24 @@ export async function handleVoiceTurn(args: {
       ...(travellers ? { voice_traveller_count: travellers } : {}),
     })
     .eq("id", row.id);
+  if (memoryWrite?.error) {
+    console.error(
+      `[calls] call_memory_write_failed stage=turn_session call_id=${row.call_id} code=${memoryWrite.error.code ?? "unknown"}`,
+    );
+  }
 
   // CALL → TEXT continuity, refreshed after EVERY turn (one row per call, kept
   // current). A caller who hangs up mid-call is still remembered by the text
   // brain, instead of the memory only landing at a clean end-of-call.
-  await persistCallMemory(db, {
+  const memoryOutcome = await persistCallMemory(db, {
     agencyId: row.agency_id,
     conversationId: row.conversation_id ?? context.conversationId,
     summary,
     callId: row.call_id,
   });
+  console.log(
+    `[calls] call_memory_turn call_id=${row.call_id} session_persisted=${!memoryWrite?.error} outcome=${memoryOutcome}`,
+  );
 
   const stats = summarizeLatency(latency);
   console.log(
@@ -493,6 +513,7 @@ export async function handleVoiceTurn(args: {
     voiceId: MINIMAX_DEFAULT_VOICE_ID,
     languageBoost: languageBoostFor(language),
     endCall,
+    awaitingCompletion: !endCall && nextClosingState === "completion_check",
     ...(endCall ? { reason: "conversation_complete" } : {}),
   };
 }
