@@ -92,11 +92,14 @@ def preflight():
     assert current['config']['image'] == os.environ['ROLLBACK_IMAGE'], 'Production image moved; stop'
     active = request(API, credential='FLY_API_TOKEN')
     assert [m['id'] for m in active if m['state'] != 'destroyed'] == [MACHINE], 'Machine topology changed'
-    report = health(BASE, require_idle=True)
+    # Image preparation is safe while a call exists. The image-update step
+    # independently requires an idle gateway immediately before mutation.
+    report = health(BASE)
+    print('Preflight active_sessions:', report['active_sessions'])
     fd = os.open(SNAPSHOT, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, 'w') as stream:
         json.dump(current, stream)
-    print('PASS: unchanged production baseline, idle gateway, WebRTC/speech up; original machine config retained privately for rollback.')
+    print('PASS: unchanged production baseline, WebRTC/speech up; original machine config retained privately for rollback. Idle guard remains mandatory before image update.')
     print('Rollback image:', os.environ['ROLLBACK_IMAGE'])
     print('Production SHA:', report['build_version'])
 
