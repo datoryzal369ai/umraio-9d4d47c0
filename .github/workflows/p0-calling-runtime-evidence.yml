@@ -39,9 +39,24 @@ jobs:
                   elif isinstance(value,str) and '{' in value:
                       try: collect(json.loads(value[value.find('{'):]))
                       except ValueError: pass
-          for line in result.stdout.decode(errors='replace').splitlines():
-              try: collect(json.loads(line))
-              except ValueError: pass
+          # flyctl emits concatenated, indented JSON objects, not JSONL.
+          decoder=json.JSONDecoder()
+          raw=result.stdout.decode(errors='replace')
+          offset=0
+          wrapper_times=[]
+          decoded_entries=0
+          while offset < len(raw):
+              while offset < len(raw) and raw[offset].isspace(): offset+=1
+              if offset >= len(raw): break
+              try:
+                  entry,offset=decoder.raw_decode(raw,offset)
+              except ValueError:
+                  raise SystemExit('Read-only Fly log JSON decoding failed; raw output suppressed')
+              decoded_entries+=1
+              if isinstance(entry,dict) and isinstance(entry.get('timestamp'),str):
+                  wrapper_times.append(entry['timestamp'])
+              collect(entry)
+          print(json.dumps({'capture':{'bytes':len(result.stdout),'decoded_entries':decoded_entries,'oldest_utc':min(wrapper_times,default=None),'newest_utc':max(wrapper_times,default=None)}}))
           window=[r for r in rows if start <= r['time'][:19] <= end]
           call_ids={r.get('call_id') for r in window if r.get('session_id')==sid and r.get('call_id')}
           allowed={'time','level','msg','state','reason','inbound_packets','outbound_packets','sequence','error_class','http_status','duration_ms','tts_ms','tts_encode_ms','playback_start_ms','speech_end_to_first_audio_ms','packets','greeting','event','error','peer_connection_state','ice_connection_state','status_code','code','provider','model','pipeline_mode','media_ready','outbound_ready'}
