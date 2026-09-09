@@ -1,5 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+/** 0.2 s of synthetic s16le / 24 kHz / mono tone — never customer audio. */
+function syntheticPcm(): Uint8Array {
+  const pcm = new Uint8Array(24000 * 0.2 * 2)
+  const view = new DataView(pcm.buffer)
+  for (let i = 0; i < pcm.byteLength / 2; i++) {
+    view.setInt16(i * 2, Math.round(9000 * Math.sin((2 * Math.PI * 220 * i) / 24000)), true)
+  }
+  return pcm
+}
+
 /**
  * Non-secret Opus encoder diagnostic. Synthetic PCM only — no provider call,
  * no database read, no customer data. Separates the three failure classes that
@@ -78,12 +88,7 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
         const { encodePcmToOggOpus, opusWasmSource, opusLoaderStages } = await import(
           '@/lib/voice/opus-encode.server'
         )
-        // 0.2 s of synthetic s16le 24 kHz mono tone.
-        const pcm = new Uint8Array(24000 * 0.2 * 2)
-        const view = new DataView(pcm.buffer)
-        for (let i = 0; i < pcm.byteLength / 2; i++) {
-          view.setInt16(i * 2, Math.round(9000 * Math.sin((2 * Math.PI * 220 * i) / 24000)), true)
-        }
+        const pcm = syntheticPcm()
         const r = await encodePcmToOggOpus(pcm)
 
         const container = r.ok
