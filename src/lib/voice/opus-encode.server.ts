@@ -171,33 +171,12 @@ function sanitize(error: unknown): string {
   return `${name}: ${message}`;
 }
 
-async function loadCompiledModule(): Promise<OpusExports | null> {
-  let mod: unknown;
-  try {
-    mod = ((await import("./opus/opus.wasm?cfmodule")) as { default?: unknown }).default;
-    note("module_import", true);
-  } catch (error) {
-    note("module_import", false, sanitize(error));
-    return null;
-  }
-
-  const kind = mod === null || mod === undefined ? String(mod) : typeof mod;
-  const ctor = (mod as { constructor?: { name?: string } })?.constructor?.name ?? "none";
-  const isModule = mod instanceof WebAssembly.Module;
-  note("module_type", isModule, `typeof=${kind} constructor=${ctor} instanceof_Module=${isModule}`);
-  if (!isModule) return null;
-
-  try {
-    const instance = await WebAssembly.instantiate(mod as WebAssembly.Module, OPUS_IMPORTS);
-    note("module_instantiate", true);
-    wasmSource = "compiled_module";
-    return finishInstance(instance);
-  } catch (error) {
-    note("module_instantiate", false, sanitize(error));
-    return null;
-  }
-}
-
+/**
+ * ASSET LOADER — the binary lives at `public/wasm/opus.wasm` and is fetched by
+ * URL. Importing `.wasm` from source is not supported on this deployment stack
+ * (it puts the binary in the server bundle and breaks the deploy), so the
+ * precompiled-module import has been removed entirely.
+ */
 async function loadHostedModule(): Promise<OpusExports | null> {
   const origin = process.env["PUBLIC_SITE_URL"] ?? "https://umraio.com";
   try {
@@ -206,10 +185,18 @@ async function loadHostedModule(): Promise<OpusExports | null> {
     if (!response.ok) return null;
     const buffer = await response.arrayBuffer();
     note("hosted_bytes", buffer.byteLength > 0, `bytes=${buffer.byteLength}`);
-    const exports = await instantiateFromBytes(new Uint8Array(buffer));
-    note("hosted_instantiate", Boolean(exports));
-    if (exports) wasmSource = "hosted_asset";
-    return exports;
+    try {
+      const { instance } = (await WebAssembly.instantiate(
+        new Uint8Array(buffer),
+        OPUS_IMPORTS,
+      )) as WebAssembly.WebAssemblyInstantiatedSource;
+      note("hosted_instantiate", true);
+      wasmSource = "hosted_asset";
+      return finishInstance(instance);
+    } catch (error) {
+      note("hosted_instantiate", false, sanitize(error));
+      return null;
+    }
   } catch (error) {
     note("hosted_fetch", false, sanitize(error));
     return null;
@@ -217,10 +204,11 @@ async function loadHostedModule(): Promise<OpusExports | null> {
 }
 
 /**
- * Byte-compilation is impossible in the serverless runtime, so in production the
- * precompiled module is the ONLY accepted source. Falling through to the hosted
- * or embedded byte paths there would just fail slowly and hide the real cause,
- * so the encoder reports unavailable and the voice note fails closed instead.
+ * The serverless runtime forbids compiling WebAssembly from bytes
+ * ("Wasm code generation disallowed by embedder"), which is the ONLY remaining
+ * loader path now that source `.wasm` imports are not permitted on this stack.
+ * The encoder therefore fails closed in production and the media-plane
+ * (native libopus) encoder is the viable alternative.
  */
 export function opusAllowsByteCompilation(): boolean {
   return process.env["NODE_ENV"] !== "production";
@@ -230,18 +218,17 @@ async function loadOpusExports(): Promise<OpusExports | null> {
   loaderStages = [];
   note("embedded_asset", OPUS_WASM_BASE64.length > 0, `base64_chars=${OPUS_WASM_BASE64.length}`);
 
-  const compiled = await loadCompiledModule();
-  if (compiled) return compiled;
+  const hosted = await loadHostedModule();
+  if (hosted) return hosted;
   if (!opusAllowsByteCompilation()) {
     wasmSource = "unavailable";
     const last = loaderStages.filter((s) => !s.ok).at(-1);
     console.error(
-      `[voice] opus_wasm_unavailable source=compiled_module stage=${last?.stage ?? "unknown"} detail=${last?.detail ?? "none"}`,
+      `[voice] opus_wasm_unavailable source=hosted_asset stage=${last?.stage ?? "unknown"} detail=${last?.detail ?? "none"}`,
     );
     return null;
   }
-  const hosted = await loadHostedModule();
-  if (hosted) return hosted;
+
   try {
     // Runtimes that still allow compiling from bytes (node, vitest, dev).
     const { instance } = await WebAssembly.instantiate(
