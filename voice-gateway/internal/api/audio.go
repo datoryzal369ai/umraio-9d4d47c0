@@ -37,7 +37,6 @@ const MaxAudioBodyBytes = 8 * 1024 * 1024
 var AudioConvertTimeout = 20 * time.Second
 var AudioQueueTimeout = 8 * time.Second
 
-
 // maxConcurrentConversions keeps CPU-heavy complexity-10 encodes from starving
 // the live-call media loop.
 const maxConcurrentConversions = 2
@@ -138,7 +137,6 @@ func (s *Server) handleAudioOpus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnprocessableEntity, "encode_failed")
 		return
 	}
-
 
 	ogg := umedia.WriteOggOpusFile(
 		out.file.Packets,

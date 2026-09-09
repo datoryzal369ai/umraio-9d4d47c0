@@ -110,7 +110,6 @@ func EncodeOpusFile(pcm []byte) (*OpusFile, error) {
 	// packet beyond it.
 	frames := (len(samples) + int(lookahead) + FileFrameSamples - 1) / FileFrameSamples
 
-
 	packets := make([][]byte, 0, frames)
 	frame := make([]int16, FileFrameSamples)
 	buf := make([]byte, 4000)
