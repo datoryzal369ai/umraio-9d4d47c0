@@ -9,6 +9,24 @@ import (
 	pion "github.com/pion/webrtc/v4"
 )
 
+// A forced VAD size boundary must neither start audio nor consume the ready
+// reply. Wait for genuine silence, cancellation or a newer caller generation.
+func (p *ConversationPipeline) waitForCallerQuiet(ctx context.Context, generation uint64) bool {
+	p.mu.Lock()
+	quiet := p.callerQuiet
+	valid := !p.closed && p.generation == generation && ctx.Err() == nil
+	p.mu.Unlock()
+	if !valid || quiet == nil {
+		return valid
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-quiet:
+		return true // playTurn rechecks generation and VAD while holding mu
+	}
+}
+
 // Observe the existing transport state without changing WebRTC or waiting for
 // OnTrack/inbound speech. Non-WebRTC transports retain their existing contract.
 func (p *ConversationPipeline) waitForConversationReady(ctx context.Context) bool {

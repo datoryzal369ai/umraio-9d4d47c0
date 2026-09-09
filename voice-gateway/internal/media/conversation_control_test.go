@@ -211,3 +211,37 @@ func TestConversationCandidateThreeTurnsThenNaturalClose(t *testing.T) {
 		t.Fatal("incomplete farewell or duplicate termination")
 	}
 }
+
+func TestConversationCandidateMaxClosureKeepsCallerOwnership(t *testing.T) {
+	turns := &fakeTurns{reply: func(TurnRequest) (*TurnResponse, error) {
+		return &TurnResponse{ReplyOggBase64: oggReply(3)}, nil
+	}}
+	cfg := fastCfg()
+	cfg.VAD.MaxUtteranceMs = 20
+	p, tr := newPipeline(t, turns, cfg)
+	defer p.Close("test")
+	pushSpeech(p, 20)
+	waitFor(t, "bounded turn dispatched before caller silence", func() bool { return len(turns.seen()) > 0 })
+	time.Sleep(15 * time.Millisecond) // give the ready reply time to attempt playback
+	if tr.count() != 0 {
+		t.Fatal("a forced size boundary interrupted the caller")
+	}
+	pushSpeech(p, 40)
+	time.Sleep(15 * time.Millisecond)
+	if got := len(turns.seen()); got != 1 {
+		t.Fatalf("continuous speech dispatched %d turns before end-of-speech, want 1", got)
+	}
+	if tr.count() != 0 {
+		t.Fatal("queued continuation interrupted caller")
+	}
+	pushSilence(p, cfg.VAD.EndSilenceMs/cfg.VAD.FrameMs)
+	waitFor(t, "retained chunks drain after genuine end-of-speech", func() bool { return len(turns.seen()) == 3 && !p.busyNow() })
+	if tr.count() == 0 {
+		t.Fatal("no response after caller stopped")
+	}
+	for _, req := range turns.seen() {
+		if req.DurationMs != 20 {
+			t.Fatalf("forced closure duration = %d, want 20", req.DurationMs)
+		}
+	}
+}

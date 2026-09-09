@@ -42,6 +42,8 @@ jobs:
             'voice-gateway/internal/media/conversation.go',
             'voice-gateway/internal/media/conversation_control.go',
             'voice-gateway/internal/media/conversation_control_test.go',
+            # Test-only log-buffer synchronization; WebRTC runtime stays identical.
+            'voice-gateway/internal/webrtc/media_diagnostics_test.go',
           }
           changed = set(subprocess.check_output(['git', 'diff', '--name-only', base, 'HEAD'], text=True).splitlines())
           assert changed <= allowed, 'Protected or unrelated file changed: ' + repr(sorted(changed - allowed))
@@ -67,12 +69,12 @@ jobs:
           "$RUNNER_TEMP/calling-tools/node_modules/.bin/bun" install --frozen-lockfile --ignore-scripts
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev
-      - name: New conversation and progressive callback tests with race detector
+      - name: Two repaired native regressions and caller-ownership boundary with race detector
         working-directory: voice-gateway
-        run: go test -race -v ./internal/media ./internal/callback -run 'TestConversationCandidate|TestCallingStream' -count=1 -timeout=90s
-      - name: Existing native media, MiniMax, Opus, RTP, VAD and WebRTC regression gates
+        run: go test -race -v ./internal/media ./internal/webrtc -run 'TestMaxUtteranceDurationClosesTurn|TestConversationCandidateMaxClosureKeepsCallerOwnership|TestMediaDiagnosticsEndToEnd' -count=10 -timeout=180s
+      - name: Full native media, conversation, MiniMax, Opus, RTP, VAD and WebRTC regression gates
         working-directory: voice-gateway
-        run: go test -race -v ./... -skip 'TestConversationCandidate|TestCallingStream' -count=1 -timeout=180s
+        run: go test -race -v ./... -count=1 -timeout=180s
       - name: Calling, Voice Note and WhatsApp Text regression gates
         run: |
           python3 - <<'PY'

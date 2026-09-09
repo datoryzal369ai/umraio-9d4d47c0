@@ -155,6 +155,10 @@ type ConversationPipeline struct {
 	ending      bool
 	ackCache    map[string][][]byte
 	turns       int
+	// A size-limited VAD segment is not a conversational end-of-speech.
+	// Keep caller ownership across resets until the existing silence threshold.
+	callerQuiet chan struct{}
+	silenceMs   int
 	speaking    bool
 	cancelTTS   chan struct{}
 	bargeIns    int
@@ -295,6 +299,15 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 		p.mu.Unlock()
 		return
 	}
+	if len(frame.Data) >= p.cfg.VAD.SpeechMinBytes {
+		p.silenceMs = 0
+	} else if p.silenceMs < p.cfg.VAD.EndSilenceMs {
+		p.silenceMs += p.cfg.VAD.FrameMs
+	}
+	if p.callerQuiet != nil && p.silenceMs >= p.cfg.VAD.EndSilenceMs {
+		close(p.callerQuiet)
+		p.callerQuiet = nil
+	}
 	event, utterance := p.seg.Push(frame)
 	switch event {
 	case VADSpeechStart:
@@ -316,6 +329,11 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 			return
 		}
 		durationMs := len(utterance) * p.cfg.VAD.FrameMs
+		forced := durationMs >= p.cfg.VAD.MaxUtteranceMs && p.silenceMs < p.cfg.VAD.EndSilenceMs
+		deferDispatch := forced && p.callerQuiet != nil
+		if forced && p.callerQuiet == nil {
+			p.callerQuiet = make(chan struct{})
+		}
 		endedAt := p.clock()
 		speechEnd := p.seg.SpeechEndAt()
 		p.speechEndAt = speechEnd
@@ -323,14 +341,15 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 			p.pendingVADMs = int(endedAt.Sub(speechEnd).Milliseconds())
 		}
 		p.mu.Unlock()
-		p.startTurn(TurnRequest{
+		p.submitTurn(TurnRequest{
 			CallID:         p.callID,
 			Kind:           TurnKindUtterance,
 			AudioOggBase64: base64.StdEncoding.EncodeToString(WriteOggOpus(utterance, 2, p.cfg.FrameSamples)),
 			DurationMs:     durationMs,
-		})
+		}, deferDispatch)
 		return
 	}
+	p.startPendingTurnLocked()
 	p.mu.Unlock()
 }
 
@@ -342,6 +361,10 @@ type pendingTurn struct {
 }
 
 func (p *ConversationPipeline) startTurn(req TurnRequest) {
+	p.submitTurn(req, false)
+}
+
+func (p *ConversationPipeline) submitTurn(req TurnRequest, deferDispatch bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed || p.ending {
@@ -349,14 +372,24 @@ func (p *ConversationPipeline) startTurn(req TurnRequest) {
 	}
 	next := pendingTurn{req, p.speechEndAt, p.generation, p.pendingVADMs}
 	p.pendingVADMs = 0
-	if p.busy {
+	if deferDispatch || p.busy || len(p.pending) > 0 {
 		// Bound caller buffering without starting concurrent control-plane turns.
 		if len(p.pending) < 4 {
 			p.pending = append(p.pending, next)
 		}
+		p.startPendingTurnLocked()
 		return
 	}
 	p.startTurnLocked(next)
+}
+
+func (p *ConversationPipeline) startPendingTurnLocked() {
+	if p.closed || p.ending || p.busy || p.callerQuiet != nil || len(p.pending) == 0 {
+		return
+	}
+	queued := p.pending[0]
+	p.pending = p.pending[1:]
+	p.startTurnLocked(queued)
 }
 
 // Caller holds mu: Add cannot race Close/Wait.
@@ -393,16 +426,14 @@ func (p *ConversationPipeline) startTurnLocked(next pendingTurn) {
 		transport := p.transport
 		// A caller may resume between the last farewell frame and this lock.
 		// Commit termination only while the same completed turn is current.
-		if reason != "" && (p.closed || p.generation != st.generation || p.seg.Speaking()) {
+		if reason != "" && (p.closed || p.generation != st.generation || p.seg.Speaking() || p.callerQuiet != nil) {
 			reason = ""
 		}
 		if reason != "" && !p.closed {
 			p.ending = true
 			p.pending = nil
-		} else if !p.closed && len(p.pending) > 0 {
-			queued := p.pending[0]
-			p.pending = p.pending[1:]
-			p.startTurnLocked(queued)
+		} else {
+			p.startPendingTurnLocked()
 		}
 		p.mu.Unlock()
 		// Transport.Terminate calls Close/Wait. This turn must leave the
@@ -489,6 +520,9 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st 
 func (p *ConversationPipeline) playTurn(ctx context.Context, packets [][]byte, generation uint64) (time.Time, bool) {
 	var firstAudioAt time.Time
 	if len(packets) == 0 {
+		return firstAudioAt, false
+	}
+	if !p.waitForCallerQuiet(ctx, generation) {
 		return firstAudioAt, false
 	}
 	p.mu.Lock()

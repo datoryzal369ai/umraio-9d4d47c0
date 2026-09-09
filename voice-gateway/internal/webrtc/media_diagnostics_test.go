@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,7 +31,26 @@ func (p *modedPipeline) Attach(ctx context.Context, t umedia.Transport) error {
 	return p.countingPipeline.Attach(ctx, t)
 }
 
-func logLines(buf *bytes.Buffer) []map[string]any {
+// slog serializes its writers, but a test reader is outside that lock.
+// Protect both operations with the same mutex; String returns an owned copy.
+type diagnosticLogBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *diagnosticLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *diagnosticLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
+}
+
+func logLines(buf interface{ String() string }) []map[string]any {
 	var out []map[string]any
 	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
 		if l == "" {
@@ -44,7 +64,7 @@ func logLines(buf *bytes.Buffer) []map[string]any {
 	return out
 }
 
-func findEvents(buf *bytes.Buffer, msg string) []map[string]any {
+func findEvents(buf interface{ String() string }, msg string) []map[string]any {
 	var out []map[string]any
 	for _, m := range logLines(buf) {
 		if m["msg"] == msg {
@@ -95,7 +115,7 @@ func TestMediaReadyRequiresInboundRTP(t *testing.T) {
 // exactly once, outbound Opus counted, termination stats correct, and no
 // sensitive material anywhere in the diagnostics.
 func TestMediaDiagnosticsEndToEnd(t *testing.T) {
-	buf := &bytes.Buffer{}
+	buf := &diagnosticLogBuffer{}
 	log := slog.New(slog.NewJSONHandler(buf, nil))
 	e, err := NewEngine(Config{NegotiateTO: 10 * time.Second, Logger: log})
 	if err != nil {
