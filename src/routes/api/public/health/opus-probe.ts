@@ -1,5 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+/** 0.2 s of synthetic s16le / 24 kHz / mono tone — never customer audio. */
+function syntheticPcm(): Uint8Array {
+  const pcm = new Uint8Array(24000 * 0.2 * 2)
+  const view = new DataView(pcm.buffer)
+  for (let i = 0; i < pcm.byteLength / 2; i++) {
+    view.setInt16(i * 2, Math.round(9000 * Math.sin((2 * Math.PI * 220 * i) / 24000)), true)
+  }
+  return pcm
+}
+
 /**
  * Non-secret Opus encoder diagnostic. Synthetic PCM only — no provider call,
  * no database read, no customer data. Separates the three failure classes that
@@ -11,11 +21,45 @@ import { createFileRoute } from '@tanstack/react-router'
 export const Route = createFileRoute('/api/public/health/opus-probe')({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
         const runtime = {
           navigator: typeof navigator === 'undefined' ? 'none' : String((navigator as { userAgent?: string }).userAgent ?? 'unknown'),
           node_env: process.env['NODE_ENV'] ?? 'unset',
           has_process_versions: typeof process !== 'undefined' && Boolean((process as { versions?: unknown }).versions),
+        }
+
+        /**
+         * NATIVE CONVERTER PROBE — off by default so this public endpoint never
+         * generates a real media-plane request. It is enabled only by an
+         * explicit non-production opt-in used by the isolated local harness.
+         */
+        const wantsGateway = new URL(request.url).searchParams.get('mode') === 'gateway'
+        if (wantsGateway && process.env['OPUS_PROBE_ALLOW_GATEWAY'] === '1') {
+          const { resolveOpusGatewayConfig } = await import('@/lib/voice/opus-gateway.server')
+          const configured = Boolean(resolveOpusGatewayConfig())
+          const { encodeVoiceNotePcm } = await import('@/lib/voice/voice-note-encode.server')
+          const pcm = syntheticPcm()
+          const out = await encodeVoiceNotePcm(pcm)
+          return Response.json({
+            ok: out.ok,
+            runtime,
+            mode: 'gateway',
+            gateway_configured: configured,
+            encoder: out.source,
+            ...(out.ok
+              ? {
+                  mime_type: 'audio/ogg',
+                  container: {
+                    magic: String.fromCharCode(...out.bytes.subarray(0, 4)),
+                    opus_head: String.fromCharCode(...out.bytes.subarray(28, 36)),
+                    bytes: out.bytes.byteLength,
+                  },
+                }
+              : { reason: out.reason }),
+          })
+        }
+        if (wantsGateway) {
+          return Response.json({ ok: false, runtime, mode: 'gateway', reason: 'gateway_probe_disabled' })
         }
 
         const { OPUS_WASM_BASE64 } = await import('@/lib/voice/opus/opus-wasm.base64')
@@ -47,12 +91,7 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
         const { encodePcmToOggOpus, opusWasmSource, opusLoaderStages } = await import(
           '@/lib/voice/opus-encode.server'
         )
-        // 0.2 s of synthetic s16le 24 kHz mono tone.
-        const pcm = new Uint8Array(24000 * 0.2 * 2)
-        const view = new DataView(pcm.buffer)
-        for (let i = 0; i < pcm.byteLength / 2; i++) {
-          view.setInt16(i * 2, Math.round(9000 * Math.sin((2 * Math.PI * 220 * i) / 24000)), true)
-        }
+        const pcm = syntheticPcm()
         const r = await encodePcmToOggOpus(pcm)
 
         const container = r.ok
