@@ -107,9 +107,36 @@ const FAREWELLS_EN = [
   "Thanks so much. I'll follow up on WhatsApp. Take care, assalamualaikum.",
 ];
 
+/**
+ * EXPLICIT HANGUP COMMAND (Calling only).
+ *
+ * A direct instruction to end THIS call ("awak putuskanlah", "tamatkan
+ * panggilan", "hang up", "end the call"). It outranks every other closing
+ * branch: asking one more completion check after the caller has told RAIŌ to
+ * hang up is the defect this guard removes.
+ */
+const HANGUP_COMMAND =
+  /\b(?:putuskan(?:lah)?(?:\s+(?:talian|panggilan))?|tamatkan(?:lah)?\s+(?:talian|panggilan|call)|hang\s?up|hangup|end\s+(?:the\s+|this\s+)?call|letak(?:kan)?\s+(?:telefon|phone))\b/i;
+
+/** Never treat a refusal to hang up as a command. */
+const HANGUP_NEGATED =
+  /\b(?:jangan|janganlah|tak\s+payah|tak\s+usah|usah|belum|don'?t|do\s+not|no\s+need\s+to|please\s+don'?t)\b[^.?!]{0,24}?(?:putus|tamatkan|hang\s?up|hangup|end\s+(?:the\s+|this\s+)?call|letak)/i;
+
+/** A question or report ABOUT a dropped line is not an instruction. */
+const HANGUP_REPORT = /\?\s*$|\b(tadi|tadian|sebentar tadi|just now|earlier)\b/i;
+
+export function isExplicitHangupCommand(transcript: string): boolean {
+  const text = transcript.trim();
+  if (!text) return false;
+  if (HANGUP_NEGATED.test(text)) return false;
+  if (HANGUP_REPORT.test(text)) return false;
+  return HANGUP_COMMAND.test(text);
+}
+
 function pick(list: string[], seed: number): string {
   return list[Math.abs(seed) % list.length] as string;
 }
+
 
 /**
  * One deterministic step of the closing machine.
@@ -140,7 +167,18 @@ export function advanceClosing(args: {
     };
   }
 
+  // Explicit instruction to hang up wins over pending work and over any
+  // further completion check: speak the farewell, then end the call.
+  if (isExplicitHangupCommand(text)) {
+    return {
+      action: "farewell",
+      state: "farewell",
+      text: pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed),
+    };
+  }
+
   if (args.pendingWork) return { action: "continue", state: "active" };
+
 
   if (args.state === "completion_check") {
     if (text && CONTINUES.test(text) && !EXPLICIT_DONE.test(text)) {
