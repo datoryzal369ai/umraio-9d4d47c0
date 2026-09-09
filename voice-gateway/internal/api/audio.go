@@ -31,8 +31,11 @@ import (
 // carried as base64, plus a small margin for the JSON wrapper.
 const MaxAudioBodyBytes = 8 * 1024 * 1024
 
-// AudioConvertTimeout bounds a single conversion.
+// AudioConvertTimeout bounds a single conversion, and AudioQueueTimeout bounds
+// the wait for a free slot. Their sum stays inside the client's 30 s budget.
 const AudioConvertTimeout = 20 * time.Second
+const AudioQueueTimeout = 8 * time.Second
+
 
 // maxConcurrentConversions keeps CPU-heavy complexity-10 encodes from starving
 // the live-call media loop.
