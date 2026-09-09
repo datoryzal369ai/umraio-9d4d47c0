@@ -12,11 +12,11 @@ import {
   ScrollText,
   MessageSquare,
   Mic,
-  PhoneCall,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
+import { CallActivityCard } from "@/components/hq/CallActivityCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -454,12 +454,18 @@ function HqPage() {
                   </thead>
                   <tbody>
                     {channelItems.map((i) => {
-                      const Icon =
-                        i.channel === "LIVE_CALL"
-                          ? PhoneCall
-                          : i.channel === "VOICE_NOTE"
-                            ? Mic
-                            : MessageSquare;
+                      if (i.callObservability) {
+                        return (
+                          <tr key={i.id} className="border-t border-border/60">
+                            <td colSpan={7} className="p-3 sm:p-4">
+                              <CallActivityCard
+                                item={{ ...i, callObservability: i.callObservability }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const Icon = i.channel === "VOICE_NOTE" ? Mic : MessageSquare;
                       return (
                         <tr key={i.id} className="border-t border-border/60">
                           <td className="px-4 py-3 text-muted-foreground">
@@ -468,11 +474,7 @@ function HqPage() {
                           <td className="px-4 py-3">
                             <span className="flex items-center gap-2">
                               <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
-                              {i.channel === "WHATSAPP_TEXT"
-                                ? "WhatsApp text"
-                                : i.channel === "VOICE_NOTE"
-                                  ? "Voice note"
-                                  : "Live call"}
+                              {i.channel === "VOICE_NOTE" ? "Voice note" : "WhatsApp text"}
                             </span>
                           </td>
                           <td className="px-4 py-3">{i.agencyName}</td>
@@ -482,7 +484,9 @@ function HqPage() {
                               {i.contactPhone}
                             </p>
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">{i.direction}</td>
+                          <td className="px-4 py-3 capitalize text-muted-foreground">
+                            {i.direction}
+                          </td>
                           <td className="px-4 py-3">
                             <Badge
                               variant={
