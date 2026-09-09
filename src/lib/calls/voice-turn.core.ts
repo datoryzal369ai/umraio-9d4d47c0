@@ -28,6 +28,10 @@ export type VoiceTurnMediaMetrics = {
   tts_encode_ms?: number;
   playback_start_ms?: number;
   speech_end_to_first_audio_ms?: number;
+  acknowledgement_first_audio_ms?: number;
+  playback_complete_ms?: number;
+  accepted_to_greeting_ms?: number;
+  ready_to_greeting_ms?: number;
 };
 
 /** Upper bound for any reported media timing (10 minutes) — rejects noise. */
@@ -49,6 +53,10 @@ const MEDIA_METRIC_KEYS = [
   "tts_encode_ms",
   "playback_start_ms",
   "speech_end_to_first_audio_ms",
+  "acknowledgement_first_audio_ms",
+  "playback_complete_ms",
+  "accepted_to_greeting_ms",
+  "ready_to_greeting_ms",
 ] as const;
 
 /** Bounded, non-negative integers only; anything else is dropped silently. */

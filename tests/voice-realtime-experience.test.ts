@@ -39,11 +39,11 @@ describe("call opening", () => {
 describe("closing state machine", () => {
   const base = { language: "ms-MY", turnCount: 4, maxTurns: 60 } as const;
 
-  it("asks a completion check before ending, never ends straight away", () => {
+  it("gives one farewell for an unambiguous whole-turn completion", () => {
     const step = advanceClosing({ ...base, state: "active", transcript: "Ok terima kasih" });
-    expect(step.action).toBe("completion_check");
-    expect(step.state).toBe("completion_check");
-    if (step.action === "completion_check") expect(step.text.length).toBeGreaterThan(10);
+    expect(step.action).toBe("farewell");
+    expect(step.state).toBe("farewell");
+    if (step.action === "farewell") expect(step.text.length).toBeGreaterThan(10);
   });
 
   it("continues when the caller still has a question", () => {

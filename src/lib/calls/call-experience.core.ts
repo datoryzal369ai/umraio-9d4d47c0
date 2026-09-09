@@ -27,6 +27,7 @@ export function buildCallOpening(args: {
   language: string;
   disclosureAlreadySpoken?: boolean;
   knownName?: string | null;
+  variant?: number;
 }): CallOpening {
   const brand = args.agencyName?.trim() || "UMRAIO";
   const english = args.language.toLowerCase().startsWith("en");
@@ -34,23 +35,23 @@ export function buildCallOpening(args: {
   const name = args.knownName?.trim() ? ` ${args.knownName.trim()}` : "";
 
   if (english) {
-    const parts = [`Assalamualaikum${name}, thank you for calling ${brand}.`];
+    const parts = [`Assalamualaikum${name}. I'm RAIŌ from ${brand}.`];
     if (needDisclosure) {
       parts.push(
-        "Just to let you know, this call may be recorded for quality, training and AI improvement.",
+        "This AI call may be recorded for quality and training.",
       );
     }
-    parts.push("I'm RAIŌ. How may I help you?");
+    parts.push(pick(["How can I help?", "How are you? What can I help with?", "Yes, what would you like to ask?"], args.variant ?? 0));
     return { text: parts.join(" "), disclosureSpoken: true };
   }
 
-  const parts = [`Assalamualaikum${name}, terima kasih kerana menghubungi ${brand}.`];
+  const parts = [`Assalamualaikum${name}. Saya RAIŌ, AI dari ${brand}.`];
   if (needDisclosure) {
     parts.push(
-      "Untuk makluman, perbualan ini mungkin dirakam bagi tujuan kualiti, latihan dan penambahbaikan sistem AI kami.",
+      "Panggilan ini mungkin dirakam untuk kualiti dan latihan.",
     );
   }
-  parts.push("Saya RAIŌ. Apa yang boleh saya bantu?");
+  parts.push(pick(["Ya, macam mana saya boleh bantu?", "Apa khabar? Nak tanya apa hari ini?", "Ya, apa yang boleh saya bantu?"], args.variant ?? 0));
   return { text: parts.join(" "), disclosureSpoken: true };
 }
 
@@ -90,7 +91,7 @@ const CONTINUES =
 
 const COMPLETION_CHECKS_MS = [
   "Baik, sebelum kita tamatkan panggilan ni, ada apa-apa lagi yang saya boleh bantu?",
-  "Yang lain semua okay? Ada apa-apa lagi yang encik nak saya semak?",
+  "Yang lain semua okay? Ada apa-apa lagi yang perlu saya periksa?",
   "Selain daripada tu, ada apa-apa lagi yang boleh saya tolong?",
 ];
 const COMPLETION_CHECKS_EN = [
@@ -99,12 +100,12 @@ const COMPLETION_CHECKS_EN = [
   "Anything else I can assist you with today?",
 ];
 const FAREWELLS_MS = [
-  "Baik, terima kasih. Kalau ada apa-apa nanti terus WhatsApp atau hubungi kami ya. Assalamualaikum.",
-  "Terima kasih banyak. Saya akan susulkan melalui WhatsApp. Jaga diri, assalamualaikum.",
+  "Baik, terima kasih ya. Assalamualaikum.",
+  "Terima kasih. Jaga diri ya, assalamualaikum.",
 ];
 const FAREWELLS_EN = [
-  "Thank you. If anything comes up, just WhatsApp or call us anytime. Assalamualaikum.",
-  "Thanks so much. I'll follow up on WhatsApp. Take care, assalamualaikum.",
+  "Thank you. Take care, assalamualaikum.",
+  "Thanks for calling. Assalamualaikum.",
 ];
 
 /**
@@ -137,6 +138,9 @@ export function isExplicitHangupCommand(transcript: string): boolean {
   return HANGUP_COMMAND.test(text);
 }
 
+// Whole-turn completion only. A thank-you followed by business is not a goodbye.
+const NATURAL_FAREWELL = /^(?:(?:ok(?:ay|ey)?|baik(?:lah)?)[,\s]+(?:terima kasih(?:\s+ya)?|itu (?:sahaja|saja|je)|bye)|(?:baik[,\s]+)?itu (?:sahaja|saja|je)|(?:dah|sudah) cukup|terima kasih ya|bye|goodbye|that'?s all)[\s.!]*$/i;
+
 function pick(list: string[], seed: number): string {
   return list[Math.abs(seed) % list.length] as string;
 }
@@ -146,8 +150,8 @@ function pick(list: string[], seed: number): string {
  * One deterministic step of the closing machine.
  *
  * A call is NEVER ended just because the caller went quiet or said "thanks":
- * RAIŌ asks a completion check first, and only an explicit confirmation (or a
- * hard turn limit) reaches the farewell.
+ * An unambiguous whole-turn farewell can end naturally; incidental thanks
+ * still require a completion check. Pending work blocks inferred completion.
  */
 export function advanceClosing(args: {
   state: ClosingState;
@@ -182,6 +186,10 @@ export function advanceClosing(args: {
   }
 
   if (args.pendingWork) return { action: "continue", state: "active" };
+
+  if (NATURAL_FAREWELL.test(text)) {
+    return { action: "farewell", state: "farewell", text: pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed) };
+  }
 
 
   if (args.state === "completion_check") {
@@ -240,6 +248,10 @@ export type TurnLatency = {
     tts_encode_ms?: number;
     playback_start_ms?: number;
     speech_end_to_first_audio_ms?: number;
+    acknowledgement_first_audio_ms?: number;
+    playback_complete_ms?: number;
+    accepted_to_greeting_ms?: number;
+    ready_to_greeting_ms?: number;
   };
 };
 
@@ -290,5 +302,9 @@ function summarizeMediaLatency(entries: TurnLatency[]): Record<string, number> {
   add("media_tts_encode_ms", pick("tts_encode_ms"));
   add("playback_start_ms", pick("playback_start_ms"));
   add("speech_end_to_first_audio_ms", pick("speech_end_to_first_audio_ms"));
+  add("acknowledgement_first_audio_ms", pick("acknowledgement_first_audio_ms"));
+  add("playback_complete_ms", pick("playback_complete_ms"));
+  add("accepted_to_greeting_ms", pick("accepted_to_greeting_ms"));
+  add("ready_to_greeting_ms", pick("ready_to_greeting_ms"));
   return out;
 }

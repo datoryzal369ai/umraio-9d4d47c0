@@ -50,7 +50,11 @@ type TurnMediaMetrics struct {
 	// PlaybackStartMs: control-plane turn dispatch -> first outbound packet.
 	PlaybackStartMs int `json:"playback_start_ms,omitempty"`
 	// SpeechEndToFirstAudioMs: caller stopped speaking -> caller hears audio.
-	SpeechEndToFirstAudioMs int `json:"speech_end_to_first_audio_ms,omitempty"`
+	SpeechEndToFirstAudioMs     int `json:"speech_end_to_first_audio_ms,omitempty"`
+	AcknowledgementFirstAudioMs int `json:"acknowledgement_first_audio_ms,omitempty"`
+	PlaybackCompleteMs          int `json:"playback_complete_ms,omitempty"`
+	AcceptedToGreetingMs        int `json:"accepted_to_greeting_ms,omitempty"`
+	ReadyToGreetingMs           int `json:"ready_to_greeting_ms,omitempty"`
 }
 
 // TurnResponse is the control plane's answer.
@@ -64,15 +68,20 @@ type TurnMediaMetrics struct {
 // Neither present is a hard "say nothing": the gateway never substitutes audio
 // or a voice of its own.
 type TurnResponse struct {
-	ReplyOggBase64 string `json:"reply_ogg_base64"`
-	SpeechText     string `json:"speech_text,omitempty"`
-	VoiceID        string `json:"voice_id,omitempty"`
-	LanguageBoost  string `json:"language_boost,omitempty"`
-	EndCall        bool   `json:"end_call"`
-	Reason         string `json:"reason,omitempty"`
+	ReplyOggBase64   string   `json:"reply_ogg_base64"`
+	SpeechText       string   `json:"speech_text,omitempty"`
+	VoiceID          string   `json:"voice_id,omitempty"`
+	LanguageBoost    string   `json:"language_boost,omitempty"`
+	EndCall          bool     `json:"end_call"`
+	Reason           string   `json:"reason,omitempty"`
+	BackchannelTexts []string `json:"backchannel_texts,omitempty"`
 }
 
 // TurnClient is the control-plane seam. Implemented by callback.TurnClient.
+type StreamingTurnClient interface {
+	TurnStream(ctx context.Context, req TurnRequest, onAck func(TurnResponse)) (*TurnResponse, error)
+}
+
 type TurnClient interface {
 	Turn(ctx context.Context, req TurnRequest) (*TurnResponse, error)
 }
@@ -94,7 +103,6 @@ type SpeechTiming struct {
 type TimedSynthesizer interface {
 	SpeakTimed(ctx context.Context, callID, text, voiceID, boost string) (packets [][]byte, providerMs int, encodeMs int, err error)
 }
-
 
 // ConversationConfig bounds the loop. Every value is configurable.
 type ConversationConfig struct {
@@ -132,17 +140,24 @@ type ConversationPipeline struct {
 	cfg    ConversationConfig
 	logger *slog.Logger
 
-	mu        sync.Mutex
-	transport Transport
-	seg       *Segmenter
-	closed    bool
-	busy      bool
-	greeted   bool
-	accepted  bool
-	turns     int
-	speaking  bool
-	cancelTTS chan struct{}
-	bargeIns  int
+	mu          sync.Mutex
+	transport   Transport
+	seg         *Segmenter
+	closed      bool
+	busy        bool
+	greeted     bool
+	accepted    bool
+	acceptedAt  time.Time
+	connectedAt time.Time
+	generation  uint64
+	pending     []pendingTurn
+	cancelTurn  context.CancelFunc
+	ending      bool
+	ackCache    map[string][][]byte
+	turns       int
+	speaking    bool
+	cancelTTS   chan struct{}
+	bargeIns    int
 
 	// Instrumentation only — never influences conversational behaviour.
 	now          func() time.Time
@@ -172,7 +187,6 @@ func (p *ConversationPipeline) WithSynthesizer(s Synthesizer) *ConversationPipel
 	p.synth = s
 	return p
 }
-
 
 // WithClock overrides the instrumentation clock (tests only).
 func (p *ConversationPipeline) WithClock(now func() time.Time) *ConversationPipeline {
@@ -248,6 +262,9 @@ func (p *ConversationPipeline) StartGreeting() GreetingOutcome {
 	}
 	// Accept is recorded even when greeting is disabled: caller utterances are
 	// only forwarded once Meta has accepted the call.
+	if !p.accepted {
+		p.acceptedAt = p.clock()
+	}
 	p.accepted = true
 	switch {
 	case !p.cfg.Greet || p.client == nil:
@@ -274,13 +291,17 @@ func (p *ConversationPipeline) Greeted() bool {
 // OnInbound must never block the RTP reader.
 func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 	p.mu.Lock()
-	if p.closed {
+	if p.closed || p.ending {
 		p.mu.Unlock()
 		return
 	}
 	event, utterance := p.seg.Push(frame)
 	switch event {
 	case VADSpeechStart:
+		p.generation++
+		if p.cancelTurn != nil {
+			p.cancelTurn()
+		}
 		if p.speaking {
 			// BARGE-IN: stop talking over the caller, immediately.
 			p.stopPlaybackLocked("barge_in")
@@ -290,7 +311,7 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 			return
 		}
 	case VADUtteranceEnd:
-		if p.busy || p.client == nil || !p.accepted || p.turns >= p.cfg.MaxTurns {
+		if p.client == nil || !p.accepted || p.turns >= p.cfg.MaxTurns {
 			p.mu.Unlock()
 			return
 		}
@@ -313,46 +334,83 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 	p.mu.Unlock()
 }
 
+type pendingTurn struct {
+	request     TurnRequest
+	speechEndAt time.Time
+	generation  uint64
+	vadMs       int
+}
+
 func (p *ConversationPipeline) startTurn(req TurnRequest) {
 	p.mu.Lock()
-	if p.closed || p.busy {
-		p.mu.Unlock()
+	defer p.mu.Unlock()
+	if p.closed || p.ending {
+		return
+	}
+	next := pendingTurn{req, p.speechEndAt, p.generation, p.pendingVADMs}
+	p.pendingVADMs = 0
+	if p.busy {
+		// Bound caller buffering without starting concurrent control-plane turns.
+		if len(p.pending) < 4 {
+			p.pending = append(p.pending, next)
+		}
+		return
+	}
+	p.startTurnLocked(next)
+}
+
+// Caller holds mu: Add cannot race Close/Wait.
+func (p *ConversationPipeline) startTurnLocked(next pendingTurn) {
+	if p.closed || p.ending || p.turns >= p.cfg.MaxTurns {
 		return
 	}
 	p.busy = true
 	p.turns++
+	req := next.request
 	req.Sequence = p.turns
-	metrics := TurnMediaMetrics{VADFinalizeMs: p.pendingVADMs}
+	metrics := TurnMediaMetrics{}
 	if p.lastMetrics != nil {
-		metrics.PrevSequence = p.lastMetrics.PrevSequence
-		metrics.TTSMs = p.lastMetrics.TTSMs
-		metrics.TTSEncodeMs = p.lastMetrics.TTSEncodeMs
-		metrics.PlaybackStartMs = p.lastMetrics.PlaybackStartMs
-		metrics.SpeechEndToFirstAudioMs = p.lastMetrics.SpeechEndToFirstAudioMs
+		metrics = *p.lastMetrics
 	}
-	p.pendingVADMs = 0
+	metrics.VADFinalizeMs = next.vadMs
 	if metrics != (TurnMediaMetrics{}) {
-		copied := metrics
-		req.MediaMetrics = &copied
+		req.MediaMetrics = &metrics
 	}
-	turnStartedAt := p.clock()
-	speechEndAt := p.speechEndAt
-	sequence := req.Sequence
-	ctx := p.ctx
-	p.mu.Unlock()
-
-	if ctx == nil {
-		ctx = context.Background()
+	parent := p.ctx
+	if parent == nil {
+		parent = context.Background()
 	}
+	ctx, cancel := context.WithCancel(parent)
+	p.cancelTurn = cancel
+	st := turnState{startedAt: p.clock(), speechEndAt: next.speechEndAt, sequence: req.Sequence, generation: next.generation}
 	p.wg.Add(1)
 	go func() {
-		defer p.wg.Done()
-		defer func() {
-			p.mu.Lock()
-			p.busy = false
-			p.mu.Unlock()
-		}()
-		p.runTurn(ctx, req, turnState{startedAt: turnStartedAt, speechEndAt: speechEndAt, sequence: sequence})
+		reason := p.runTurn(ctx, req, st)
+		cancel()
+		p.mu.Lock()
+		p.busy = false
+		p.cancelTurn = nil
+		transport := p.transport
+		// A caller may resume between the last farewell frame and this lock.
+		// Commit termination only while the same completed turn is current.
+		if reason != "" && (p.closed || p.generation != st.generation || p.seg.Speaking()) {
+			reason = ""
+		}
+		if reason != "" && !p.closed {
+			p.ending = true
+			p.pending = nil
+		} else if !p.closed && len(p.pending) > 0 {
+			queued := p.pending[0]
+			p.pending = p.pending[1:]
+			p.startTurnLocked(queued)
+		}
+		p.mu.Unlock()
+		// Transport.Terminate calls Close/Wait. This turn must leave the
+		// wait group FIRST, otherwise a natural hangup waits on itself.
+		p.wg.Done()
+		if reason != "" && transport != nil {
+			transport.Terminate(reason)
+		}
 	}()
 }
 
@@ -361,82 +419,82 @@ type turnState struct {
 	startedAt   time.Time
 	speechEndAt time.Time
 	sequence    int
+	generation  uint64
 }
 
-func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st turnState) {
+func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st turnState) string {
 	tctx, cancel := context.WithTimeout(ctx, p.cfg.TurnTimeout)
 	defer cancel()
+	if req.Kind == TurnKindGreeting && !p.waitForConversationReady(tctx) {
+		return ""
+	}
 
-	resp, err := p.client.Turn(tctx, req)
+	resp, ackAt, err := p.requestWithBackchannel(tctx, req, st)
 	if err != nil {
-		// FAIL CLOSED: no fabricated transcript, no fabricated audio.
 		p.logger.Warn("turn_failed", "call_id", p.callID, "kind", req.Kind, "error_class", "turn")
-		return
+		return ""
 	}
-	if resp == nil {
-		return
+	if resp == nil || tctx.Err() != nil {
+		return ""
 	}
+	var packets [][]byte
+	var timing SpeechTiming
 	switch {
 	case resp.SpeechText != "":
-		// PRODUCTION PATH — the media plane owns MiniMax synthesis and Opus
-		// encoding, because the Worker runtime cannot produce Opus at all.
 		if p.synth == nil {
-			p.logger.Warn("turn_reply_no_synthesizer", "call_id", p.callID)
-			break
+			return ""
 		}
-		var packets [][]byte
-		var timing SpeechTiming
-		var ttsErr error
 		if timed, ok := p.synth.(TimedSynthesizer); ok {
 			var providerMs, encodeMs int
-			packets, providerMs, encodeMs, ttsErr = timed.SpeakTimed(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
+			packets, providerMs, encodeMs, err = timed.SpeakTimed(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
 			timing = SpeechTiming{ProviderMs: providerMs, EncodeMs: encodeMs}
 		} else {
-			packets, ttsErr = p.synth.Speak(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
+			packets, err = p.synth.Speak(tctx, p.callID, resp.SpeechText, resp.VoiceID, resp.LanguageBoost)
 		}
-		if ttsErr != nil {
-			// FAIL CLOSED: silence, never a substitute provider or voice.
+		if err != nil {
 			p.logger.Warn("turn_reply_tts_failed", "call_id", p.callID)
-			break
+			return ""
 		}
-		firstAudioAt := p.play(packets)
-		p.recordTurnMetrics(st, timing, firstAudioAt)
 	case resp.ReplyOggBase64 != "":
-		raw, decErr := base64.StdEncoding.DecodeString(resp.ReplyOggBase64)
-		if decErr != nil {
-			p.logger.Warn("turn_reply_undecodable", "call_id", p.callID)
-			return
+		var raw []byte
+		raw, err = base64.StdEncoding.DecodeString(resp.ReplyOggBase64)
+		if err != nil {
+			return ""
 		}
-		packets, parseErr := ReadOggOpus(raw)
-		if parseErr != nil {
-			p.logger.Warn("turn_reply_invalid_container", "call_id", p.callID)
-			return
+		packets, err = ReadOggOpus(raw)
+		if err != nil {
+			return ""
 		}
-		firstAudioAt := p.play(packets)
-		p.recordTurnMetrics(st, SpeechTiming{}, firstAudioAt)
+	default:
+		// Preserve the legacy explicit audio-free control termination command.
+		if resp.EndCall {
+			return orDefault(resp.Reason, "conversation_complete")
+		}
+		return ""
 	}
-
-	if resp.EndCall {
-		p.mu.Lock()
-		t := p.transport
-		p.mu.Unlock()
-		if t != nil {
-			t.Terminate(orDefault(resp.Reason, "conversation_complete"))
-		}
+	if req.Kind == TurnKindGreeting {
+		p.prepareBackchannels(resp)
 	}
+	firstAudioAt, complete := p.playTurn(tctx, packets, st.generation)
+	p.recordTurnMetrics(st, timing, firstAudioAt)
+	p.recordConversationMetrics(st, req.Kind, ackAt, firstAudioAt, complete)
+	if resp.EndCall && complete && tctx.Err() == nil {
+		return orDefault(resp.Reason, "conversation_complete")
+	}
+	return ""
 }
 
 // play streams reply packets at real time and stops the instant a barge-in,
 // termination or context cancellation occurs.
-func (p *ConversationPipeline) play(packets [][]byte) time.Time {
+func (p *ConversationPipeline) playTurn(ctx context.Context, packets [][]byte, generation uint64) (time.Time, bool) {
 	var firstAudioAt time.Time
 	if len(packets) == 0 {
-		return firstAudioAt
+		return firstAudioAt, false
 	}
 	p.mu.Lock()
-	if p.closed || p.transport == nil {
+	if p.closed || p.transport == nil || p.seg.Speaking() || p.generation != generation || ctx.Err() != nil {
 		p.mu.Unlock()
-		return firstAudioAt
+		return firstAudioAt, false
 	}
 	cancelCh := make(chan struct{})
 	p.cancelTTS = cancelCh
@@ -459,23 +517,27 @@ func (p *ConversationPipeline) play(packets [][]byte) time.Time {
 	defer ticker.Stop()
 	for _, packet := range packets {
 		select {
+		case <-ctx.Done():
+			return firstAudioAt, false
 		case <-cancelCh: // barge-in: discard every remaining frame
-			return firstAudioAt
+			return firstAudioAt, false
 		default:
 		}
 		if err := t.SendOpus(OpusFrame{Data: packet, Duration: interval}); err != nil {
-			return firstAudioAt
+			return firstAudioAt, false
 		}
 		if firstAudioAt.IsZero() {
 			firstAudioAt = p.clock()
 		}
 		select {
+		case <-ctx.Done():
+			return firstAudioAt, false
 		case <-cancelCh:
-			return firstAudioAt
+			return firstAudioAt, false
 		case <-ticker.C:
 		}
 	}
-	return firstAudioAt
+	return firstAudioAt, true
 }
 
 // recordTurnMetrics stores the media-plane timings of the turn that just
@@ -543,6 +605,8 @@ func (p *ConversationPipeline) Close(reason string) {
 		return
 	}
 	p.closed = true
+	p.pending = nil
+	p.ackCache = nil
 	p.stopPlaybackLocked(reason)
 	p.seg.Reset()
 	cancel := p.cancel

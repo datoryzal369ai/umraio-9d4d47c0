@@ -7,6 +7,7 @@
  * no agency identifier, no token, no credential. Tenancy is resolved from the
  * Worker's own call-session row.
  */
+import { callingTurnResponse } from "@/lib/calls/call-stream.server";
 import { createFileRoute } from "@tanstack/react-router";
 import { verifyGatewayCallbackSignature } from "@/lib/calls/gateway-auth.core";
 import { parseVoiceTurnRequest, MAX_TURN_AUDIO_BASE64 } from "@/lib/calls/voice-turn.core";
@@ -48,28 +49,13 @@ export const Route = createFileRoute("/api/public/voice/turn")({
         const { handleVoiceTurn } = await import("@/lib/calls/voice-turn.server");
 
         try {
-          const result = await handleVoiceTurn({ db: supabaseAdmin as never, payload });
-          // A failed stage is an honest, audio-free 200: the gateway stays
-          // silent instead of replaying an utterance that can never succeed.
-          return Response.json(
-            result.ok
-              ? {
-                  reply_ogg_base64: result.replyOggBase64 ?? "",
-                  // Text + LOCKED voice identity: the media plane owns Opus
-                  // encoding because this Worker runtime cannot compile one.
-                  speech_text: result.replyOggBase64 ? "" : result.text,
-                  voice_id: result.voiceId ?? "",
-                  language_boost: result.languageBoost ?? "",
-                  end_call: result.endCall,
-                  reason: result.reason ?? "",
-                }
-              : {
-                  reply_ogg_base64: "",
-                  speech_text: "",
-                  end_call: false,
-                  reason: result.reason,
-                },
-          );
+          return await callingTurnResponse({
+            streaming: request.headers.get("accept")?.includes("application/x-ndjson") === true,
+            signal: request.signal,
+            run: (onAcknowledgement, signal) => handleVoiceTurn({
+              db: supabaseAdmin as never, payload, onAcknowledgement, signal,
+            }),
+          });
 
         } catch (error) {
           console.error(
