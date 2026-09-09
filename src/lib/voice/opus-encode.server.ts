@@ -114,27 +114,11 @@ function finishInstance(instance: WebAssembly.Instance): OpusExports {
 /**
  * MODULE SOURCE ORDER
  *
- * 1. PRECOMPILED MODULE IMPORT (production). The serverless runtime forbids
- *    compiling WebAssembly from bytes at runtime ("Wasm code generation
- *    disallowed by embedder"), so `fetch(...)` + `WebAssembly.instantiate(bytes)`
- *    can NEVER work there. The supported path is importing the `.wasm` file so
- *    the bundler ships an already-compiled `WebAssembly.Module`, which may be
- *    instantiated at runtime. The import is dynamic so Node/vitest, where the
- *    loader has no `.wasm` handler, simply fall through.
- * 2. Hosted asset fetch, then the embedded base64 build — both compile from
- *    bytes and therefore only apply to dev/node/test runtimes.
+ * 1. Hosted asset fetch of `/wasm/opus.wasm`, then the embedded base64 build.
+ *    Both compile from bytes, so both only work in runtimes that allow it
+ *    (node, vitest, dev). The published serverless runtime forbids it.
  */
-async function instantiateFromBytes(bytes: Uint8Array<ArrayBuffer>): Promise<OpusExports | null> {
-  try {
-    const { instance } = (await WebAssembly.instantiate(
-      bytes,
-      OPUS_IMPORTS,
-    )) as WebAssembly.WebAssemblyInstantiatedSource;
-    return finishInstance(instance);
-  } catch {
-    return null;
-  }
-}
+
 
 /**
  * STAGED LOADER DIAGNOSTICS
