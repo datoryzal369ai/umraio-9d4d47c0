@@ -1,0 +1,180 @@
+name: P0 native media release 336242a
+
+on:
+  push:
+    branches: [codex/p0-voice-native-release-336242a-20260909]
+    paths: [.github/workflows/p0-native-release-336242a.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-gateway-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP: umraio-voice-gateway
+      TARGET_BUILD: 336242aef606cfbfd7a214922858768d510a63fb
+      PREVIOUS_BUILD: ae77a985e1262cdb734f69abd61ed8aa3ffbc53e
+      ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:fbfbf490d645a0b79808ead8e74abf631239f7d5f128afa1d2fff3eef2384d1b
+      NO_COLOR: "1"
+
+    steps:
+      - name: Checkout the validated source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 336242aef606cfbfd7a214922858768d510a63fb
+          persist-credentials: false
+
+      - name: Set up existing Fly deployment client
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: latest
+
+      - name: Gate release on unchanged runtime and deployed secret bindings
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$FLY_API_TOKEN"
+          test "$(git rev-parse HEAD)" = "$TARGET_BUILD"
+          flyctl secrets list --app "$FLY_APP" --json > "$RUNNER_TEMP/p0-secrets-before.json"
+          curl --fail --silent --show-error --max-time 20 --max-redirs 0 \
+            "https://$FLY_APP.fly.dev/health" -o "$RUNNER_TEMP/p0-health-before.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          health = json.loads((root / 'p0-health-before.json').read_text())
+          bindings = json.loads((root / 'p0-secrets-before.json').read_text())
+          print(json.dumps({k: health.get(k) for k in ['status','build_version','webrtc','speech','active_sessions']}))
+          print(json.dumps({'secret_bindings': [{'name': s.get('name'), 'status': s.get('status')} for s in bindings]}))
+          assert health.get('build_version') == os.environ['PREVIOUS_BUILD'], 'Runtime baseline changed'
+          assert health.get('status') == 'ok', 'Existing runtime unhealthy'
+          assert health.get('active_sessions') == 0, 'Active call present; release deferred'
+          assert bindings and all(s.get('status') == 'Deployed' for s in bindings), 'Pending or unknown secret deployment state'
+          assert 'UMRAIO_GATEWAY_SECRET' in {s.get('name') for s in bindings}, 'Existing gateway signing binding unavailable'
+          print('Release gate passed; existing immutable rollback retained.')
+          PY
+
+      - name: Package the validated native gateway for its first release
+        id: package
+        timeout-minutes: 15
+        working-directory: voice-gateway
+        run: |
+          set -euo pipefail
+          flyctl deploy --app "$FLY_APP" --config fly.toml --remote-only \
+            --build-only --push --build-arg BUILD_VERSION="$TARGET_BUILD" \
+            --image-label "p0-voice-336242a-$GITHUB_RUN_ID" \
+            --no-public-ips --ha=false --yes
+
+      - name: Release the packaged image without changing secret bindings
+        id: deploy
+        timeout-minutes: 8
+        working-directory: voice-gateway
+        run: |
+          set -euo pipefail
+          flyctl secrets list --app "$FLY_APP" --json > "$RUNNER_TEMP/p0-secrets-release.json"
+          curl --fail --silent --show-error --max-time 20 --max-redirs 0 \
+            "https://$FLY_APP.fly.dev/health" -o "$RUNNER_TEMP/p0-health-release.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          before = json.loads((root / 'p0-secrets-before.json').read_text())
+          current = json.loads((root / 'p0-secrets-release.json').read_text())
+          health = json.loads((root / 'p0-health-release.json').read_text())
+          fingerprint = lambda rows: sorted((s['name'], s['digest']) for s in rows)
+          assert fingerprint(before) == fingerprint(current), 'Secret bindings changed during packaging'
+          assert all(s.get('status') == 'Deployed' for s in current), 'Pending secret deployment'
+          assert health.get('status') == 'ok' and health.get('build_version') == os.environ['PREVIOUS_BUILD'], 'Runtime baseline changed'
+          assert health.get('active_sessions') == 0, 'Active call present; release deferred'
+          PY
+          touch "$RUNNER_TEMP/p0-deploy-started"
+          flyctl deploy --app "$FLY_APP" --config fly.toml \
+            --image "registry.fly.io/$FLY_APP:p0-voice-336242a-$GITHUB_RUN_ID" \
+            --no-public-ips --ha=false --update-only --wait-timeout 5m --yes
+
+      - name: Verify released identity, readiness and protected encoder route
+        id: verify
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+          base = 'https://' + os.environ['FLY_APP'] + '.fly.dev'
+          for attempt in range(18):
+              try:
+                  with urllib.request.urlopen(base + '/health', timeout=10) as response:
+                      health = json.load(response)
+                  if health.get('status') == 'ok' and health.get('build_version') == os.environ['TARGET_BUILD'] and health.get('webrtc') == 'up' and health.get('speech') == 'up':
+                      break
+              except (OSError, ValueError):
+                  pass
+              time.sleep(5)
+          else:
+              raise SystemExit('Released runtime identity/readiness verification failed')
+          with urllib.request.urlopen(base + '/ready', timeout=10) as response:
+              assert response.status == 200, 'Readiness failed'
+          request = urllib.request.Request(base + '/v1/audio/opus', data=b'', method='POST')
+          try:
+              with urllib.request.urlopen(request, timeout=10) as response:
+                  code = response.status
+          except urllib.error.HTTPError as error:
+              code = error.code
+          assert code in (401, 403), 'Protected encoder route missing or authentication bypassed: ' + str(code)
+          print(json.dumps({'released_runtime': {k: health.get(k) for k in ['status','build_version','webrtc','speech','active_sessions']}, 'encoder_route_unauthenticated_status': code, 'audible_e2e': 'NOT_YET_TESTED'}))
+          PY
+          flyctl secrets list --app "$FLY_APP" --json > "$RUNNER_TEMP/p0-secrets-after.json"
+          flyctl image show --app "$FLY_APP" --json > "$RUNNER_TEMP/p0-image-after.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          before = json.loads((root / 'p0-secrets-before.json').read_text())
+          after = json.loads((root / 'p0-secrets-after.json').read_text())
+          fingerprint = lambda rows: sorted((s['name'], s['digest']) for s in rows)
+          assert fingerprint(before) == fingerprint(after), 'Unexpected secret binding change'
+          image = json.loads((root / 'p0-image-after.json').read_text())
+          refs = []
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, item in value.items():
+                      if key.lower() in {'ref','reference','tag','digest','registry','repository'} and isinstance(item, str):
+                          refs.append({key: item})
+                      elif isinstance(item, (dict, list)):
+                          walk(item)
+              elif isinstance(value, list):
+                  for item in value:
+                      walk(item)
+          walk(image)
+          report = {'gateway_release': 'PASS', 'source': os.environ['TARGET_BUILD'], 'image': refs, 'secret_bindings_changed': False, 'rollback_image': os.environ['ROLLBACK_IMAGE'], 'voice_note_audible': 'NOT_YET_TESTED', 'calling_audible': 'NOT_YET_TESTED'}
+          print(json.dumps(report, sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(json.dumps(report, indent=2) + '\n')
+          PY
+
+      - name: Restore immutable rollback after a failed release
+        if: failure() && steps.deploy.outcome != 'skipped'
+        timeout-minutes: 8
+        working-directory: voice-gateway
+        run: |
+          set -euo pipefail
+          if [ ! -f "$RUNNER_TEMP/p0-deploy-started" ]; then
+            echo 'Deployment did not start; production unchanged.'
+            exit 0
+          fi
+          flyctl deploy --app "$FLY_APP" --config fly.toml --image "$ROLLBACK_IMAGE" \
+            --no-public-ips --ha=false --update-only --wait-timeout 5m --yes
+          curl --fail --silent --show-error --max-time 20 \
+            "https://$FLY_APP.fly.dev/health" -o "$RUNNER_TEMP/p0-health-rollback.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          health = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / 'p0-health-rollback.json').read_text())
+          assert health.get('status') == 'ok' and health.get('build_version') == os.environ['PREVIOUS_BUILD'], 'ROLLBACK COULD NOT BE VERIFIED'
+          print(json.dumps({'rollback': 'RESTORED', 'build_version': health['build_version']}))
+          PY
