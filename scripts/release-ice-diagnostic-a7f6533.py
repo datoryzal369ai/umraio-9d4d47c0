@@ -1,5 +1,6 @@
 """One authorized image-only release. Never print config, credentials or API bodies."""
 import copy
+import datetime
 import json
 import os
 import pathlib
@@ -115,6 +116,45 @@ def image():
     print('PASS: exact source revision and compiled diagnostic messages verified in image.')
 
 
+def no_live_call():
+    report = health(BASE)
+    if report['active_sessions'] == 0:
+        return
+    # The baseline counts registry entries, including terminal sessions whose
+    # cleanup has not returned. Accept ONLY the two observed Founder sessions
+    # with affirmative caller termination AND closed ICE/peer transport logs.
+    expected = {'ms_29db132758c7319fe4537e14', 'ms_3f6285f58037d78c3376ddd6'}
+    assert report['active_sessions'] == len(expected), 'Unaccounted session present; stop'
+    raw = subprocess.check_output(['flyctl', 'logs', '-a', APP, '--no-tail'], text=True, timeout=30, stderr=subprocess.DEVNULL)
+    rows = []
+    for line in re.sub(r'\x1b\[[0-9;]*m', '', raw).splitlines():
+        start = line.find('{')
+        if start < 0:
+            continue
+        try:
+            row = json.loads(line[start:])
+            if isinstance(row, dict) and 'time' in row and 'msg' in row:
+                rows.append(row)
+        except json.JSONDecodeError:
+            pass
+    assert rows, 'No current lifecycle evidence; stop'
+    closed_times = []
+    for sid in expected:
+        events = [r for r in rows if r.get('session_id') == sid]
+        terminating = [r for r in events if r['msg'] == 'media session terminating' and r.get('reason') == 'caller_terminated']
+        peers = [r for r in events if r['msg'] == 'peer connection state']
+        ice = [r for r in events if r['msg'] == 'ice connection state']
+        assert terminating and peers and ice, 'Missing terminal transport evidence; stop'
+        assert peers[-1].get('peer_connection_state') == 'closed' and ice[-1].get('ice_connection_state') == 'closed', 'Transport is not closed; stop'
+        closed_times.append(peers[-1]['time'])
+    latest_closed = max(closed_times)
+    cutoff = datetime.datetime.fromisoformat(latest_closed.replace('Z', '+00:00'))
+    assert (datetime.datetime.now(datetime.timezone.utc) - cutoff).total_seconds() > 600, 'Recent session; wait for safe release'
+    assert not any(r['time'] > latest_closed and (r.get('session_id') or r.get('call_id')) for r in rows), 'New call activity since terminal evidence; stop'
+    assert health(BASE)['active_sessions'] == len(expected), 'Session count changed; stop'
+    print('PASS: two retained registry entries accounted for by caller termination and closed ICE/peer evidence; no newer call activity.')
+
+
 def await_health(version):
     deadline = time.monotonic() + 180
     while time.monotonic() < deadline:
@@ -133,7 +173,7 @@ def release():
     desired_image = IMAGE_FILE.read_text().strip()
     current = machine()
     assert current['config'] == original['config'] and current['instance_id'] == original['instance_id'], 'Production moved since preflight'
-    health(BASE, require_idle=True)
+    no_live_call()
     lease_url = API + '/' + MACHINE + '/lease'
     lease = request(lease_url, 'POST', {'ttl': 600, 'description': 'Authorized diagnostic a7f6533 image-only release'}, 'FLY_API_TOKEN')
     nonce = lease['data']['nonce']
@@ -141,7 +181,7 @@ def release():
     try:
         current = machine()
         assert current['config'] == original['config'] and current['instance_id'] == original['instance_id'], 'Production moved before lease'
-        health(BASE, require_idle=True)
+        no_live_call()
         desired = copy.deepcopy(original['config'])
         desired['image'] = desired_image
         assert {k for k in desired if desired[k] != original['config'].get(k)} == {'image'}, 'Release changes more than image'

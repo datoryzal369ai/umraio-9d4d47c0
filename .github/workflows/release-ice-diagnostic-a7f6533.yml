@@ -55,7 +55,7 @@ jobs:
           docker image inspect "$ROLLBACK_IMAGE" --format '{{index .RepoDigests 0}}'
       - name: Build and publish only the exact candidate gateway image
         run: |
-          docker build --build-arg BUILD_VERSION="$CANDIDATE" \
+          docker build --network host --build-arg BUILD_VERSION="$CANDIDATE" \
             --label org.opencontainers.image.revision="$CANDIDATE" \
             --tag "$CANDIDATE_IMAGE" candidate/voice-gateway
           docker run --rm --network none --entrypoint /bin/sh "$CANDIDATE_IMAGE" -c \
