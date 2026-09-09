@@ -35,6 +35,8 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
          */
         const wantsGateway = new URL(request.url).searchParams.get('mode') === 'gateway'
         if (wantsGateway && process.env['OPUS_PROBE_ALLOW_GATEWAY'] === '1') {
+          const { resolveOpusGatewayConfig } = await import('@/lib/voice/opus-gateway.server')
+          const configured = Boolean(resolveOpusGatewayConfig())
           const { encodeVoiceNotePcm } = await import('@/lib/voice/voice-note-encode.server')
           const pcm = syntheticPcm()
           const out = await encodeVoiceNotePcm(pcm)
@@ -42,6 +44,7 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
             ok: out.ok,
             runtime,
             mode: 'gateway',
+            gateway_configured: configured,
             encoder: out.source,
             ...(out.ok
               ? {
