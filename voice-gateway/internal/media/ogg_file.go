@@ -30,9 +30,14 @@ func opusHeadPreSkip(channels uint8, preSkip int, inputRate uint32) []byte {
 // WriteOggOpusFile packs Opus packets into a complete single-stream Ogg file.
 //
 //	frameSamples48 — samples per packet at the 48 kHz Ogg clock (960 for 20 ms)
-//	preSkip        — encoder lookahead at 48 kHz
+//	preSkip        — encoder lookahead at 48 kHz, written to OpusHead only
 //	finalGranule   — preSkip + real input duration at 48 kHz (trims the padding)
+//
+// Page granule positions are the cumulative count of decoded samples produced
+// by the stream so far, counted from zero (the first preSkip of which the
+// decoder discards). Only the EOS page is clamped to finalGranule.
 func WriteOggOpusFile(packets [][]byte, channels uint8, frameSamples48, preSkip int, finalGranule int64, inputRate uint32) []byte {
+
 	if channels == 0 {
 		channels = 1
 	}
