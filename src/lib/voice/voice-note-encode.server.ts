@@ -20,8 +20,15 @@ export type VoiceNoteEncodeResult =
 
 export async function encodeVoiceNotePcm(
   pcm: Uint8Array,
-  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
+  overrides?: Record<string, string | undefined>,
 ): Promise<VoiceNoteEncodeResult> {
+  // Read bindings key by key at call time: the Worker runtime injects them
+  // per request, so a captured process.env reference can come back empty.
+  const env: Record<string, string | undefined> = overrides ?? {
+    NODE_ENV: process.env["NODE_ENV"],
+    WHATSAPP_MEDIA_GATEWAY_URL: process.env["WHATSAPP_MEDIA_GATEWAY_URL"],
+    WHATSAPP_MEDIA_GATEWAY_SECRET: process.env["WHATSAPP_MEDIA_GATEWAY_SECRET"],
+  };
   if (!pcm || pcm.byteLength < 2) return { ok: false, reason: "invalid_pcm", source: "unavailable" };
 
   // Automated tests use the local encoder: no test run may reach the real
