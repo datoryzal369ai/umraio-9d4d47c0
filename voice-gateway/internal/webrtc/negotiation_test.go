@@ -1,7 +1,6 @@
 package webrtc
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
 	"strings"
@@ -54,7 +53,7 @@ func TestMetaLikeOfferSummary(t *testing.T) {
 // 2 + 3 + 5. A real negotiation must answer with a receiving direction, bind an
 // RTP receiver, and keep the outbound sender available.
 func TestNegotiationBindsInboundAudioPath(t *testing.T) {
-	buf := &bytes.Buffer{}
+	buf := &diagnosticLogBuffer{}
 	log := slog.New(slog.NewJSONHandler(buf, nil))
 	e, err := NewEngine(Config{NegotiateTO: 10 * time.Second, Logger: log})
 	if err != nil {

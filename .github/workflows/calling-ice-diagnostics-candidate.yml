@@ -1,0 +1,95 @@
+name: Isolated Calling ICE diagnostics gates
+
+# Candidate validation only: no deployment, production credentials or service calls.
+on:
+  push:
+    branches: [codex/calling-ice-diagnostics-20260909]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/codex/calling-ice-diagnostics-20260909'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: "1"
+      BASELINE: 336242aef606cfbfd7a214922858768d510a63fb
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enforce isolated diagnostics-only diff and rollback
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          base = os.environ['BASELINE']
+          allowed = {
+            '.github/workflows/calling-ice-diagnostics-candidate.yml',
+            'voice-gateway/internal/webrtc/engine.go',
+            'voice-gateway/internal/webrtc/ice_diagnostics.go',
+            'voice-gateway/internal/webrtc/ice_trace.go',
+            'voice-gateway/internal/webrtc/ice_diagnostics_test.go',
+            'voice-gateway/internal/webrtc/media_diagnostics_test.go',
+            'voice-gateway/internal/webrtc/diagnostics_test.go',
+            'voice-gateway/internal/webrtc/negotiation_test.go',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', base, 'HEAD'], text=True).splitlines())
+          assert changed <= allowed, 'Protected or unrelated file changed: ' + repr(sorted(changed - allowed))
+          rollback = subprocess.check_output(['git', 'rev-parse', 'origin/rollback/p0-calling-human-quality-5a99d01-20260909'], text=True).strip()
+          assert rollback == '5a99d0166560afc8c0cfa9c9bb3171105e3f7ec6', 'Rollback no longer matches working baseline'
+          assert subprocess.check_output(['git', 'rev-parse', 'origin/main'], text=True).strip() == rollback, 'Working main changed; stop for reconciliation'
+          subprocess.run(['git', 'diff', '--check', base, 'HEAD'], check=True)
+          print('PASS: every tracked path outside the diagnostics/test allowlist is identical to working production source.')
+          print('PASS: main and preserved Worker rollback remain at', rollback)
+          print('Changed files:\n' + '\n'.join(sorted(changed)))
+          PY
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: voice-gateway/go.mod
+          cache-dependency-path: voice-gateway/go.sum
+      - name: Install test-only tooling and frozen application dependencies
+        run: |
+          npm install --prefix "$RUNNER_TEMP/calling-tools" --ignore-scripts --no-audit --no-fund bun@1.3.10 vitest@4.0.18 @typescript/native-preview@7.0.0-dev.20260707.2
+          node "$RUNNER_TEMP/calling-tools/node_modules/bun/install.js"
+          "$RUNNER_TEMP/calling-tools/node_modules/.bin/bun" install --frozen-lockfile --ignore-scripts
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev
+      - name: Focused ICE diagnostics and existing WebRTC diagnostics with race detector
+        working-directory: voice-gateway
+        run: go test -race -v ./internal/webrtc -run 'TestICE|TestMediaDiagnosticsEndToEnd|TestEngineDiagnosticsAreSafe' -count=5 -timeout=180s
+      - name: Full native media, conversation, MiniMax, Opus, RTP, VAD and WebRTC regression gates
+        working-directory: voice-gateway
+        run: go test -race -v ./... -count=1 -timeout=180s
+      - name: Calling, Voice Note and WhatsApp Text regression gates
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          prefixes = ('voice-', 'call-', 'calling-', 'minimax-', 'opus-', 'whatsapp-voice')
+          extra = {
+            'gateway-run-text.test.ts', 'whatsapp-webhook-security.test.ts',
+            'whatsapp-coalescing-identity.test.ts', 'whatsapp-conversational-guard.test.ts',
+            'whatsapp-outbound-timeout.test.ts', 'console-outbound-text-voice.test.ts',
+            'whatsapp-inbound-calls-v1.test.ts', 'whatsapp-calling-pre-accept-p0.test.ts',
+          }
+          files = sorted(str(p) for p in pathlib.Path('tests').glob('*.test.ts') if p.name.startswith(prefixes) or p.name in extra)
+          runner = os.environ['RUNNER_TEMP'] + '/calling-tools/node_modules/.bin/vitest'
+          subprocess.run([runner, 'run', '--reporter=default', '--reporter=json', '--outputFile.json=calling-test-results.json', *files], check=True)
+          PY
+      - name: Typecheck, app build and native build
+        run: |
+          "$RUNNER_TEMP/calling-tools/node_modules/.bin/tsgo" --noEmit
+          npm run build > "$RUNNER_TEMP/calling-build.log" 2>&1 || { tail -80 "$RUNNER_TEMP/calling-build.log"; exit 1; }
+          tail -8 "$RUNNER_TEMP/calling-build.log"
+          cd voice-gateway
+          go vet ./...
+          go build -trimpath -o "$RUNNER_TEMP/calling-gateway" ./cmd/gateway
+      - name: Verify validation left protected source and dependency locks untouched
+        run: |
+          git diff --exit-code
+          echo 'PASS: candidate validated; production release is deliberately not part of this workflow.'

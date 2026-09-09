@@ -1,7 +1,6 @@
 package webrtc
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -39,7 +38,7 @@ func TestSummarizeAnswerStructureOnly(t *testing.T) {
 }
 
 func TestAnswerSummaryLogAttrsLeakNothingSensitive(t *testing.T) {
-	buf := &bytes.Buffer{}
+	buf := &diagnosticLogBuffer{}
 	log := slog.New(slog.NewJSONHandler(buf, nil))
 	log.Info("local answer generated", SummarizeAnswer(answerFixture).LogAttrs()...)
 	out := buf.String()
@@ -66,7 +65,7 @@ func TestAnswerSummaryLogAttrsLeakNothingSensitive(t *testing.T) {
 // A real negotiation must emit lifecycle diagnostics without any SDP,
 // candidate, or ICE credential material reaching the log sink.
 func TestEngineDiagnosticsAreSafe(t *testing.T) {
-	buf := &bytes.Buffer{}
+	buf := &diagnosticLogBuffer{}
 	log := slog.New(slog.NewJSONHandler(buf, nil))
 	e, err := NewEngine(Config{NegotiateTO: 5 * time.Second, Logger: log})
 	if err != nil {

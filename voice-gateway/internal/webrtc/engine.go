@@ -77,6 +77,9 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	// Only the log sink changes. All ICE, codec and transport settings above
+	// remain the production settings; raw Pion ICE messages are never formatted.
+	se.LoggerFactory = newICELogFactory(cfg.Logger)
 	return &Engine{
 		api: pion.NewAPI(pion.WithMediaEngine(m), pion.WithSettingEngine(se)),
 		cfg: cfg,
@@ -103,6 +106,7 @@ type MediaSession struct {
 	trackFired   atomic.Bool
 	accepted     atomic.Bool
 	outboundErrs atomic.Uint64
+	diagnostics  *iceDiagnostics
 }
 
 // diagEvery bounds progress logging: first packet, then every N packets.
@@ -174,6 +178,12 @@ func (e *Engine) Establish(
 	}
 	mode := umedia.PipelineMode(pipeline)
 	ms := &MediaSession{pc: pc, out: track, sess: s, pipeline: pipeline, hooks: hooks, log: log, pipelineMode: mode}
+	ms.diagnostics = newICEDiagnostics(ms)
+	if transport := pc.SCTP(); transport != nil && transport.Transport() != nil {
+		transport.Transport().OnStateChange(func(st pion.DTLSTransportState) {
+			log.Info("dtls state observed", "session_id", s.ID, "dtls_state", st.String())
+		})
+	}
 	log.Info("media pipeline selected", "call_id", s.CallID, "session_id", s.ID, "pipeline_mode", mode)
 	log.Info("media session created", "call_id", s.CallID, "session_id", s.ID,
 		"udp_mux_configured", e.cfg.UDPMux != nil,
@@ -299,6 +309,7 @@ func (e *Engine) Establish(
 		return "", nil, fmt.Errorf("attach pipeline: %w", err)
 	}
 	log.Info("media pipeline attached", "call_id", s.CallID, "session_id", s.ID, "pipeline_mode", mode)
+	ms.diagnostics.start()
 	return local.SDP, ms, nil
 }
 
@@ -443,6 +454,7 @@ func (ms *MediaSession) SendOpus(frame umedia.OpusFrame) error {
 	}
 	ms.sess.RecordOutbound()
 	n := ms.outbound.Add(1)
+	ms.observeTransportReadyWrite(n)
 	if n == 1 {
 		ms.log.Info("first outbound opus", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
 			"payload_length", len(frame.Data), "duration_ms", d.Milliseconds())
@@ -460,6 +472,11 @@ func (ms *MediaSession) Terminate(reason string) {
 		ms.mu.Lock()
 		ms.closed = true
 		ms.mu.Unlock()
+		// Snapshot while the ICE agent and checklist still exist. No media,
+		// nomination, timeout or termination decision depends on diagnostics.
+		if ms.diagnostics != nil {
+			ms.diagnostics.stop(reason)
+		}
 		now := time.Now()
 		pre := ms.sess.Stats()
 		ms.log.Info("media session terminating", "call_id", ms.sess.CallID, "session_id", ms.sess.ID,
