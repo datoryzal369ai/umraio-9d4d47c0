@@ -16,36 +16,54 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
         with:
           version: latest
-      - name: Read only the founder call runtime evidence
+      - name: Read only latest Founder session logs and current health
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, subprocess, urllib.request
-          call_id='wacid.IhggMDBBODdENEQ5RjFBNzU4REZEMzUwODlDOTY2NEZFNTccGAw2MDExMTA2Mzk5OTYVAgAVAgA='
+          import json, re, subprocess, urllib.request, datetime
+          sid='ms_da056647df1988f6c293a7f8'
+          start='2026-09-09T09:58:00'
+          end='2026-09-09T09:59:00'
           result=subprocess.run(['flyctl','logs','--app','umraio-voice-gateway','--json','--no-tail'],capture_output=True,timeout=60)
           if result.returncode:
               raise SystemExit('Read-only Fly log fetch failed; output suppressed')
-          allowed={'time','level','msg','call_id','state','reason','inbound_packets','outbound_packets','sequence','error_class','http_status','duration_ms','tts_ms','tts_encode_ms','playback_start_ms','speech_end_to_first_audio_ms','packets','greeting','event','error'}
-          matches=[]
-          def consider(row):
-              if not isinstance(row,dict):return
-              if row.get('call_id')==call_id:
-                  safe={k:v for k,v in row.items() if k in allowed and isinstance(v,(str,int,float,bool))}
-                  matches.append(safe)
+          rows=[]
+          def collect(row):
+              if not isinstance(row,dict): return
+              if isinstance(row.get('time'),str) and 'msg' in row:
+                  rows.append(row)
               for k in ['message','msg','data']:
-                  v=row.get(k)
-                  if isinstance(v,dict):consider(v)
-                  elif isinstance(v,str) and call_id in v:
-                      pos=v.find('{')
-                      if pos>=0:
-                          try:consider(json.loads(v[pos:]))
-                          except ValueError:pass
+                  value=row.get(k)
+                  if isinstance(value,dict): collect(value)
+                  elif isinstance(value,str) and '{' in value:
+                      try: collect(json.loads(value[value.find('{'):]))
+                      except ValueError: pass
           for line in result.stdout.decode(errors='replace').splitlines():
-              try:consider(json.loads(line))
-              except ValueError:pass
-          print(json.dumps({'scope':'ONE_REAL_FOUNDER_CALL_ONLY','events':matches,'matching_events':len(matches),'mutations':0}))
-          with urllib.request.urlopen('https://umraio-voice-gateway.fly.dev/health',timeout=15) as r:
-              h=json.load(r)
-          print(json.dumps({'runtime':{k:h.get(k) for k in ['status','build_version','webrtc','speech','active_sessions']}}))
+              try: collect(json.loads(line))
+              except ValueError: pass
+          window=[r for r in rows if start <= r['time'][:19] <= end]
+          call_ids={r.get('call_id') for r in window if r.get('session_id')==sid and r.get('call_id')}
+          allowed={'time','level','msg','state','reason','inbound_packets','outbound_packets','sequence','error_class','http_status','duration_ms','tts_ms','tts_encode_ms','playback_start_ms','speech_end_to_first_audio_ms','packets','greeting','event','error','peer_connection_state','ice_connection_state','status_code','code','provider','model','pipeline_mode','media_ready','outbound_ready'}
+          def clean(value):
+              if not isinstance(value,str): return value
+              if re.search(r'sk-(?:api|cp)-|Bearer |Authorization[=:]|api_key[=:]|secret[=:]|token[=:]',value,re.I): return '[REDACTED]'
+              value=re.sub(r'wacid[.][A-Za-z0-9+/=_-]+','[CALL]',value)
+              return value[:300]
+          selected=[{k:clean(v) for k,v in r.items() if k in allowed and isinstance(v,(str,int,float,bool))}
+                    for r in window if r.get('session_id')==sid or r.get('call_id') in call_ids]
+          print(json.dumps({'scope':'LATEST_FOUNDER_CALL_ONLY','window_utc':[start,end],'events':selected,'matching_events':len(selected),'mutations':0}))
+          print(json.dumps({'log_coverage':{'structured_rows':len(rows),'oldest_utc':min((r['time'] for r in rows),default=None),'newest_utc':max((r['time'] for r in rows),default=None)}}))
+          for url in ['https://umraio-voice-gateway.fly.dev/health','https://umraio-voice-gateway.fly.dev/ready','https://umraio.com/api/public/health/build']:
+              try:
+                  with urllib.request.urlopen(url,timeout=20) as response:
+                      data=json.load(response)
+                      def identity(value):
+                          if isinstance(value,dict):
+                              return {k:(identity(v) if isinstance(v,(dict,list)) else v) for k,v in value.items() if k in ['status','build_version','build_sha','git_sha','commit','commit_sha','sha','build_time','webrtc','speech','active_sessions','build','version','identity']}
+                          if isinstance(value,list): return [identity(v) for v in value if isinstance(v,dict)]
+                          return value
+                      print(json.dumps({'url':url,'http_status':response.status,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'runtime':identity(data)}))
+              except Exception as error:
+                  print(json.dumps({'url':url,'error_class':type(error).__name__,'http_status':getattr(error,'code',None)}))
           PY
