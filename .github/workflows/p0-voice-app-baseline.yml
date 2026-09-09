@@ -1,0 +1,29 @@
+name: P0 Voice app baseline (NO DEPLOY)
+on:
+  push:
+    branches: [codex/p0-voice-rollback-preflight-20260909]
+    paths: [.github/workflows/p0-voice-app-baseline.yml]
+permissions:
+  contents: read
+jobs:
+  identify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read published app build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          voice_build=$(mktemp)
+          trap 'rm -f "$voice_build"' EXIT
+          curl --fail --silent --show-error --max-time 20 --max-redirs 0 'https://umraio.com/api/public/health/build' -o "$voice_build"
+          python3 - "$voice_build" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          allowed = ['ok', 'commit', 'commit_sha', 'build_commit', 'build_sha', 'git_sha', 'build_time', 'buildTime', 'environment', 'mode', 'version', 'app_version', 'hasOwnerTestMode']
+          result = {k: data[k] for k in allowed if k in data}
+          print(json.dumps({'published_build_identity': result, 'available_identity_field_names': sorted(data.keys()), 'deploy_executed': False, 'secret_bindings_changed': False}, sort_keys=True))
+          if data.get('ok') is not True:
+              raise SystemExit('Published application health is not ok; stop and review')
+          PY
