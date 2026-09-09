@@ -1,0 +1,70 @@
+name: Controlled gateway-only playback release b5c9f4e
+
+on:
+  push:
+    branches: [codex/release-calling-playback-b5c9f4e]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: voice-gateway-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/codex/release-calling-playback-b5c9f4e'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CANDIDATE: b5c9f4ebc720a76d05b1d3ccb0dbbc4ec79029fc
+      ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:676344eb825bd9e1dadb60ddd0a7761e9fe4c366d50c70ce8a28d28cf52f7c71
+      CANDIDATE_IMAGE: registry.fly.io/umraio-voice-gateway:playback-b5c9f4ebc720a76d05b1d3ccb0dbbc4ec79029fc
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: release-driver
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: b5c9f4ebc720a76d05b1d3ccb0dbbc4ec79029fc
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source and existing successful validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 release-driver/scripts/release-calling-playback-b5c9f4e.py source
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.101
+      - name: Verify unchanged Worker and gateway, zero sessions and preserve rollback
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 release-driver/scripts/release-calling-playback-b5c9f4e.py preflight
+      - name: Retrieve and verify exact previous production rollback image
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl auth docker >/dev/null
+          docker pull "$ROLLBACK_IMAGE"
+          python3 release-driver/scripts/release-calling-playback-b5c9f4e.py rollback-image
+      - name: Build exact gateway image using unchanged production Dockerfile
+        run: |
+          docker build --network host --build-arg BUILD_VERSION="$CANDIDATE" \
+            --label org.opencontainers.image.revision="$CANDIDATE" \
+            --tag "$CANDIDATE_IMAGE" candidate/voice-gateway
+          docker run --rm --network none --entrypoint /bin/sh "$CANDIDATE_IMAGE" -c \
+            'grep -aq "ice session snapshot" /gateway && grep -aq "ice candidate pair observed" /gateway && grep -aq "ice diagnostic capture complete" /gateway'
+          docker push "$CANDIDATE_IMAGE"
+          python3 release-driver/scripts/release-calling-playback-b5c9f4e.py image
+      - name: Release image only with zero-session guard and automatic rollback
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 release-driver/scripts/release-calling-playback-b5c9f4e.py release
+      - name: Confirm source unchanged and Worker publication untouched
+        run: |
+          git -C candidate diff --exit-code
+          git -C release-driver diff --exit-code
+          echo 'Exact gateway-only release. Worker publication, secrets and network configuration untouched. Founder acceptance pending.'
