@@ -67,8 +67,14 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
           })
         }
         if (wantsGateway) {
-          return Response.json({ ok: false, runtime, mode: 'gateway', reason: 'gateway_probe_disabled' })
+          return Response.json({
+            ok: false,
+            runtime,
+            mode: 'gateway',
+            reason: !optIn ? 'gateway_probe_disabled' : 'gateway_probe_non_loopback',
+          })
         }
+
 
         const { OPUS_WASM_BASE64 } = await import('@/lib/voice/opus/opus-wasm.base64')
         const bin = atob(OPUS_WASM_BASE64)
