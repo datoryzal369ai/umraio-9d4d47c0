@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/umraio/voice-gateway/internal/tts"
 )
 
 func TestAudioOpusBusyWhenSlotsExhausted(t *testing.T) {
@@ -39,7 +41,7 @@ func TestAudioOpusBusyWhenSlotsExhausted(t *testing.T) {
 }
 
 func TestAudioOpusSlotHeldUntilEncodeCompletes(t *testing.T) {
-	if !encoderAvailableForTest() {
+	if !tts.FileEncoderAvailable() {
 		t.Skip("no cgo encoder in this build")
 	}
 	_, _, mux := newServer(t, 4)
