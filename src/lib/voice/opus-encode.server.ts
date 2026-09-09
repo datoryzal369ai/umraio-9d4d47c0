@@ -91,7 +91,7 @@ export function opusWasmSource(): string {
  * WASI/env stubs required by the embedded libopus build. None of these
  * functions is ever actually called.
  */
-const OPUS_IMPORTS: WebAssembly.Imports = {
+export const OPUS_IMPORTS: WebAssembly.Imports = {
   wasi_snapshot_preview1: {
     fd_seek: () => 0,
     fd_write: () => 0,
