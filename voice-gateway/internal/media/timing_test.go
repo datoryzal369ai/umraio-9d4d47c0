@@ -77,6 +77,10 @@ func TestMediaMetricsTravelOnNextTurnRequest(t *testing.T) {
 		t.Fatalf("playback anchors invalid: %+v", m)
 	}
 
+	// Metrics are recorded before runTurn returns and releases busy. Wait for
+	// that turn's completion before supplying the next valid utterance.
+	p.wg.Wait()
+
 	pushSpeech(p, 10)
 	pushSilence(p, 5)
 	waitFor(t, "second turn request", func() bool { return len(client.seen()) >= 2 })

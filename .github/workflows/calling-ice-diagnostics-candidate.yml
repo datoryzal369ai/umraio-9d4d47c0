@@ -28,6 +28,7 @@ jobs:
           base = os.environ['BASELINE']
           allowed = {
             '.github/workflows/calling-ice-diagnostics-candidate.yml',
+            'voice-gateway/internal/media/timing_test.go',
             'voice-gateway/internal/webrtc/engine.go',
             'voice-gateway/internal/webrtc/ice_diagnostics.go',
             'voice-gateway/internal/webrtc/ice_trace.go',
@@ -45,9 +46,14 @@ jobs:
           print('PASS: every tracked path outside the diagnostics/test allowlist is identical to working production source.')
           print('PASS: main and preserved Worker rollback remain at', rollback)
           print('Changed files:\n' + '\n'.join(sorted(changed)))
-          # The metrics timeout test runs in a byte-identical package which has
-          # no dependency on the new WebRTC diagnostics.
-          subprocess.run(['git','diff','--exit-code',base,'HEAD','--','voice-gateway/internal/media'],check=True)
+          # Only the authorized test synchronization and its validation gate
+          # may change from the existing diagnostic candidate.
+          repair_base = 'ba11eeddfbfd0c8433e8146789ad112666c05ef9'
+          repair_allowed = {'.github/workflows/calling-ice-diagnostics-candidate.yml', 'voice-gateway/internal/media/timing_test.go'}
+          repair_changed = set(subprocess.check_output(['git','diff','--name-only',repair_base,'HEAD'],text=True).splitlines())
+          assert repair_changed <= repair_allowed, 'Repair changed production or diagnostic source: ' + repr(sorted(repair_changed - repair_allowed))
+          subprocess.run(['git','diff','--exit-code',base,'HEAD','--','voice-gateway/internal/media',':(exclude)voice-gateway/internal/media/timing_test.go'],check=True)
+          print('PASS: repair is test/CI only; media implementation and diagnostic instrumentation are unchanged.')
           candidate = subprocess.check_output(['git','rev-parse','origin/codex/calling-human-quality-isolated-20260909'],text=True).strip()
           assert candidate == 'c6d025a88f988974b7be3876226d12db31bed4e4', 'Protected humanization candidate moved'
           for path in ['voice-gateway/internal/webrtc/ice_diagnostics.go','voice-gateway/internal/webrtc/ice_trace.go']:
@@ -69,10 +75,10 @@ jobs:
           "$RUNNER_TEMP/calling-tools/node_modules/.bin/bun" install --frozen-lockfile --ignore-scripts
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev ffmpeg
-      - name: Seven previously failing regressions with race detector, ten repetitions
+      - name: Seven previously failing regressions with race detector, twenty repetitions
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: voice-gateway
-        run: go test -race -v ./internal/api ./internal/media -run '^TestNegotiationFailure(Returns502|LogsErrorClassUnchanged|LogsSafeErrorDetail|LogsNoSensitiveMaterial|LogsNoAuthMaterial|ResponseContract)$|^TestMediaMetricsTravelOnNextTurnRequest$' -count=10 -timeout=180s
+        run: go test -race -v ./internal/api ./internal/media -run '^TestNegotiationFailure(Returns502|LogsErrorClassUnchanged|LogsSafeErrorDetail|LogsNoSensitiveMaterial|LogsNoAuthMaterial|ResponseContract)$|^TestMediaMetricsTravelOnNextTurnRequest$' -count=20 -timeout=180s
       - name: Focused ICE diagnostics and existing WebRTC diagnostics with race detector
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: voice-gateway
