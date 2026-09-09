@@ -74,3 +74,7 @@ func WriteOggOpusFile(packets [][]byte, channels uint8, frameSamples48, preSkip 
 	}
 	return out
 }
+
+// OggCRCForTest exposes the page CRC to other packages' tests so they can
+// verify produced files without duplicating the polynomial.
+func OggCRCForTest(page []byte) uint32 { return oggCRC(page) }
