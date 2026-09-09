@@ -95,10 +95,12 @@ func (s *Server) handleAudioOpus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Slot ownership belongs to the ENCODER goroutine, not the handler: if the
+	// client times out first, the slot must stay held until the encode really
+	// finishes, otherwise maxConcurrentConversions stops bounding CPU.
 	select {
 	case conversionSlots <- struct{}{}:
-		defer func() { <-conversionSlots }()
-	case <-time.After(AudioConvertTimeout):
+	case <-time.After(AudioQueueTimeout):
 		writeErr(w, http.StatusServiceUnavailable, "encoder_busy")
 		return
 	case <-r.Context().Done():
@@ -112,6 +114,7 @@ func (s *Server) handleAudioOpus(w http.ResponseWriter, r *http.Request) {
 	}
 	done := make(chan result, 1)
 	go func() {
+		defer func() { <-conversionSlots }()
 		file, encErr := tts.EncodeOpusFile(pcm)
 		done <- result{file, encErr}
 	}()
@@ -122,12 +125,16 @@ func (s *Server) handleAudioOpus(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(AudioConvertTimeout):
 		writeErr(w, http.StatusGatewayTimeout, "encode_timeout")
 		return
+	case <-r.Context().Done():
+		writeErr(w, http.StatusServiceUnavailable, "client_gone")
+		return
 	}
 	if out.err != nil || out.file == nil || len(out.file.Packets) == 0 {
 		s.Logger.Warn("audio convert failed", "error_class", errClass(out.err), "pcm_bytes", len(pcm))
 		writeErr(w, http.StatusUnprocessableEntity, "encode_failed")
 		return
 	}
+
 
 	ogg := umedia.WriteOggOpusFile(
 		out.file.Packets,
