@@ -5,6 +5,7 @@ go 1.26.7
 require (
 	github.com/pion/ice/v4 v4.4.0
 	github.com/pion/webrtc/v4 v4.2.19
+	gopkg.in/hraban/opus.v2 v2.0.0-20230925203106-0188a62cb302
 )
 
 require (
@@ -28,5 +29,4 @@ require (
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	gopkg.in/hraban/opus.v2 v2.0.0-20230925203106-0188a62cb302 // indirect
 )

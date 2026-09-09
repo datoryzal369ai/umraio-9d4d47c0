@@ -31,8 +31,11 @@ import (
 // carried as base64, plus a small margin for the JSON wrapper.
 const MaxAudioBodyBytes = 8 * 1024 * 1024
 
-// AudioConvertTimeout bounds a single conversion.
-const AudioConvertTimeout = 20 * time.Second
+// AudioConvertTimeout bounds a single conversion, and AudioQueueTimeout bounds
+// the wait for a free slot. Their sum stays inside the client's 30 s budget.
+// They are vars so tests can shorten them; production never reassigns them.
+var AudioConvertTimeout = 20 * time.Second
+var AudioQueueTimeout = 8 * time.Second
 
 // maxConcurrentConversions keeps CPU-heavy complexity-10 encodes from starving
 // the live-call media loop.
@@ -95,10 +98,12 @@ func (s *Server) handleAudioOpus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Slot ownership belongs to the ENCODER goroutine, not the handler: if the
+	// client times out first, the slot must stay held until the encode really
+	// finishes, otherwise maxConcurrentConversions stops bounding CPU.
 	select {
 	case conversionSlots <- struct{}{}:
-		defer func() { <-conversionSlots }()
-	case <-time.After(AudioConvertTimeout):
+	case <-time.After(AudioQueueTimeout):
 		writeErr(w, http.StatusServiceUnavailable, "encoder_busy")
 		return
 	case <-r.Context().Done():
@@ -112,6 +117,7 @@ func (s *Server) handleAudioOpus(w http.ResponseWriter, r *http.Request) {
 	}
 	done := make(chan result, 1)
 	go func() {
+		defer func() { <-conversionSlots }()
 		file, encErr := tts.EncodeOpusFile(pcm)
 		done <- result{file, encErr}
 	}()
@@ -121,6 +127,9 @@ func (s *Server) handleAudioOpus(w http.ResponseWriter, r *http.Request) {
 	case out = <-done:
 	case <-time.After(AudioConvertTimeout):
 		writeErr(w, http.StatusGatewayTimeout, "encode_timeout")
+		return
+	case <-r.Context().Done():
+		writeErr(w, http.StatusServiceUnavailable, "client_gone")
 		return
 	}
 	if out.err != nil || out.file == nil || len(out.file.Packets) == 0 {

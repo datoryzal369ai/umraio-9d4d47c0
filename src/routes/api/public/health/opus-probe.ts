@@ -29,17 +29,25 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
         }
 
         /**
-         * NATIVE CONVERTER PROBE — off by default so this public endpoint never
-         * generates a real media-plane request. It is enabled only by an
-         * explicit non-production opt-in used by the isolated local harness.
+         * NATIVE CONVERTER PROBE — off by default AND loopback-only. Two
+         * independent conditions must hold: the explicit non-production opt-in,
+         * and a configured media-plane URL that resolves to loopback. A public
+         * probe therefore cannot reach the production media plane even if the
+         * opt-in flag is set by accident.
          */
         const wantsGateway = new URL(request.url).searchParams.get('mode') === 'gateway'
-        if (wantsGateway && process.env['OPUS_PROBE_ALLOW_GATEWAY'] === '1') {
-          const { resolveOpusGatewayConfig } = await import('@/lib/voice/opus-gateway.server')
-          const configured = Boolean(resolveOpusGatewayConfig())
+        const optIn = process.env['OPUS_PROBE_ALLOW_GATEWAY'] === '1'
+        const { resolveOpusGatewayConfig, isLoopbackGatewayUrl } = await import(
+          '@/lib/voice/opus-gateway.server'
+        )
+        const gatewayConfig = resolveOpusGatewayConfig()
+        const loopback = isLoopbackGatewayUrl(gatewayConfig?.gatewayUrl)
+        if (wantsGateway && optIn && loopback) {
+          const configured = Boolean(gatewayConfig)
           const { encodeVoiceNotePcm } = await import('@/lib/voice/voice-note-encode.server')
           const pcm = syntheticPcm()
           const out = await encodeVoiceNotePcm(pcm)
+
           return Response.json({
             ok: out.ok,
             runtime,
@@ -59,8 +67,14 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
           })
         }
         if (wantsGateway) {
-          return Response.json({ ok: false, runtime, mode: 'gateway', reason: 'gateway_probe_disabled' })
+          return Response.json({
+            ok: false,
+            runtime,
+            mode: 'gateway',
+            reason: !optIn ? 'gateway_probe_disabled' : 'gateway_probe_non_loopback',
+          })
         }
+
 
         const { OPUS_WASM_BASE64 } = await import('@/lib/voice/opus/opus-wasm.base64')
         const bin = atob(OPUS_WASM_BASE64)

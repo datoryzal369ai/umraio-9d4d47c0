@@ -50,7 +50,9 @@ func parsePages(t *testing.T, data []byte) []page {
 }
 
 func TestWriteOggOpusFileStructure(t *testing.T) {
-	packets := make([][]byte, 30)
+	// 32 packets = 30720 samples at 48 kHz, i.e. more than the real duration,
+	// so the EOS page must be clamped down to finalGranule.
+	packets := make([][]byte, 32)
 	for i := range packets {
 		packets[i] = []byte{0xfc, byte(i), 0x01}
 	}
@@ -84,6 +86,10 @@ func TestWriteOggOpusFileStructure(t *testing.T) {
 	}
 	if pages[0].payload[9] != 1 {
 		t.Fatal("must be mono")
+	}
+	// Intermediate pages carry the cumulative decoded sample count from zero.
+	if pages[2].granule != int64(25*960) {
+		t.Fatalf("first audio page granule %d, want %d", pages[2].granule, 25*960)
 	}
 	if pages[len(pages)-1].granule != final {
 		t.Fatalf("final granule %d, want %d", pages[len(pages)-1].granule, final)
