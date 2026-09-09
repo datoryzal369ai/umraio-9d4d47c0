@@ -39,6 +39,7 @@ export const Route = createFileRoute('/api/public/health/opus-probe')({
           try {
             const { OPUS_IMPORTS } = await import('@/lib/voice/opus-encode.server')
             await WebAssembly.instantiate(compiled, OPUS_IMPORTS)
+          } catch (e) {
             instantiate = String((e as Error)?.message ?? e).slice(0, 200)
           }
         }
