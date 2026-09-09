@@ -126,7 +126,11 @@ export async function encodeOggOpusViaGateway(
       redirect: "error",
       signal: AbortSignal.timeout(args.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     });
-  } catch {
+  } catch (e) {
+    // Sanitized transport diagnostics only: never the body, signature or secret.
+    console.error(
+      `[voice] opus_gateway_transport_error class=${(e as Error)?.name ?? "unknown"} detail=${String((e as Error)?.message ?? "").slice(0, 120)}`,
+    );
     return { ok: false, reason: "gateway_unavailable" };
   }
 
