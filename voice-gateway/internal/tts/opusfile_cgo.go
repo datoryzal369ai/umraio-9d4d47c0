@@ -93,8 +93,10 @@ func EncodeOpusFile(pcm []byte) (*OpusFile, error) {
 	C.umraio_set_bandwidth(st, C.OPUS_BANDWIDTH_FULLBAND)
 
 	var lookahead C.opus_int32
-	if C.umraio_get_lookahead(st, &lookahead) != C.OPUS_OK {
-		lookahead = 0
+	// The lookahead must be known: silently assuming 0 would write a wrong
+	// pre-skip and clip the head of every voice note.
+	if C.umraio_get_lookahead(st, &lookahead) != C.OPUS_OK || lookahead < 0 {
+		return nil, ErrEncoder
 	}
 	preSkip := int(lookahead) * (GranuleRate / SampleRateHz)
 
@@ -103,12 +105,11 @@ func EncodeOpusFile(pcm []byte) (*OpusFile, error) {
 		samples[i] = int16(binary.LittleEndian.Uint16(pcm[i*2:]))
 	}
 
-	// Drain: extra silent frames so the lookahead-delayed tail is emitted.
-	drain := 0
-	if lookahead > 0 {
-		drain = (int(lookahead) + FileFrameSamples - 1) / FileFrameSamples
-	}
-	frames := (len(samples)+FileFrameSamples-1)/FileFrameSamples + drain
+	// One encode pass over input + lookahead, rounded up to a frame boundary:
+	// enough padding to flush the encoder delay, and never an extra all-silent
+	// packet beyond it.
+	frames := (len(samples) + int(lookahead) + FileFrameSamples - 1) / FileFrameSamples
+
 
 	packets := make([][]byte, 0, frames)
 	frame := make([]int16, FileFrameSamples)
