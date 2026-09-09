@@ -1,0 +1,68 @@
+name: Prepare exact controlled Calling release 9cdd037
+
+# Artifact preparation only. No production update, publish, secret setter or merge.
+# Publication is gated until Lovable is synced to the exact authorized candidate.
+on:
+  push:
+    branches: [codex/release-calling-9cdd037]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: voice-gateway-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/codex/release-calling-9cdd037'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CANDIDATE: 9cdd037c634fa73ef462073101cab1ccf2d9f33c
+      ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:5c009948bad5d77321a0ce3522bf3aaec66977ee3a291b010e5b0fca454a2266
+      CANDIDATE_IMAGE: registry.fly.io/umraio-voice-gateway:calling-9cdd037c634fa73ef462073101cab1ccf2d9f33c
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: release-driver
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9cdd037c634fa73ef462073101cab1ccf2d9f33c
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source, green CI and protected rollback refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 release-driver/scripts/prepare-calling-9cdd037.py source
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.101
+      - name: Read-only production identities and service health
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 release-driver/scripts/prepare-calling-9cdd037.py preflight
+      - name: Verify deployed rollback image is retrievable
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl auth docker >/dev/null
+          docker pull "$ROLLBACK_IMAGE"
+          docker image inspect "$ROLLBACK_IMAGE" --format '{{index .RepoDigests 0}}'
+      - name: Build and store exact validated gateway artifact without deployment
+        run: |
+          docker build --network host --build-arg BUILD_VERSION="$CANDIDATE" \
+            --label org.opencontainers.image.revision="$CANDIDATE" \
+            --tag "$CANDIDATE_IMAGE" candidate/voice-gateway
+          docker run --rm --network none --entrypoint /bin/sh "$CANDIDATE_IMAGE" -c \
+            'grep -aq "ice session snapshot" /gateway && grep -aq "ice candidate pair observed" /gateway && grep -aq "ice diagnostic capture complete" /gateway'
+          docker push "$CANDIDATE_IMAGE"
+          python3 release-driver/scripts/prepare-calling-9cdd037.py image
+      - name: Confirm no source or production mutation
+        run: |
+          git -C candidate diff --exit-code
+          git -C release-driver diff --exit-code
+          echo 'Artifact prepared. NO deployment, merge, Worker publication, secret or network change.'
