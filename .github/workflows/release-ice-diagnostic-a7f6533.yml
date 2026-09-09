@@ -1,0 +1,73 @@
+name: Controlled ICE diagnostic release a7f6533
+
+# Release driver only. Runtime source is the exact already validated commit.
+# No app/Worker publication, secret setters, network changes, or main merge.
+on:
+  push:
+    branches: [codex/release-ice-diagnostic-a7f6533]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: voice-gateway-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/codex/release-ice-diagnostic-a7f6533'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CANDIDATE: a7f653372aaaa5e80e2b9f9c7e6c0b53d380b93c
+      ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:aad59bf42aa1cf495f0c464f98e87f6ce24f80838e0276f6f66c01053eb84bc1
+      CANDIDATE_IMAGE: registry.fly.io/umraio-voice-gateway:ice-a7f653372aaaa5e80e2b9f9c7e6c0b53d380b93c
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: release-driver
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: a7f653372aaaa5e80e2b9f9c7e6c0b53d380b93c
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source, successful validation and protected refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 release-driver/scripts/release-ice-diagnostic-a7f6533.py source
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.101
+      - name: Verify unchanged live baseline and preserve rollback configuration
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 release-driver/scripts/release-ice-diagnostic-a7f6533.py preflight
+      - name: Verify rollback image is retrievable
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl auth docker >/dev/null
+          docker pull "$ROLLBACK_IMAGE"
+          docker image inspect "$ROLLBACK_IMAGE" --format '{{index .RepoDigests 0}}'
+      - name: Build and publish only the exact candidate gateway image
+        run: |
+          docker build --build-arg BUILD_VERSION="$CANDIDATE" \
+            --label org.opencontainers.image.revision="$CANDIDATE" \
+            --tag "$CANDIDATE_IMAGE" candidate/voice-gateway
+          docker run --rm --network none --entrypoint /bin/sh "$CANDIDATE_IMAGE" -c \
+            'grep -aq "ice session snapshot" /gateway && grep -aq "ice candidate pair observed" /gateway && grep -aq "ice diagnostic capture complete" /gateway'
+          docker push "$CANDIDATE_IMAGE"
+          python3 release-driver/scripts/release-ice-diagnostic-a7f6533.py image
+      - name: Release image only with unchanged machine configuration and rollback on health failure
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 release-driver/scripts/release-ice-diagnostic-a7f6533.py release
+      - name: Confirm protected repository paths remain untouched
+        run: |
+          git -C candidate diff --exit-code
+          git -C release-driver diff --exit-code
+          echo 'Exact diagnostic gateway image released; no Worker, secrets, networking or humanization release.'
