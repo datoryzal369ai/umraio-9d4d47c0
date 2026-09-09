@@ -167,7 +167,18 @@ export function advanceClosing(args: {
     };
   }
 
+  // Explicit instruction to hang up wins over pending work and over any
+  // further completion check: speak the farewell, then end the call.
+  if (isExplicitHangupCommand(text)) {
+    return {
+      action: "farewell",
+      state: "farewell",
+      text: pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed),
+    };
+  }
+
   if (args.pendingWork) return { action: "continue", state: "active" };
+
 
   if (args.state === "completion_check") {
     if (text && CONTINUES.test(text) && !EXPLICIT_DONE.test(text)) {
