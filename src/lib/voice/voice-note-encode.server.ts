@@ -24,7 +24,9 @@ export async function encodeVoiceNotePcm(
 ): Promise<VoiceNoteEncodeResult> {
   if (!pcm || pcm.byteLength < 2) return { ok: false, reason: "invalid_pcm", source: "unavailable" };
 
-  const gateway = resolveOpusGatewayConfig(env);
+  // Automated tests use the local encoder: no test run may reach the real
+  // media plane through ambient bindings.
+  const gateway = env["NODE_ENV"] === "test" ? null : resolveOpusGatewayConfig(env);
   if (gateway) {
     const encoded = await encodeOggOpusViaGateway(pcm, gateway);
     if (encoded.ok) return { ok: true, bytes: encoded.bytes, source: "native_gateway" };
