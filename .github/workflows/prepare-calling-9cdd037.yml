@@ -1,4 +1,4 @@
-name: Prepare exact controlled Calling release 9cdd037
+name: Controlled Calling release - session safety check
 
 # Artifact preparation only. No production update, publish, secret setter or merge.
 # Publication is gated until Lovable is synced to the exact authorized candidate.
@@ -34,35 +34,15 @@ jobs:
           path: candidate
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact source, green CI and protected rollback refs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 release-driver/scripts/prepare-calling-9cdd037.py source
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
         with:
           version: 0.4.101
-      - name: Read-only production identities and service health
+      - name: Read-only gateway session safety evidence
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: python3 release-driver/scripts/prepare-calling-9cdd037.py preflight
-      - name: Verify deployed rollback image is retrievable
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          flyctl auth docker >/dev/null
-          docker pull "$ROLLBACK_IMAGE"
-          docker image inspect "$ROLLBACK_IMAGE" --format '{{index .RepoDigests 0}}'
-      - name: Build and store exact validated gateway artifact without deployment
-        run: |
-          docker build --network host --build-arg BUILD_VERSION="$CANDIDATE" \
-            --label org.opencontainers.image.revision="$CANDIDATE" \
-            --tag "$CANDIDATE_IMAGE" candidate/voice-gateway
-          docker run --rm --network none --entrypoint /bin/sh "$CANDIDATE_IMAGE" -c \
-            'grep -aq "ice session snapshot" /gateway && grep -aq "ice candidate pair observed" /gateway && grep -aq "ice diagnostic capture complete" /gateway'
-          docker push "$CANDIDATE_IMAGE"
-          python3 release-driver/scripts/prepare-calling-9cdd037.py image
+        run: python3 release-driver/scripts/prepare-calling-9cdd037.py sessions
       - name: Confirm no source or production mutation
         run: |
           git -C candidate diff --exit-code
           git -C release-driver diff --exit-code
-          echo 'Artifact prepared. NO deployment, merge, Worker publication, secret or network change.'
+          echo 'Session evidence captured. Existing artifact reused; NO build, deployment, merge, Worker publication, secret or network change.'

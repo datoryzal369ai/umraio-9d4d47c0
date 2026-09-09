@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -51,9 +52,35 @@ def preflight():
     print('PASS: live custom-domain and Lovable Worker identity', release.MAIN)
 
 
+def sessions():
+    before = release.health(release.BASE)
+    current = release.machine()
+    assert current['config']['image'] == os.environ['ROLLBACK_IMAGE'], 'Production image moved'
+    raw = subprocess.check_output(['flyctl', 'logs', '-a', release.APP, '--no-tail'], text=True, timeout=45, stderr=subprocess.DEVNULL)
+    rows = []
+    for line in re.sub(r'\x1b\[[0-9;]*m', '', raw).splitlines():
+        start = line.find('{')
+        if start < 0:
+            continue
+        try:
+            row = json.loads(line[start:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict) and 'time' in row and 'msg' in row:
+            rows.append(row)
+    assert rows, 'No current gateway lifecycle evidence available'
+    keys = {'time', 'msg', 'session_id', 'state', 'reason', 'ice_connection_state', 'peer_connection_state', 'dtls_state', 'media_ready', 'inbound_packets', 'outbound_packets', 'transport_ready_outbound_packets', 'trace_id', 'local_candidate_id', 'remote_candidate_id', 'candidate_pair_id', 'pair_id', 'local_id', 'remote_id', 'pair_state', 'selected', 'nominated'}
+    lifecycle = [r for r in rows if 'session_id' in r or any(t in str(r.get('msg', '')) for t in ['state', 'terminat', 'created', 'candidate pair', 'first inbound', 'first outbound', 'inbound rtp progress'])]
+    selected = (lifecycle[-60:] if lifecycle else rows[-12:])
+    for row in selected:
+        print(json.dumps({k:v for k,v in row.items() if k in keys}, sort_keys=True))
+    after = release.health(release.BASE)
+    print(json.dumps({'check': 'read_only_session_safety', 'captured_rows': len(rows), 'window_start': min(r['time'] for r in rows), 'window_end': max(r['time'] for r in rows), 'active_sessions_before': before['active_sessions'], 'active_sessions_after': after['active_sessions'], 'production_sha': after['build_version']}))
+
+
 if __name__ == '__main__':
     try:
-        {'source': source, 'preflight': preflight, 'image': release.image}[sys.argv[1]]()
+        {'source': source, 'preflight': preflight, 'image': release.image, 'sessions': sessions}[sys.argv[1]]()
     except Exception as error:
         print('STOP:', type(error).__name__, str(error) if isinstance(error, (AssertionError, RuntimeError)) else 'preparation error')
         sys.exit(1)
