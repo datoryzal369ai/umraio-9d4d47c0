@@ -111,7 +111,7 @@ type ConversationConfig struct {
 	Greet bool
 	// MaxTurns bounds one call so a loop can never run away.
 	MaxTurns int
-	// TurnTimeout bounds one control-plane round trip.
+	// TurnTimeout bounds control-plane and speech preparation, not ready audio.
 	TurnTimeout time.Duration
 	// FrameSamples per outbound Opus packet at 48 kHz.
 	FrameSamples int
@@ -503,13 +503,25 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st 
 		}
 		return ""
 	}
+	// Admit only prepared, current audio while the processing budget is valid.
+	// Waiting for caller silence is still preparation, not detached playback.
+	if len(packets) == 0 || !p.waitForCallerQuiet(tctx, st.generation) || tctx.Err() != nil {
+		return ""
+	}
+	// Playback belongs to the live turn/session, not its spent processing
+	// budget. Keep a finite bound: audio duration plus one processing budget
+	// of scheduling allowance. Barge-in and teardown still cancel ctx.
+	playbackBudget := time.Duration(len(packets))*time.Duration(p.cfg.VAD.FrameMs)*time.Millisecond + p.cfg.TurnTimeout
+	playbackCtx, stopPlayback := context.WithTimeout(ctx, playbackBudget)
+	defer stopPlayback()
+	cancel()
 	if req.Kind == TurnKindGreeting {
 		p.prepareBackchannels(resp)
 	}
-	firstAudioAt, complete := p.playTurn(tctx, packets, st.generation)
+	firstAudioAt, complete := p.playTurn(playbackCtx, packets, st.generation)
 	p.recordTurnMetrics(st, timing, firstAudioAt)
 	p.recordConversationMetrics(st, req.Kind, ackAt, firstAudioAt, complete)
-	if resp.EndCall && complete && tctx.Err() == nil {
+	if resp.EndCall && complete && playbackCtx.Err() == nil {
 		return orDefault(resp.Reason, "conversation_complete")
 	}
 	return ""

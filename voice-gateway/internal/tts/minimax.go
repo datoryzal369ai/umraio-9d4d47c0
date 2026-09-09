@@ -175,6 +175,9 @@ func (c *Client) SynthesizePCM(ctx context.Context, text, voiceID, boost string)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
+		if cause := synthesisContextError(ctx, err); cause != nil {
+			return nil, cause
+		}
 		return nil, fmt.Errorf("%w: transport", ErrProvider)
 	}
 	defer resp.Body.Close()
@@ -185,6 +188,9 @@ func (c *Client) SynthesizePCM(ctx context.Context, text, voiceID, boost string)
 
 	var out minimaxResponse
 	if err := json.NewDecoder(http.MaxBytesReader(nil, resp.Body, maxResponseSize)).Decode(&out); err != nil {
+		if cause := synthesisContextError(ctx, err); cause != nil {
+			return nil, cause
+		}
 		return nil, fmt.Errorf("%w: decode", ErrProvider)
 	}
 	if out.BaseResp.StatusCode != 0 {
@@ -198,6 +204,22 @@ func (c *Client) SynthesizePCM(ctx context.Context, text, voiceID, boost string)
 		return nil, ErrEmptyAudio
 	}
 	return pcm, nil
+}
+
+// Never wrap caller/turn/session cancellation as a provider rejection, and
+// never return a raw HTTP error (which may contain a URL or sensitive data).
+// HTTP-client timeouts can wrap DeadlineExceeded while ctx is still live.
+func synthesisContextError(ctx context.Context, err error) error {
+	if cause := ctx.Err(); cause != nil {
+		return cause
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 // EnvConfig is the process-level convenience loader.

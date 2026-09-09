@@ -1,0 +1,100 @@
+name: Isolated Calling playback lifecycle gates
+
+# Validation only. No production environment, secrets, deployment or publishing.
+on:
+  push:
+    branches: [codex/calling-playback-lifecycle-20260910]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/codex/calling-playback-lifecycle-20260910'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: "1"
+      BASELINE: 9cdd037c634fa73ef462073101cab1ccf2d9f33c
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Exact baseline and protected tree gate
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          base = os.environ['BASELINE']
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('merge-base', base, 'HEAD') == base
+          allowed = {
+            '.github/workflows/calling-playback-lifecycle-candidate.yml',
+            'voice-gateway/internal/media/conversation.go',
+            'voice-gateway/internal/media/playback_lifecycle_test.go',
+            'voice-gateway/internal/tts/minimax.go',
+            'voice-gateway/internal/tts/speaker.go',
+            'voice-gateway/internal/tts/cancellation_test.go',
+          }
+          changed = set(git('diff', '--name-only', base, 'HEAD').splitlines())
+          assert changed == allowed, 'Unexpected diff: ' + repr(changed ^ allowed)
+          for tree in ['src', 'tests', 'supabase', 'voice-gateway/internal/webrtc',
+                       'voice-gateway/internal/api', 'voice-gateway/internal/callback',
+                       'voice-gateway/internal/config', 'voice-gateway/internal/session']:
+            assert git('rev-parse', base + ':' + tree) == git('rev-parse', 'HEAD:' + tree), tree
+          subprocess.run(['git', 'diff', '--check', base, 'HEAD'], check=True)
+          print('PASS: only authorized lifecycle/error classification and new tests/workflow changed.')
+          print('PASS: Voice Note, Text, MiniMax request/voice config, codecs, RTP/WebRTC, ICE diagnostics, secrets/network configs and rollback files protected.')
+          PY
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: voice-gateway/go.mod
+          cache-dependency-path: voice-gateway/go.sum
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Frozen test and native dependencies
+        run: |
+          npm install --prefix "$RUNNER_TEMP/calling-tools" --ignore-scripts --no-audit --no-fund bun@1.3.10 vitest@4.0.18 @typescript/native-preview@7.0.0-dev.20260707.2
+          node "$RUNNER_TEMP/calling-tools/node_modules/bun/install.js"
+          "$RUNNER_TEMP/calling-tools/node_modules/.bin/bun" install --frozen-lockfile --ignore-scripts
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev libogg-dev ffmpeg
+      - name: Playback lifecycle and cancellation classification repeated 20 times with race detection
+        working-directory: voice-gateway
+        run: go test -race -v ./internal/media ./internal/tts -run 'TestPlaybackLifecycle|TestTTSCancellationClassification|TestTTSSpeakerLogsCancellationNotProvider|TestTTSGenuineProviderFailureRemainsProvider' -count=20 -timeout=120s
+      - name: Calling humanization, farewell and real PeerConnection termination repeated
+        working-directory: voice-gateway
+        run: go test -race -v ./internal/media ./internal/webrtc -run 'TestConversationCandidate|TestConversationCompleteClosesPeerAfterFarewellAndEmitsCallback' -count=20 -timeout=180s
+      - name: ICE diagnostic regressions
+        working-directory: voice-gateway
+        run: go test -race -v ./internal/webrtc -run 'TestICE|TestMediaDiagnosticsEndToEnd|TestEngineDiagnosticsAreSafe' -count=5 -timeout=180s
+      - name: Full native race suite
+        working-directory: voice-gateway
+        run: go test -race -v ./... -count=1 -timeout=180s
+      - name: Full relevant TypeScript, Calling, Voice Note and Text regressions
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          prefixes = ('voice-', 'call-', 'calling-', 'minimax-', 'opus-', 'whatsapp-voice')
+          extra = {
+            'gateway-run-text.test.ts', 'whatsapp-webhook-security.test.ts',
+            'whatsapp-coalescing-identity.test.ts', 'whatsapp-conversational-guard.test.ts',
+            'whatsapp-outbound-timeout.test.ts', 'console-outbound-text-voice.test.ts',
+            'whatsapp-composer.test.ts', 'whatsapp-inbound-calls-v1.test.ts',
+            'whatsapp-calling-pre-accept-p0.test.ts',
+          }
+          files = sorted(str(p) for p in pathlib.Path('tests').glob('*.test.ts') if p.name.startswith(prefixes) or p.name in extra)
+          runner = os.environ['RUNNER_TEMP'] + '/calling-tools/node_modules/.bin/vitest'
+          subprocess.run([runner, 'run', '--reporter=default', *files], check=True)
+          PY
+      - name: Typecheck, app/native build and go vet
+        run: |
+          "$RUNNER_TEMP/calling-tools/node_modules/.bin/tsgo" --noEmit
+          npm run build > "$RUNNER_TEMP/playback-build.log" 2>&1 || { tail -80 "$RUNNER_TEMP/playback-build.log"; exit 1; }
+          tail -8 "$RUNNER_TEMP/playback-build.log"
+          cd voice-gateway
+          go vet ./...
+          go build -trimpath -o "$RUNNER_TEMP/playback-gateway" ./cmd/gateway
+      - name: Verify tests left source and locks unchanged
+        run: git diff --exit-code

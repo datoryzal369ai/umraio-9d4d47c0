@@ -71,6 +71,10 @@ func classOf(err error) string {
 	switch {
 	case err == nil:
 		return "none"
+	case errorsIs(err, context.Canceled):
+		return "cancelled"
+	case errorsIs(err, context.DeadlineExceeded):
+		return "timeout"
 	case errorsIs(err, ErrNotConfigured):
 		return "not_configured"
 	case errorsIs(err, ErrEmptyAudio):
