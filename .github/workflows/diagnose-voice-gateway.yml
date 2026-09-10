@@ -35,7 +35,7 @@ jobs:
   diagnose:
     name: Retrieve sanitized gateway logs (sin)
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/calling-diagnostics-forensics-20260910'
     timeout-minutes: 10
     defaults:
       run:
@@ -77,45 +77,107 @@ jobs:
         run: |
           set -euo pipefail
           flyctl status -a "$FLY_APP" || true
-          flyctl ips list -a "$FLY_APP" || true
 
       - name: Retrieve logs and emit sanitized diagnostics only
         run: |
           set -euo pipefail
           RAW="$(mktemp)"
-          WINDOWED="$(mktemp)"
-          trap 'rm -f "$RAW" "$WINDOWED"' EXIT
+          ERR="$(mktemp)"
+          trap 'rm -f "$RAW" "$ERR"' EXIT
+          # Read the existing buffer once; neither stderr nor raw logs are emitted.
+          if ! timeout 60s flyctl logs -a "$FLY_APP" --no-tail > "$RAW" 2> "$ERR"; then
+            echo "::error::Gateway log retrieval failed; raw error withheld."
+            exit 1
+          fi
+          python3 - "$RAW" <<'PY'
+          import datetime as dt
+          import ipaddress
+          import json
+          import os
+          import re
+          import sys
 
-          flyctl logs -a "$FLY_APP" --no-tail > "$RAW" || true
-          echo "raw log lines captured: $(wc -l < "$RAW")"
+          sid = os.environ["SESSION_ID"]
+          start = dt.datetime.fromisoformat(os.environ["WINDOW_START"].replace("Z", "+00:00"))
+          end = dt.datetime.fromisoformat(os.environ["WINDOW_END"].replace("Z", "+00:00")) + dt.timedelta(seconds=1)
+          if start >= end:
+              raise SystemExit("Invalid diagnostic window")
+          iso = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
+          event = re.compile(r"vad|speech|segment|utterance|audio|frame|buffer|dispatch|turn|worker|https?|post|barge|cancel|abort|silence|idle|timeout|deadline|playback|conversation|greeting|accept|terminat|close|media|rtp|opus|jitter|depacket|decode|ice|dtls|peer|candidate|udp|mux", re.I)
+          sensitive = re.compile(r"token|secret|authorization|password|pwd|ufrag|fingerprint|credential|api[_-]?key|signature|sdp|headers|body|audio.*(?:base64|data)|phone|call[_-]?id", re.I)
+          assignments = re.compile(r'''(?i)(["']?\b[\w.-]*(?:token|secret|authorization|password|pwd|ufrag|fingerprint|credential|api[_-]?key|signature)[\w.-]*["']?(?:\s*[:=]\s*|\s+))(?:"[^"]*"|'[^']*'|[^\s,;}]+)''')
+          ipv6 = re.compile(r"(?<![\w:])(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]*(?:%[\w.-]+)?")
 
-          # Keep only lines whose leading ISO-8601 timestamp falls inside the
-          # requested window; lines without a timestamp are kept only when they
-          # mention the target session.
-          START="$WINDOW_START" END="$WINDOW_END" SID="$SESSION_ID" \
-          awk '{
-            if (match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}/)) {
-              ts = substr($0, RSTART, RLENGTH) "Z";
-              if (ts >= ENVIRON["START"] && ts <= ENVIRON["END"]) print;
-            } else if (index($0, ENVIRON["SID"]) > 0) { print }
-          }' "$RAW" > "$WINDOWED"
-          echo "lines inside window: $(wc -l < "$WINDOWED")"
+          def redact_ip(match):
+              value = match.group(0)
+              try:
+                  return "[IPv%d]" % ipaddress.ip_address(value.split("%", 1)[0]).version
+              except ValueError:
+                  return value  # A clock such as 17:02:53 is not an IPv6 address.
 
-          # Relevant, safe log keys emitted by the gateway. Raw SDP, ICE
-          # credentials, DTLS fingerprints and tokens are never logged by the
-          # gateway itself; the sed pass below is defence-in-depth.
-          PATTERN="$SESSION_ID"'|media session created|media pipeline|ice gathering state|ice connection state|peer connection state|selected candidate pair|candidate_ipv4_count|candidate_ipv6_count|dtls|DTLS|on_track|ontrack|inbound audio track received|first inbound rtp|first udp packet|inbound rtp progress|inbound_packets|outbound_packets|first outbound opus|outbound write|outbound opus progress|greeting|accepted|media ready|media_ready|media session terminated|call terminated|udp mux|UDPMux|listening|mux|ice_failed|peer_disconnected|inbound_rtp_closed'
+          def clean_text(value):
+              timestamps = []
+              def keep_time(match):
+                  timestamps.append(match.group(0))
+                  return "__DIAG_TIME_%d__" % (len(timestamps) - 1)
+              value = iso.sub(keep_time, value)
+              value = re.sub(r"(?<![\w:])(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?![\w:])", keep_time, value)
+              value = re.sub(r"(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+", "[AUTH]", value)
+              value = assignments.sub(lambda m: m.group(1) + "[REDACTED]", value)
+              value = re.sub(r"wacid\.[A-Za-z0-9+/=_-]+", "wacid.[REDACTED]", value)
+              value = re.sub(r"\b(?:sk[-_](?:api-|cp-)?|gh[pousr]_)[A-Za-z0-9_-]+", "[TOKEN]", value)
+              value = re.sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[TOKEN]", value)
+              value = ipv6.sub(redact_ip, value)
+              value = re.sub(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])", redact_ip, value)
+              value = re.sub(r"(?<![\w])\+?\d(?:[ ()-]*\d){9,14}(?![\w])", "[PHONE]", value)
+              for index, stamp in enumerate(timestamps):
+                  value = value.replace("__DIAG_TIME_%d__" % index, stamp)
+              return value
 
-          # Redact: phone numbers, call IDs, IPv4/IPv6 literals, anything
-          # resembling a token/credential. Keep enum/boolean/integer fields.
-          grep -Ei "$PATTERN" "$WINDOWED" \
-            | sed -E \
-                -e 's/[0-9]{10,15}/[PHONE]/g' \
-                -e 's/wacid\.[A-Za-z0-9+\/=_-]+/wacid.[REDACTED]/g' \
-                -e 's/([0-9]{1,3}\.){3}[0-9]{1,3}/[IPv4]/g' \
-                -e 's/([0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F]{0,4}(%[a-z0-9]+)?/[IPv6]/g' \
-                -e 's/(ufrag|pwd|fingerprint|token|secret|authorization)[=: ][^ ]+/[REDACTED]/gi' \
-            || echo "(no matching diagnostic lines found)"
+          def clean(value):
+              if isinstance(value, dict):
+                  return {clean_text(k): "[REDACTED]" if sensitive.search(k) else clean(v) for k, v in value.items()}
+              if isinstance(value, list):
+                  return [clean(v) for v in value]
+              return clean_text(value) if isinstance(value, str) else value
+
+          # Gateway slog emits JSON. Fail closed for malformed/unscoped lines.
+          records, raw_count, unparsed = [], 0, 0
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as source:
+              for line in source:
+                  raw_count += 1
+                  line = re.sub(r"\x1b\[[0-9;]*m", "", line)
+                  pos = line.find("{")
+                  try:
+                      entry = json.loads(line[pos:]) if pos >= 0 else None
+                      if not isinstance(entry, dict):
+                          raise ValueError()
+                      stamp = entry.get("time", "")
+                      if not isinstance(stamp, str) or not iso.fullmatch(stamp):
+                          raise ValueError()
+                      when = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                  except (ValueError, TypeError):
+                      unparsed += 1
+                      continue
+                  if start <= when < end:
+                      prefix_time = iso.search(line[:pos])
+                      if prefix_time:
+                          entry["fly_timestamp"] = prefix_time.group(0)
+                      records.append(entry)
+
+          # Correlate call-ID-only turn/barge-in events without including other calls.
+          calls = {r["call_id"] for r in records if r.get("session_id") == sid and isinstance(r.get("call_id"), str)}
+          scoped = [r for r in records if (r.get("session_id") == sid or
+                    (not r.get("session_id") and isinstance(r.get("call_id"), str) and r["call_id"] in calls))]
+          matched = [r for r in scoped if r.get("session_id") == sid or event.search(str(r.get("msg", "")))]
+          print(json.dumps({"retrieval": "available_fly_buffer_only", "raw_lines": raw_count,
+              "unparsed_lines_withheld": unparsed, "window_records": len(records),
+              "session_records": len(scoped), "emitted_records": len(matched),
+              "first_retained_time": scoped[0]["time"] if scoped else None,
+              "last_retained_time": scoped[-1]["time"] if scoped else None}))
+          for entry in matched:
+              print(json.dumps(clean(entry), ensure_ascii=False))
+          PY
 
       - name: Diagnostics summary
         run: |
