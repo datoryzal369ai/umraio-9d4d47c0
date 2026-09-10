@@ -2,23 +2,31 @@ name: Diagnose Voice Gateway
 
 # Manual-only, read-only log retrieval for the UMRAIO voice gateway.
 # Uses the existing repository Actions secret FLY_API_TOKEN (never printed).
-# Outputs ONLY sanitized diagnostic lines for the session and window supplied
-# as workflow inputs. Raw logs are never uploaded, never printed unfiltered.
+# Outputs ONLY sanitized diagnostic lines. Live mode locks to the first NEW
+# session after LIVE_CAPTURE_READY. Raw logs are never uploaded or printed.
 
 on:
   workflow_dispatch:
     inputs:
-      gateway_session_id:
-        description: "Gateway media session ID (e.g. ms_xxxxxxxxxxxx)"
+      capture_mode:
+        description: "historical buffer, or live: next new Founder call, maximum 90 seconds"
         required: true
+        default: historical
+        type: choice
+        options:
+          - historical
+          - live
+      gateway_session_id:
+        description: "Historical only: gateway media session ID. Leave blank for live."
+        required: false
         type: string
       window_start:
-        description: "Call window start, UTC (e.g. 2026-09-03T10:13:55Z)"
-        required: true
+        description: "Historical only: window start UTC RFC3339. Leave blank for live."
+        required: false
         type: string
       window_end:
-        description: "Call window end, UTC (e.g. 2026-09-03T10:14:30Z)"
-        required: true
+        description: "Historical only: window end UTC RFC3339. Leave blank for live."
+        required: false
         type: string
 
 permissions:
@@ -42,6 +50,7 @@ jobs:
         shell: bash
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      CAPTURE_MODE: ${{ inputs.capture_mode || 'historical' }}
       SESSION_ID: ${{ inputs.gateway_session_id }}
       WINDOW_START: ${{ inputs.window_start }}
       WINDOW_END: ${{ inputs.window_end }}
@@ -55,6 +64,18 @@ jobs:
             exit 1
           fi
           echo "FLY_API_TOKEN: present (value never printed)"
+          if [ "$CAPTURE_MODE" = live ]; then
+            if [ -n "$SESSION_ID$WINDOW_START$WINDOW_END" ]; then
+              echo "::error::Live mode selects the next new call. Leave historical inputs blank."
+              exit 1
+            fi
+            echo "Live capture selected: one new session, maximum 90 seconds."
+            exit 0
+          fi
+          if [ "$CAPTURE_MODE" != historical ]; then
+            echo "::error::Unknown capture mode."
+            exit 1
+          fi
           if ! [[ "$SESSION_ID" =~ ^ms_[a-f0-9]{8,64}$ ]]; then
             echo "::error::gateway_session_id must look like ms_<hex>."
             exit 1
@@ -85,23 +106,27 @@ jobs:
           ERR="$(mktemp)"
           trap 'rm -f "$RAW" "$ERR"' EXIT
           # Read the existing buffer once; neither stderr nor raw logs are emitted.
-          if ! timeout 60s flyctl logs -a "$FLY_APP" --no-tail > "$RAW" 2> "$ERR"; then
-            echo "::error::Gateway log retrieval failed; raw error withheld."
-            exit 1
+          if [ "$CAPTURE_MODE" = historical ]; then
+            if ! timeout 60s flyctl logs -a "$FLY_APP" --no-tail > "$RAW" 2> "$ERR"; then
+              echo "::error::Gateway log retrieval failed; raw error withheld."
+              exit 1
+            fi
           fi
-          python3 - "$RAW" <<'PY'
+          python3 -u - "$RAW" <<'PY'
           import datetime as dt
           import ipaddress
           import json
           import os
           import re
+          import select
+          import signal
+          import subprocess
           import sys
+          import time
 
           sid = os.environ["SESSION_ID"]
-          start = dt.datetime.fromisoformat(os.environ["WINDOW_START"].replace("Z", "+00:00"))
-          end = dt.datetime.fromisoformat(os.environ["WINDOW_END"].replace("Z", "+00:00")) + dt.timedelta(seconds=1)
-          if start >= end:
-              raise SystemExit("Invalid diagnostic window")
+          mode = os.environ.get("CAPTURE_MODE", "historical")
+          LIVE_SECONDS = 90  # Not an input: hard maximum for the local log reader.
           iso = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
           event = re.compile(r"vad|speech|segment|utterance|audio|frame|buffer|dispatch|turn|worker|https?|post|barge|cancel|abort|silence|idle|timeout|deadline|playback|conversation|greeting|accept|terminat|close|media|rtp|opus|jitter|depacket|decode|ice|dtls|peer|candidate|udp|mux", re.I)
           sensitive = re.compile(r"token|secret|authorization|password|pwd|ufrag|fingerprint|credential|api[_-]?key|signature|sdp|headers|body|audio.*(?:base64|data)|phone|call[_-]?id", re.I)
@@ -141,28 +166,120 @@ jobs:
                   return [clean(v) for v in value]
               return clean_text(value) if isinstance(value, str) else value
 
+          def parse_line(line):
+              line = re.sub(r"\x1b\[[0-9;]*m", "", line)
+              pos = line.find("{")
+              try:
+                  entry = json.loads(line[pos:]) if pos >= 0 else None
+                  if not isinstance(entry, dict):
+                      return None
+                  stamp = entry.get("time", "")
+                  if not isinstance(stamp, str) or not iso.fullmatch(stamp):
+                      return None
+                  when = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+              except (ValueError, TypeError):
+                  return None
+              prefix_time = iso.search(line[:pos])
+              if prefix_time:
+                  entry["fly_timestamp"] = prefix_time.group(0)
+              return entry, when
+
+          def live_capture():
+              # Only this Actions runner's log-reader process group is owned/killed.
+              # flyctl logs is read-only; no gateway process is signalled.
+              deadline = time.monotonic() + LIVE_SECONDS
+              stop_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=LIVE_SECONDS)
+              proc = subprocess.Popen(["timeout", "--signal=KILL", str(LIVE_SECONDS) + "s",
+                  "flyctl", "logs", "-a", os.environ["FLY_APP"]],
+                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+              ready_at, selected = None, None
+              calls, buffered, dropping, emitted = set(), b"", False, 0
+              def cancelled(signum, frame):
+                  raise SystemExit("Live capture cancelled; local reader stopped.")
+              previous = {s: signal.signal(s, cancelled) for s in (signal.SIGTERM, signal.SIGINT)}
+              try:
+                  while time.monotonic() < deadline:
+                      readable, _, _ = select.select([proc.stdout], [], [], max(0, deadline - time.monotonic()))
+                      if not readable:
+                          break
+                      chunk = os.read(proc.stdout.fileno(), 65536)
+                      if not chunk:
+                          break
+                      parts = (buffered + chunk).split(b"\n")
+                      buffered = parts.pop()
+                      for part in parts:
+                          if time.monotonic() >= deadline:
+                              break
+                          if dropping:
+                              dropping = False
+                              continue
+                          if len(part) > 65536:
+                              continue
+                          parsed = parse_line(part.decode("utf-8", errors="replace"))
+                          if parsed is None:
+                              continue
+                          entry, when = parsed
+                          if ready_at is None:
+                              # A valid buffered record proves the authenticated stream is delivering.
+                              ready_at = dt.datetime.now(dt.timezone.utc)
+                              print(json.dumps({"event": "LIVE_CAPTURE_READY", "at": ready_at.isoformat(),
+                                  "ends_by": stop_at.isoformat(), "maximum_seconds": LIVE_SECONDS,
+                                  "instruction": "Place ONE Founder call now; first new session only."}), flush=True)
+                          if when < ready_at or when > stop_at:
+                              continue  # Never replay old sessions or capture already-active calls.
+                          session_id = entry.get("session_id")
+                          if selected is None:
+                              if entry.get("msg") != "media session created" or not isinstance(session_id, str) or not re.fullmatch(r"ms_[a-f0-9]{8,64}", session_id):
+                                  continue
+                              selected = session_id
+                              print(json.dumps({"event": "LIVE_SESSION_LOCKED", "session_id": selected,
+                                  "at": entry["time"]}), flush=True)
+                          if session_id and session_id != selected:
+                              continue
+                          call_id = entry.get("call_id")
+                          if session_id == selected and isinstance(call_id, str):
+                              calls.add(call_id)
+                          if session_id == selected or (isinstance(call_id, str) and call_id in calls and event.search(str(entry.get("msg", "")))):
+                              print(json.dumps(clean(entry), ensure_ascii=False), flush=True)
+                              emitted += 1
+                      if len(buffered) > 65536:
+                          buffered, dropping = b"", True
+              finally:
+                  try:
+                      os.killpg(proc.pid, signal.SIGKILL)
+                  except ProcessLookupError:
+                      pass
+                  proc.wait(timeout=2)
+                  proc.stdout.close()
+                  for s, handler in previous.items():
+                      signal.signal(s, handler)
+              print(json.dumps({"event": "LIVE_CAPTURE_ENDED", "session_id": selected,
+                  "emitted_records": emitted, "maximum_seconds": LIVE_SECONDS,
+                  "reason": "duration_limit" if time.monotonic() >= deadline else "log_stream_closed"}), flush=True)
+              if ready_at is None:
+                  raise SystemExit("Live log stream was not ready. Do not place the test call.")
+
+          if mode == "live":
+              live_capture()
+              sys.exit(0)
+          if mode != "historical":
+              raise SystemExit("Invalid capture mode")
+          start = dt.datetime.fromisoformat(os.environ["WINDOW_START"].replace("Z", "+00:00"))
+          end = dt.datetime.fromisoformat(os.environ["WINDOW_END"].replace("Z", "+00:00")) + dt.timedelta(seconds=1)
+          if start >= end:
+              raise SystemExit("Invalid diagnostic window")
+
           # Gateway slog emits JSON. Fail closed for malformed/unscoped lines.
           records, raw_count, unparsed = [], 0, 0
           with open(sys.argv[1], encoding="utf-8", errors="replace") as source:
               for line in source:
                   raw_count += 1
-                  line = re.sub(r"\x1b\[[0-9;]*m", "", line)
-                  pos = line.find("{")
-                  try:
-                      entry = json.loads(line[pos:]) if pos >= 0 else None
-                      if not isinstance(entry, dict):
-                          raise ValueError()
-                      stamp = entry.get("time", "")
-                      if not isinstance(stamp, str) or not iso.fullmatch(stamp):
-                          raise ValueError()
-                      when = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-                  except (ValueError, TypeError):
+                  parsed = parse_line(line)
+                  if parsed is None:
                       unparsed += 1
                       continue
+                  entry, when = parsed
                   if start <= when < end:
-                      prefix_time = iso.search(line[:pos])
-                      if prefix_time:
-                          entry["fly_timestamp"] = prefix_time.group(0)
                       records.append(entry)
 
           # Correlate call-ID-only turn/barge-in events without including other calls.
@@ -185,6 +302,7 @@ jobs:
             echo "### Voice gateway diagnostics (sanitized)"
             echo ""
             echo "- App: \`$FLY_APP\`"
+            echo "- Mode: \`$CAPTURE_MODE\` (live maximum: 90 seconds)"
             echo "- Target session: \`$SESSION_ID\`"
             echo "- Call window: \`$WINDOW_START\` - \`$WINDOW_END\`"
             echo "- Raw logs: NOT uploaded, NOT printed unfiltered"
