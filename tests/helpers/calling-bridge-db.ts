@@ -8,7 +8,7 @@ export const binding = { agencyId: "11111111-1111-4111-8111-111111111111", sessi
 export const digest = "a".repeat(64);
 export const receivedAt = "2026-09-10T17:00:00Z";
 
-export async function bridgeDatabase() {
+export async function bridgeDatabase(options: { liveAcceptance?: boolean } = {}) {
   const { PGlite } = bridgeTestRequire("@electric-sql/pglite");
   const pg = new PGlite();
   await pg.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
@@ -22,6 +22,10 @@ export async function bridgeDatabase() {
     INSERT INTO public.whatsapp_call_sessions(id,agency_id,call_id,gateway_session_id,meta_accepted_at,status)
       VALUES ('${binding.sessionId}','${binding.agencyId}','${binding.callId}','${binding.gatewaySessionId}',now(),'answered');`);
   await pg.exec(readFileSync(resolve("supabase/migrations/20260910170000_calling_cognitive_bridge_v1.sql"), "utf8"));
+  await pg.exec(readFileSync(resolve("supabase/migrations/20260910171000_calling_cognitive_bridge_privilege_lock.sql"), "utf8"));
+  if (options.liveAcceptance !== false) {
+    await pg.exec(readFileSync(resolve("supabase/migrations/20260910172000_calling_cognitive_bridge_live_acceptance.sql"), "utf8"));
+  }
   const rpc = async (name: string, args: Record<string, unknown>) => {
     if (!/^calling_bridge_[a-z_]+$/.test(name)) throw new Error("test_rpc_name");
     const entries = Object.entries(args);

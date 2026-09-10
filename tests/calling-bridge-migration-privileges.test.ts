@@ -57,6 +57,10 @@ async function database(repaired = true) {
     ) AS state`)).rows[0].state;
   const before = await protectedState();
   await pg.exec(repaired ? migration : originalMigration);
+  if (repaired) {
+    await pg.exec(readFileSync("supabase/migrations/20260910171000_calling_cognitive_bridge_privilege_lock.sql", "utf8"));
+    await pg.exec(readFileSync("supabase/migrations/20260910172000_calling_cognitive_bridge_live_acceptance.sql", "utf8"));
+  }
   const rpc = async (name: string, args: Record<string, unknown>) => {
     if (![...entrypoints, ...helpers].includes(name)) throw new Error("fixture_rpc_name");
     return (await pg.query(`SELECT public.${name}(${Object.keys(args).map((k, i) => `${k}=>$${i + 1}`).join(",")}) AS result`, Object.values(args))).rows[0].result;

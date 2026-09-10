@@ -9,8 +9,10 @@ import { callingLifetime } from "../src/lib/calls/calling-lifetime.server";
 import { bridgeBusiness } from "./helpers/calling-bridge-business";
 import { binding } from "./helpers/calling-bridge-db";
 import { decisionFixture } from "./helpers/calling-cognitive-fixtures";
-it("actual voice-turn entry runs the bridge using the existing Worker request retention capability",async()=>{
+it.each(["answered", "meta_pre_accepted"])("actual voice-turn entry admits accepted %s using the existing Worker request retention capability",async status=>{
+ mocks.asr.mockClear();mocks.decide.mockClear();mocks.legacyAsr.mockClear();
  const f=await bridgeBusiness(); const retained:Promise<unknown>[]=[];
+ await f.pg.query("UPDATE whatsapp_call_sessions SET status=$1 WHERE id=$2",[status,binding.sessionId]);
  const request=new Request("https://synthetic.test/api/public/voice/turn") as Request & {waitUntil:(p:Promise<unknown>)=>void};
  request.waitUntil=p=>{retained.push(p);};
  const lifetime=callingLifetime(request);
@@ -23,7 +25,12 @@ it("actual voice-turn entry runs the bridge using the existing Worker request re
  try{
   mocks.asr.mockResolvedValue({text:"Awak sihat ke?",language:"ms",durationSeconds:1,confidence:"unknown",provider:"fixture",model:"unchanged"});
   mocks.decide.mockImplementation(async({packet})=>({decision:decisionFixture(packet,{spoken_response:"Saya AI, sedia membantu. Awak pula?"}),metadata:null}));
-  expect((await run(1)).at(-1).speech_text).toMatch(/RAIŌ|RAI.O|UMRAIO/i);
+  const greeting=(await run(1)).at(-1);
+  expect(greeting.speech_text).toMatch(/RAIŌ|RAI.O|UMRAIO/i);
+  expect(greeting.reason).not.toBe("cognitive_terminal");
+  expect((await f.pg.query("SELECT count(*)::int n FROM calling_bridge_sessions WHERE session_id=$1",[binding.sessionId])).rows[0].n).toBe(1);
+  expect((await f.pg.query("SELECT status FROM whatsapp_call_sessions WHERE id=$1",[binding.sessionId])).rows[0].status).toBe(status);
+  expect((await f.pg.query("SELECT count(*)::int n FROM calling_bridge_events WHERE session_id=$1 AND kind='handoff'",[binding.sessionId])).rows[0].n).toBe(1);
   const response=await run(2);expect(response.at(-1).speech_text).toContain("Saya AI");
   expect(mocks.asr).toHaveBeenCalledTimes(1);expect(mocks.decide).toHaveBeenCalledTimes(1);expect(mocks.legacyAsr).not.toHaveBeenCalled();
   expect((await f.pg.query("SELECT count(*)::int n FROM calling_caller_turns")).rows[0].n).toBe(1);
