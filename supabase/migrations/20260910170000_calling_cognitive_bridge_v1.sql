@@ -364,4 +364,45 @@ REVOKE ALL ON FUNCTION public.calling_bridge_project(uuid,uuid) FROM PUBLIC,anon
 GRANT EXECUTE ON FUNCTION public.calling_bridge_action(uuid,uuid,text,text,integer,uuid,bigint,uuid,text,jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.calling_bridge_output(uuid,uuid,text,text,integer,uuid,bigint,jsonb) TO service_role;
 
+-- Normalize only the new Bridge objects: deployment defaults may grant direct writes.
+-- The Worker reads tables and invokes bound RPCs; helpers remain owner-only.
+DO $calling_bridge_privileges$
+DECLARE target record; principal record;
+BEGIN
+  FOR target IN
+    SELECT 'TABLE' AS kind, c.oid::regclass::text AS identity, c.relowner AS owner,
+      coalesce(c.relacl,acldefault('r',c.relowner)) AS acl
+    FROM pg_class c WHERE c.oid=ANY(ARRAY[
+      'public.calling_bridge_sessions','public.calling_bridge_turns','public.calling_caller_turns',
+      'public.calling_bridge_events','public.calling_bridge_actions']::regclass[])
+    UNION ALL
+    SELECT 'FUNCTION',p.oid::regprocedure::text,p.proowner,coalesce(p.proacl,acldefault('f',p.proowner))
+    FROM pg_proc p WHERE p.oid=ANY(ARRAY[
+      'public.calling_bridge_immutable()',
+      'public.calling_bridge_begin(uuid,uuid,text,text,integer,boolean,timestamptz,text)',
+      'public.calling_bridge_persist_caller(uuid,uuid,text,text,integer,uuid,text,timestamptz,text,integer)',
+      'public.calling_bridge_snapshot(uuid,uuid,text,text)',
+      'public.calling_bridge_record(uuid,uuid,text,text,integer,uuid,bigint,text,jsonb)',
+      'public.calling_bridge_observe_media(uuid,uuid,text,text,integer,jsonb)',
+      'public.calling_bridge_action(uuid,uuid,text,text,integer,uuid,bigint,uuid,text,jsonb)',
+      'public.calling_bridge_output(uuid,uuid,text,text,integer,uuid,bigint,jsonb)',
+      'public.calling_bridge_project(uuid,uuid)']::regprocedure[])
+  LOOP
+    FOR principal IN SELECT DISTINCT grantee FROM aclexplode(target.acl) WHERE grantee<>target.owner LOOP
+      EXECUTE format('REVOKE ALL PRIVILEGES ON %s %s FROM %s',target.kind,target.identity,
+        CASE WHEN principal.grantee=0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(principal.grantee)) END);
+    END LOOP;
+  END LOOP;
+END $calling_bridge_privileges$;
+GRANT SELECT ON public.calling_bridge_sessions,public.calling_bridge_turns,public.calling_caller_turns,
+  public.calling_bridge_events,public.calling_bridge_actions TO service_role;
+GRANT EXECUTE ON FUNCTION
+  public.calling_bridge_begin(uuid,uuid,text,text,integer,boolean,timestamptz,text),
+  public.calling_bridge_persist_caller(uuid,uuid,text,text,integer,uuid,text,timestamptz,text,integer),
+  public.calling_bridge_snapshot(uuid,uuid,text,text),
+  public.calling_bridge_record(uuid,uuid,text,text,integer,uuid,bigint,text,jsonb),
+  public.calling_bridge_observe_media(uuid,uuid,text,text,integer,jsonb),
+  public.calling_bridge_action(uuid,uuid,text,text,integer,uuid,bigint,uuid,text,jsonb),
+  public.calling_bridge_output(uuid,uuid,text,text,integer,uuid,bigint,jsonb) TO service_role;
+
 COMMIT;
