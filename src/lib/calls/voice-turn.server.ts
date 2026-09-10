@@ -26,6 +26,8 @@ import { prepareSpokenResponse } from "@/lib/voice/tts.core";
 import { languageBoostFor, MINIMAX_DEFAULT_VOICE_ID } from "@/lib/voice/minimax.server";
 import { synthesizeCallSpeech } from "./call-audio.server";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
+import { acknowledgementOptions, contextualAcknowledgement, deliveredHistory, entityDecision, preventUnverifiedActionClaim, protectBookingAuthority, reconcilePlayback, requestsQuotationSend, structuredCallNotes } from "./call-executive.core";
+import { deliverCallingQuotation, quotationDeliveryReply, type QuotationReceipt } from "./call-quotation.server";
 import type { CallingAcknowledgement } from "./call-stream.server";
 import {
   advanceClosing,
@@ -47,7 +49,6 @@ import {
   honorificInstruction,
   resolveAddress,
   routeTurn,
-  buildAcknowledgement,
 } from "./cognitive-router.core";
 import {
   EMPTY_CALLER_CONTEXT,
@@ -62,7 +63,6 @@ import {
   classifyVoiceIntents,
   deriveCallOutcome,
   detectSpokenLanguage,
-  detectTravellerCount,
   gateVoiceTurn,
   mergeIntents,
   readTranscript,
@@ -137,9 +137,10 @@ async function reason(args: {
   behaviourLines: string[];
 }): Promise<string | null> {
   const gateway = createIntelligenceGateway();
-  const messages = args.history.slice(-8).map((turn) => ({
+  const messages = deliveredHistory(args.history).slice(-8).map((turn) => ({
     role: turn.role === "customer" ? ("user" as const) : ("assistant" as const),
-    content: turn.text,
+    content: turn.uncertainAsr ? `[Uncertain ASR fragment, not an entity fact] ${turn.text}`
+      : turn.entityProposal ? `[Unconfirmed entity proposal; not a stored identity] ${turn.text}` : turn.text,
   }));
   if (args.transcript) messages.push({ role: "user", content: args.transcript });
 
@@ -158,6 +159,11 @@ async function reason(args: {
     "Speak naturally, with short BM/Manglish sentences when appropriate. Avoid formal written customer-service wording.",
     "Do not use the spoken word semak. Use cek, periksa or tengok naturally. Do not add processing filler to the substantive answer.",
     "If the caller asks whether you are human, say plainly that you are RAIŌ, the UMRAIO AI executive.",
+    "Listen to the caller's actual concern, briefly acknowledge its meaning, then answer that concern. Do not infer names or commitments from ambiguous fragments.",
+    ...structuredCallNotes(args.history),
+    // The gateway's messages path does not add contextBlock(request). Supply
+    // the already bounded Calling facts here as well as in the audit context.
+    `AUTHORITATIVE STRUCTURED CALLING RECORDS: ${JSON.stringify(args.contextFacts)}`,
   ];
   if (args.behaviourLines.length) {
     systemLines.push("", ...args.behaviourLines);
@@ -197,7 +203,7 @@ function buildCallSummary(args: {
   language: string;
 }): string {
   const asked = args.turns
-    .filter((t) => t.role === "customer")
+    .filter((t) => t.role === "customer" && !t.entityProposal && !t.uncertainAsr)
     .slice(-4)
     .map((t) => `• ${t.text}`)
     .join("\n");
@@ -207,6 +213,7 @@ function buildCallSummary(args: {
     `Hasil: ${args.outcome}`,
     args.intents.length ? `Niat: ${args.intents.join(", ")}` : "",
     asked ? `Perkara dibincang:\n${asked}` : "",
+    ...structuredCallNotes(args.turns),
   ]
     .filter(Boolean)
     .join("\n");
@@ -270,7 +277,7 @@ export async function handleVoiceTurn(args: {
     voice: ((settings as any)?.voice_name as string | null) ?? null,
   };
 
-  const history = readTranscript(row.transcript);
+  const history = reconcilePlayback(readTranscript(row.transcript), payload.media_metrics, payload.sequence);
   let transcript = "";
   let language = row.detected_language ?? agencyLanguage;
   let asrMs = 0;
@@ -286,7 +293,7 @@ export async function handleVoiceTurn(args: {
     agencyId: row.agency_id,
     callerPhone: row.caller_phone,
   })
-    .catch(() => EMPTY_CALLER_CONTEXT)
+    .catch(() => ({ ...EMPTY_CALLER_CONTEXT, promptLines: ["Customer context retrieval failed. Do not assume a new customer or a pending booking; explain that stored state could not be verified."], facts: { structured_state_available: false } }))
     .then((ctx) => {
       contextMs = Date.now() - contextStartedAt;
       return ctx;
@@ -337,6 +344,14 @@ export async function handleVoiceTurn(args: {
   let nextClosingState = closingState;
   let endCall = false;
   let replyText: string | null = null;
+  const entity = payload.kind === "utterance" ? entityDecision(transcript, history, language) : { reply: null };
+  let actionReceipt: QuotationReceipt | undefined;
+  let acknowledgement: string | undefined;
+  const emitAcknowledgement = args.onAcknowledgement && !synthesizeInWorker() ? () => {
+    const previous = history.filter(t => t.acknowledgement).at(-1)?.acknowledgement;
+    acknowledgement = contextualAcknowledgement({ address, language, transcript, ...(previous ? { previous } : {}) });
+    args.onAcknowledgement?.({ text: callingSpokenText(acknowledgement), voiceId: MINIMAX_DEFAULT_VOICE_ID, languageBoost: languageBoostFor(language) });
+  } : undefined;
 
   if (payload.kind === "greeting") {
     const opening = buildCallOpening({
@@ -366,6 +381,17 @@ export async function handleVoiceTurn(args: {
       replyText = closing.text;
       fastPath = true;
       endCall = closing.action === "farewell";
+    } else if (entity.reply) {
+      replyText = entity.reply;
+      fastPath = true;
+    } else if (requestsQuotationSend(transcript)) {
+      const pendingDelivery = deliverCallingQuotation({ db, agencyId: row.agency_id, callId: row.call_id, sequence: payload.sequence,
+        transcript, leadId: context.leadId, conversationId: context.conversationId,
+        quotationId: typeof context.facts["quotation_id"] === "string" ? context.facts["quotation_id"] : null, signal: args.signal });
+      const { answer: delivery } = await withCallingBackchannel({ answer: pendingDelivery, signal: args.signal, emit: emitAcknowledgement });
+      replyText = quotationDeliveryReply(delivery, language);
+      if (delivery.ok) actionReceipt = delivery.receipt;
+      fastPath = true;
     } else if (route.reflex && route.reflexText) {
       // LEVEL 0 — conversational reflex, answered without a model round-trip.
       replyText = route.reflexText;
@@ -398,13 +424,9 @@ export async function handleVoiceTurn(args: {
     const answer = await withCallingBackchannel({
       answer: pendingAnswer,
       signal: args.signal,
-      emit: args.onAcknowledgement && !synthesizeInWorker() ? () => args.onAcknowledgement?.({
-        text: callingSpokenText(buildAcknowledgement({ address, language, seed: payload.sequence })),
-        voiceId: MINIMAX_DEFAULT_VOICE_ID,
-        languageBoost: languageBoostFor(language),
-      }) : undefined,
+      emit: emitAcknowledgement,
     });
-    replyText = answer.answer;
+    replyText = answer.answer ? protectBookingAuthority(preventUnverifiedActionClaim(answer.answer, language), context.facts, language) : null;
     reasoningMs = Date.now() - reasoningStartedAt;
   }
   if (!replyText) {
@@ -443,13 +465,19 @@ export async function handleVoiceTurn(args: {
       text: transcript,
       at: now().toISOString(),
       duration_ms: payload.duration_ms,
+      sequence: payload.sequence,
+      ...(entity.proposal ? { entityProposal: entity.proposal } : {}),
+      ...(entity.confirmed ? { confirmedEntity: entity.confirmed } : {}),
+      ...(entity.uncertain ? { uncertainAsr: true } : {}),
     });
   }
-  additions.push({ role: "umraio", text: speech, at: now().toISOString() });
+  additions.push({ role: "umraio", text: speech, at: now().toISOString(), sequence: payload.sequence, delivery: "generated",
+    ...(entity.proposal ? { entityProposal: entity.proposal } : {}),
+    ...(acknowledgement ? { acknowledgement } : {}), ...(actionReceipt ? { actionReceipt } : {}) });
 
   const turns = appendTranscript(history, additions);
   const intents: VoiceIntentKey[] = mergeIntents(row.voice_intents, classifyVoiceIntents(transcript));
-  const travellers = transcript ? detectTravellerCount(transcript) : null;
+  const travellers = entity.travellers ?? null;
   if (turns.length >= MAX_STORED_TURNS) endCall = true;
 
   const latencyEntry: TurnLatency = {
@@ -520,8 +548,7 @@ export async function handleVoiceTurn(args: {
     // speak with a substitute voice or a provider default.
     voiceId: MINIMAX_DEFAULT_VOICE_ID,
     languageBoost: languageBoostFor(language),
-    ...(payload.kind === "greeting" ? { backchannelTexts: [0, 1, 2].map(seed =>
-      callingSpokenText(buildAcknowledgement({ address, language, seed }))) } : {}),
+    ...(payload.kind === "greeting" ? { backchannelTexts: acknowledgementOptions(address, language).map(callingSpokenText) } : {}),
     endCall,
     ...(endCall ? { reason: "conversation_complete" } : {}),
   };

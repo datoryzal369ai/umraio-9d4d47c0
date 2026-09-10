@@ -65,35 +65,44 @@ export async function hydrateCallerContext(
   const lead = (Array.isArray(leads) ? leads[0] : null) ?? null;
   if (!lead) return EMPTY_CALLER_CONTEXT;
 
-  const [{ data: conversations }, { data: quotations }] = await Promise.all([
+  const [conversationResult, quotationResult, bookingResult] = await Promise.all([
     db
       .from("conversations")
       .select("id, channel, conversation_state, last_message_at")
       .eq("agency_id", args.agencyId)
       .eq("lead_id", lead.id)
+      .eq("channel", "whatsapp")
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(1),
     db
       .from("quotations")
-      .select("quotation_number, status, total, deposit_amount, number_of_pilgrims, created_at")
+      .select("id, quotation_number, status, total, deposit_amount, number_of_pilgrims, customer_name, travel_month, created_at")
       .eq("agency_id", args.agencyId)
       .eq("lead_id", lead.id)
-      .in("status", ["ready", "sent", "viewed", "discussing", "accepted", "deposit_pending"])
       .order("created_at", { ascending: false })
       .limit(1),
+    db.from("bookings")
+      .select("id, status, deposit_paid, amount_myr, balance_myr, pax, quotation_id, package_id, updated_at")
+      .eq("agency_id", args.agencyId).eq("lead_id", lead.id)
+      .order("created_at", { ascending: false }).limit(1),
   ]);
+  const { data: conversations } = conversationResult;
+  const { data: quotations } = quotationResult;
+  const { data: bookings } = bookingResult;
   const conversation = (Array.isArray(conversations) ? conversations[0] : null) ?? null;
   const quotation = (Array.isArray(quotations) ? quotations[0] : null) ?? null;
+  const booking = (Array.isArray(bookings) ? bookings[0] : null) ?? null;
 
-  let recent: Array<{ sender: string; body: string; modality?: string | null }> = [];
+  let recent: Array<{ sender: string; body: string; modality?: string | null; delivery_status?: string | null }> = [];
   if (conversation?.id) {
     const { data: messages } = await db
       .from("messages")
-      .select("sender, body, modality, created_at")
+      .select("sender, body, modality, delivery_status, created_at")
       .eq("conversation_id", conversation.id)
       .order("created_at", { ascending: false })
       .limit(10);
-    recent = Array.isArray(messages) ? [...messages].reverse() : [];
+    recent = Array.isArray(messages) ? [...messages].reverse().filter(m => m.sender === "customer"
+      || m.modality === "call_summary" || ["sent", "delivered", "read"].includes(m.delivery_status)) : [];
   }
 
   const promptLines: string[] = [];
@@ -112,11 +121,20 @@ export async function hydrateCallerContext(
     known.push(`needs: ${lead.traveller_needs.join(", ")}`);
   if (known.length) promptLines.push(`Known relationship facts — ${known.join("; ")}.`);
 
+  promptLines.push("AUTHORITY: structured booking/quotation records below override lead sales stage, old messages and conversational assumptions. Caller requests/corrections are not executed booking changes.");
+  if (bookingResult.error || quotationResult.error) promptLines.push("Booking/quotation retrieval is incomplete. Do not claim a missing or pending booking; explain that its state could not be verified.");
+  if (booking) promptLines.push(`Current booking: ${booking.id}; status ${booking.status}; deposit_paid=${booking.deposit_paid}; total RM${booking.amount_myr}; balance RM${booking.balance_myr ?? "unknown"}; travellers ${booking.pax}; linked quotation ${booking.quotation_id ?? "unknown"}. A paid deposit must never be described as pending.`);
+
   if (quotation) {
     promptLines.push(
       `A quotation already exists: ${quotation.quotation_number ?? "current"} (status ${quotation.status}, total RM${quotation.total}). Refer to it naturally; do not re-quote by voice.`,
     );
   }
+
+  const priorNotes = recent.filter(m => m.modality === "call_summary").flatMap(m => String(m.body ?? "").slice(0, 3000).split("\n")
+    .filter(line => /^(?:Caller-confirmed correction|Caller statement\/request|Verified WhatsApp dispatch):?/.test(line)))
+    .slice(-6).map(line => clip(line, 220));
+  if (priorNotes.length) promptLines.push("Bounded earlier call notes (source-labelled; requests are not execution):", ...priorNotes);
 
   if (recent.length) {
     const lines = recent.map((m) => {
@@ -139,8 +157,14 @@ export async function hydrateCallerContext(
       known_customer: true,
       stage: lead.stage ?? null,
       package_interest: lead.package_interest ?? null,
-      pax: lead.pax ?? null,
+      pax: booking?.pax ?? quotation?.number_of_pilgrims ?? lead.pax ?? null,
       quotation_status: quotation?.status ?? null,
+      quotation_id: quotation?.id ?? null,
+      quotation_number: quotation?.quotation_number ?? null,
+      quotation_total: quotation?.total ?? null,
+      quotation_customer_name: quotation?.customer_name ?? null,
+      booking: booking ?? null,
+      structured_state_available: !bookingResult.error && !quotationResult.error,
       recent_messages: recent.length,
     },
   };

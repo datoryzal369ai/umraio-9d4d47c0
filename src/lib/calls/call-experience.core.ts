@@ -135,12 +135,22 @@ export function isExplicitHangupCommand(transcript: string): boolean {
   const text = transcript.trim();
   if (!text) return false;
   if (HANGUP_NEGATED.test(text)) return false;
+  // A request about THIS call, including the founder's indirect prompt. A
+  // business object or a report about an earlier drop must never match.
+  if (/\b(?:tempahan|bayaran|jumlah|booking|payment|tadi|terputus)\b/i.test(text)) return false;
+  if (/^(?:awak\s+tak\s+putuskan\s+ke|awak\s+boleh\s+putuskan|(?:boleh\s+)?(?:awak\s+)?putuskan)(?:\s+(?:sekarang|ya|lah))?[\s.!?]*$/i.test(text)) return true;
   if (HANGUP_REPORT.test(text) && !HANGUP_POLITE_REQUEST.test(text)) return false;
   return HANGUP_COMMAND.test(text);
 }
 
 // Whole-turn completion only. A thank-you followed by business is not a goodbye.
 const NATURAL_FAREWELL = /^(?:(?:ok(?:ay|ey)?|baik(?:lah)?)[,\s]+)?(?:terima kasih(?:\s+ya)?|itu (?:sahaja|saja|je)|(?:dah|sudah) cukup|(?:dah\s+)?(?:tak ada|takde|tiada)(?:\s+apa(?:-apa)? lagi|\s+lagi|\s+dah)?|bye|goodbye|that'?s all)[\s.!]*$/i;
+
+function semanticFarewell(text: string): boolean {
+  // Thanks may be embedded in a goodbye, but not in a new question/request.
+  if (/\?|\b(?:jangan|belum|tak selesai|belum selesai|nak tanya|satu lagi|soalan|berapa|hantar|quotation|tempahan|bayaran|harga|booking|payment|question|don't|do not|not done)\b/i.test(text)) return false;
+  return /\b(?:selamat tinggal|(?:okay|ok|okey) bye|dah selesai|sudah selesai|itu (?:je|sahaja|saja)|nanti saya (?:call|telefon|hubungi)(?: awak)? balik|(?:dah )?tak ada apa(?:-apa)? lagi)\b/i.test(text);
+}
 
 function pick(list: string[], seed: number): string {
   return list[Math.abs(seed) % list.length] as string;
@@ -194,8 +204,15 @@ export function advanceClosing(args: {
 
   if (args.pendingWork) return { action: "continue", state: "active" };
 
-  if (NATURAL_FAREWELL.test(text)) {
+  if (NATURAL_FAREWELL.test(text) || semanticFarewell(text)) {
     return { action: "farewell", state: "farewell", text: pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed) };
+  }
+
+  if (HANGUP_NEGATED.test(text) || /\b(?:tak selesai|belum selesai|kenapa tadi terputus|putuskan (?:tempahan|jumlah bayaran))\b/i.test(text)) {
+    return { action: "continue", state: "active" };
+  }
+  if (/\?|\b(?:nak tanya|satu lagi|soalan|harga|bayaran|tempahan|booking|payment|question)\b/i.test(text)) {
+    return { action: "continue", state: "active" };
   }
 
 

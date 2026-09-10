@@ -193,7 +193,7 @@ export function buildAcknowledgement(args: {
     return leadEn + pick(ACK_EN, args.seed);
   }
   const text = pick(ACK_MS, args.seed);
-  return title ? text.replace(/ya\b/, `ya ${title}`) : text;
+  return title ? text.replace(/\bya\b/, `ya ${title}`) : text;
 }
 
 /**

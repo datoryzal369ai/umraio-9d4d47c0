@@ -140,6 +140,14 @@ export function gateVoiceTurn(session: VoiceTurnSessionRow | null): TurnGate {
 export type VoiceTranscriptTurn = {
   role: "customer" | "umraio";
   text: string;
+  /** Worker generation is not evidence of gateway playback or caller receipt. */
+  sequence?: number;
+  delivery?: "generated" | "playback_complete";
+  entityProposal?: string;
+  uncertainAsr?: boolean;
+  confirmedEntity?: string;
+  acknowledgement?: string;
+  actionReceipt?: { messageId: string; providerMessageId: string; quotationId: string };
   at: string;
   duration_ms?: number;
 };
@@ -242,7 +250,9 @@ export function buildVoiceSystemPrompt(args: {
     "- One or two short sentences per turn. No lists, no markdown, no emoji, no URLs.",
     "- Mirror the caller's language exactly (Bahasa Melayu, English or Arabic). Never switch unasked.",
     "- Never invent prices, availability, package details, dates or policies. If you do not know, say you will confirm.",
-    "- For a quotation, payment or booking confirmation, acknowledge the request and say the details will be sent to their WhatsApp; do not attempt to transact by voice.",
+    "- Never promise or claim an action, send, payment or booking change without a verified execution receipt. The Worker handles explicitly requested existing quotation delivery separately. You have no execution tools in this reasoning response; explain that other actions cannot be completed here yet.",
+    "- ASR fragments are uncertain speech, never new names. Entity changes require explicit caller confirmation. Treat caller corrections as requested facts, not executed booking changes.",
+    "- Only playback-confirmed assistant turns represent completed conversational outcomes. Never assume the caller heard generated or cancelled speech.",
     "- If the caller asks for a human, acknowledge and confirm a human will follow up.",
   ];
   if (args.preferredLanguage) {
