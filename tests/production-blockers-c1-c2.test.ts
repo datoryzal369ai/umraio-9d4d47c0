@@ -14,6 +14,8 @@ const db = {
   messages: [] as Row[],
   aiCalls: 0,
   outboundSends: 0,
+  duplicateConflicts: 0,
+  beforeSeenReturn: null as (() => Promise<void>) | null,
 };
 
 vi.mock("@/integrations/supabase/client.server", () => {
@@ -38,6 +40,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
             (m) => m["agency_id"] === row["agency_id"] && m["provider_message_id"] === pid,
           )
         ) {
+          db.duplicateConflicts += 1;
           const dup = { error: { code: "23505", message: "duplicate key" } };
           return Object.assign(Promise.resolve(dup), chain);
         }
@@ -63,6 +66,8 @@ vi.mock("@/integrations/supabase/client.server", () => {
             m["agency_id"] === filters["agency_id"] &&
             m["provider_message_id"] === filters["provider_message_id"],
         );
+        // The concurrency test releases both pre-insert snapshots together.
+        await db.beforeSeenReturn?.();
         return { data: hit ? { id: "existing" } : null };
       }
       if (name === "leads") return { data: { id: "lead-1" } };
@@ -106,8 +111,12 @@ vi.mock("@/lib/sales-ai.server", () => ({
   temperatureForScore: () => "warm",
 }));
 
-async function postWebhook(body: string, signature: string | null) {
-  const { Route } = await import("../src/routes/api/public/whatsapp");
+async function postWebhook(
+  body: string,
+  signature: string | null,
+  preloaded?: (typeof import("../src/routes/api/public/whatsapp"))["Route"],
+) {
+  const Route = preloaded ?? (await import("../src/routes/api/public/whatsapp")).Route;
   const handler = (
     Route.options as unknown as {
       server: { handlers: { POST: (ctx: { request: Request }) => Promise<Response> } };
@@ -171,6 +180,8 @@ beforeEach(() => {
   db.messages = [];
   db.aiCalls = 0;
   db.outboundSends = 0;
+  db.duplicateConflicts = 0;
+  db.beforeSeenReturn = null;
   logged.length = 0;
   process.env["META_APP_SECRET"] = SECRET;
   process.env["CRON_SECRET"] = CRON_SECRET;
@@ -259,12 +270,35 @@ describe("C2 — WhatsApp webhook idempotency", () => {
   it("C. concurrent identical deliveries → exactly one processing path", async () => {
     const body = payload("wamid.CCC");
     const sig = signMetaPayload(body, SECRET);
-    const [r1, r2] = await Promise.all([postWebhook(body, sig), postWebhook(body, sig)]);
+    // Vitest 4's manual-mock loader shares a dynamic-import callstack within
+    // one module instance. Overlapping imports can bypass the Supabase mock
+    // and reach the real client. Separate handler instances model two Worker
+    // isolates while retaining the SAME fake database and concurrent requests.
+    const first = await import("../src/routes/api/public/whatsapp");
+    vi.resetModules();
+    const second = await import("../src/routes/api/public/whatsapp");
+
+    let seenReads = 0;
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => { release = resolve; });
+    db.beforeSeenReturn = async () => {
+      seenReads += 1;
+      if (seenReads === 2) release();
+      await bothRead;
+    };
+    const [r1, r2] = await Promise.all([
+      postWebhook(body, sig, first.Route),
+      postWebhook(body, sig, second.Route),
+    ]);
     expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
     expect(db.messages.filter((m) => m["provider_message_id"] === "wamid.CCC")).toHaveLength(1);
     expect(db.aiCalls).toBe(1);
     expect(db.outboundSends).toBe(1);
+    expect(seenReads).toBe(2);
+    expect(db.duplicateConflicts).toBe(1);
+    expect(logged.join("\n")).toContain("concurrent duplicate delivery ignored provider_message_id=wamid.CCC");
+    expect(logged.join("\n")).not.toContain("config_lookup_failed");
   });
 
   it("D. a different message id is processed normally", async () => {
