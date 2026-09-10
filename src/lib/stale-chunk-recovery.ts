@@ -18,6 +18,10 @@ const STALE_CHUNK_PATTERNS = [
   /error loading dynamically imported module/i,
   /importing a module script failed/i,
   /'text\/html' is not a valid javascript mime type/i,
+  // A stale tab can also load a chunk that no longer exports the expected
+  // route module, which surfaces as a missing "component" property.
+  /cannot read propert(?:y|ies) of undefined \(reading 'component'\)/i,
+  /undefined is not an object \(evaluating '.*\.component'\)/i,
 ];
 
 export function isStaleChunkError(reason: unknown): boolean {
