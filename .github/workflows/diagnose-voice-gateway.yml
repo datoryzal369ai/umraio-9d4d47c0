@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       capture_mode:
-        description: "historical buffer, or live: next new Founder call, maximum 90 seconds"
+        description: "historical buffer, or live: next new Founder call, maximum 300 seconds"
         required: true
         default: historical
         type: choice
@@ -69,7 +69,7 @@ jobs:
               echo "::error::Live mode selects the next new call. Leave historical inputs blank."
               exit 1
             fi
-            echo "Live capture selected: one new session, maximum 90 seconds."
+            echo "Live capture selected: one new session, maximum 300 seconds."
             exit 0
           fi
           if [ "$CAPTURE_MODE" != historical ]; then
@@ -126,7 +126,7 @@ jobs:
 
           sid = os.environ["SESSION_ID"]
           mode = os.environ.get("CAPTURE_MODE", "historical")
-          LIVE_SECONDS = 90  # Not an input: hard maximum for the local log reader.
+          LIVE_SECONDS = 300  # Not an input: hard maximum for the local log reader.
           iso = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
           event = re.compile(r"vad|speech|segment|utterance|audio|frame|buffer|dispatch|turn|worker|https?|post|barge|cancel|abort|silence|idle|timeout|deadline|playback|conversation|greeting|accept|terminat|close|media|rtp|opus|jitter|depacket|decode|ice|dtls|peer|candidate|udp|mux", re.I)
           sensitive = re.compile(r"token|secret|authorization|password|pwd|ufrag|fingerprint|credential|api[_-]?key|signature|sdp|headers|body|audio.*(?:base64|data)|phone|call[_-]?id", re.I)
@@ -302,7 +302,7 @@ jobs:
             echo "### Voice gateway diagnostics (sanitized)"
             echo ""
             echo "- App: \`$FLY_APP\`"
-            echo "- Mode: \`$CAPTURE_MODE\` (live maximum: 90 seconds)"
+            echo "- Mode: \`$CAPTURE_MODE\` (live maximum: 300 seconds)"
             echo "- Target session: \`$SESSION_ID\`"
             echo "- Call window: \`$WINDOW_START\` - \`$WINDOW_END\`"
             echo "- Raw logs: NOT uploaded, NOT printed unfiltered"
