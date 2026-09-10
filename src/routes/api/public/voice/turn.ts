@@ -7,6 +7,7 @@
  * no agency identifier, no token, no credential. Tenancy is resolved from the
  * Worker's own call-session row.
  */
+import { callingLifetime } from "@/lib/calls/calling-lifetime.server";
 import { callingTurnResponse } from "@/lib/calls/call-stream.server";
 import { createFileRoute } from "@tanstack/react-router";
 import { verifyGatewayCallbackSignature } from "@/lib/calls/gateway-auth.core";
@@ -53,7 +54,7 @@ export const Route = createFileRoute("/api/public/voice/turn")({
             streaming: request.headers.get("accept")?.includes("application/x-ndjson") === true,
             signal: request.signal,
             run: (onAcknowledgement, signal) => handleVoiceTurn({
-              db: supabaseAdmin as never, payload, onAcknowledgement, signal,
+              db: supabaseAdmin as never, payload, onAcknowledgement, signal, lifetime: callingLifetime(request),
             }),
           });
 

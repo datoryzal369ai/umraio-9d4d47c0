@@ -16,7 +16,7 @@ async function metaFetch(url: string, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), META_REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(url, { ...init, signal: init.signal ? AbortSignal.any([controller.signal, init.signal]) : controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -27,13 +27,30 @@ async function metaFetch(url: string, init: RequestInit): Promise<Response> {
  * real provider message id. `sendWhatsappText` keeps its boolean contract for
  * every existing caller.
  */
+export type WhatsappSendOutcome = "verified_success" | "verified_failure" | "cancelled" | "timeout" | "outcome_unknown";
+export type WhatsappSendControl = { signal: AbortSignal; timeoutMs?: number };
+export type WhatsappSendResult = { ok: boolean; providerMessageId: string | null;
+  outcome?: WhatsappSendOutcome; cause?: "cancelled" | "timeout" | "provider_rejection" | "network" | "unverified_receipt";
+  dispatched?: boolean; httpStatus?: number | null };
+
 export async function sendWhatsappTextDetailed(
   phoneNumberId: string,
   accessToken: string,
   to: string,
   body: string,
-): Promise<{ ok: boolean; providerMessageId: string | null }> {
+  control?: WhatsappSendControl,
+): Promise<WhatsappSendResult> {
+  // Optional Calling owner survives headers and covers receipt consumption.
+  // Without it, existing callers keep their exact request/result behaviour.
+  const deadline = control ? new AbortController() : null;
+  const signal = control && deadline ? AbortSignal.any([control.signal, deadline.signal]) : undefined;
+  const budget = Number.isFinite(control?.timeoutMs) ? Math.max(1, Math.min(META_REQUEST_TIMEOUT_MS, control!.timeoutMs!)) : META_REQUEST_TIMEOUT_MS;
+  const timer = deadline ? setTimeout(() => deadline.abort(new DOMException("Receipt deadline", "TimeoutError")), budget) : undefined;
+  let dispatched = false;
+  let httpStatus: number | null = null;
   try {
+    signal?.throwIfAborted();
+    dispatched = true;
     const res = await metaFetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
@@ -46,23 +63,48 @@ export async function sendWhatsappTextDetailed(
         type: "text",
         text: { body },
       }),
+      ...(signal ? { signal } : {}),
     });
+    httpStatus = res.status;
     if (!res.ok) {
+      if (control) {
+        const payload = await res.json().catch(error => { if (signal?.aborted) throw error; return null; }) as { error?: { code?: unknown } } | null;
+        // Only a complete explicit rejection establishes failure. A gateway
+        // timeout, server error or incomplete body cannot prove non-delivery.
+        const rejected = res.status >= 400 && res.status < 500 && res.status !== 408 && typeof payload?.error?.code === "number";
+        return { ok: false, providerMessageId: null, outcome: rejected ? "verified_failure" : "outcome_unknown",
+          cause: rejected ? "provider_rejection" : "unverified_receipt", dispatched, httpStatus };
+      }
       // Meta error bodies never contain the token; safe to log verbatim.
       console.error(`[whatsapp] outbound send failed status=${res.status} body=${await res.text()}`);
       return { ok: false, providerMessageId: null };
     }
-    console.log(`[whatsapp] outbound send ok status=${res.status}`);
-    const payload = (await res.json?.().catch(() => null)) as
+    if (!control) console.log(`[whatsapp] outbound send ok status=${res.status}`);
+    const payload = (await res.json?.().catch(error => { if (control && signal?.aborted) throw error; return null; })) as
       | { messages?: Array<{ id?: string }> }
       | null;
+    if (control) {
+      const id = payload?.messages?.[0]?.id;
+      const receipt = typeof id === "string" && id.trim() ? id : null;
+      return { ok: receipt !== null, providerMessageId: receipt, outcome: receipt ? "verified_success" : "outcome_unknown",
+        ...(receipt ? {} : { cause: "unverified_receipt" as const }), dispatched, httpStatus };
+    }
     return { ok: true, providerMessageId: payload?.messages?.[0]?.id ?? null };
   } catch (error) {
+    if (control) {
+      const cancelled = signal?.aborted === true;
+      const timedOut = deadline?.signal.aborted || (cancelled && signal?.reason?.name === "TimeoutError");
+      const cause = timedOut ? "timeout" : cancelled ? "cancelled" : "network";
+      return { ok: false, providerMessageId: null, outcome: dispatched ? "outcome_unknown" : timedOut ? "timeout" : "cancelled",
+        cause, dispatched, httpStatus };
+    }
     const aborted = error instanceof Error && error.name === "AbortError";
     console.error(
       `[whatsapp] outbound send failed reason=${aborted ? "timeout" : error instanceof Error ? error.name : "unknown"}`,
     );
     return { ok: false, providerMessageId: null };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

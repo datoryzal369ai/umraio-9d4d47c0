@@ -3,14 +3,15 @@ import { z } from "zod";
 import { createToolRegistry, type ToolExecutionContext } from "@/lib/ai/tool-registry.server";
 import { authorizeOutboundText } from "@/lib/conversations/outbound-text.core";
 import { renderQuotationMessage } from "@/lib/quotations/quotations.server";
-import { sendWhatsappTextDetailed } from "@/lib/whatsapp-send.server";
+import { sendWhatsappTextDetailed, type WhatsappSendControl, type WhatsappSendOutcome, type WhatsappSendResult } from "@/lib/whatsapp-send.server";
 import { requestsQuotationSend } from "./call-executive.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = { from: (table: string) => any };
 export const CALL_QUOTATION_TOOL = "deliver_existing_quotation_whatsapp";
 export type QuotationReceipt = { messageId: string; providerMessageId: string; quotationId: string };
-export type CallingQuotationResult = { ok: true; receipt: QuotationReceipt } | { ok: false; reason: string };
+export type CallingQuotationResult = { ok: true; receipt: QuotationReceipt } | { ok: false; reason: string;
+  outcome?: WhatsappSendOutcome; dispatched?: boolean; providerEvidence?: { providerMessageId: string; quotationId: string } };
 
 function phone(value: string): string {
   const digits = value.replace(/\D/g, "");
@@ -31,10 +32,15 @@ export async function deliverCallingQuotation(args: {
   db: Db; agencyId: string; callId: string; sequence: number; transcript: string;
   leadId: string | null; conversationId: string | null; quotationId: string | null;
   signal?: AbortSignal | undefined;
+  /** Optional bounded execution owner; independent of assistant/barge-in cancellation after dispatch. */
+  execution?: WhatsappSendControl & { beforeDispatch?: () => Promise<void> };
 }): Promise<CallingQuotationResult> {
   if (!requestsQuotationSend(args.transcript)) return { ok: false, reason: "explicit_request_required" };
   const { db } = args;
   let prepared: { to: string; body: string; config: any } | null = null;
+  let controlledResult: CallingQuotationResult | undefined;
+  let observedSend: WhatsappSendResult | undefined;
+  let dispatchStarted = false;
   const registry = createToolRegistry([{
     name: CALL_QUOTATION_TOOL,
     description: "Deliver only this caller's already-issued quotation to their existing WhatsApp conversation.",
@@ -84,13 +90,41 @@ export async function deliverCallingQuotation(args: {
         const prior = await db.from("ai_tasks").select("status, output").eq("agency_id", args.agencyId).eq("id", id).maybeSingle();
         const receipt = prior.data?.output as QuotationReceipt | undefined;
         if (!prior.error && prior.data?.status === "completed" && receipt?.messageId && receipt.providerMessageId && receipt.quotationId === input.quotationId) return receipt;
+        if (args.execution && !prior.error && receipt?.providerMessageId && receipt.quotationId === input.quotationId) {
+          const message = await db.from("messages").select("id,provider_message_id,delivery_status")
+            .eq("agency_id", args.agencyId).eq("id", id).maybeSingle();
+          if (!message.error && message.data?.provider_message_id === receipt.providerMessageId && ["sent", "delivered", "read"].includes(message.data.delivery_status)) {
+            const reconciled = { messageId: message.data.id, providerMessageId: receipt.providerMessageId, quotationId: input.quotationId };
+            const saved = await db.from("ai_tasks").update({ status: "completed", output: reconciled, error: null, completed_at: new Date().toISOString() })
+              .eq("agency_id", args.agencyId).eq("id", id).select("id").single();
+            if (!saved.error && saved.data?.id) return reconciled;
+          }
+        }
         throw new Error("dispatch_already_claimed_unverified");
       }
       try {
         args.signal?.throwIfAborted();
         // Reuse the central, bounded Meta sender. Do not abort persistence if
         // speech ends during dispatch: record what actually happened first.
-        const sent = await sendWhatsappTextDetailed(prepared.config.phone_number_id, prepared.config.access_token, prepared.to, prepared.body);
+        await args.execution?.beforeDispatch?.();
+        args.signal?.throwIfAborted();
+        args.execution?.signal.throwIfAborted();
+        dispatchStarted = true;
+        const sent = args.execution
+          ? await sendWhatsappTextDetailed(prepared.config.phone_number_id, prepared.config.access_token, prepared.to, prepared.body, args.execution)
+          : await sendWhatsappTextDetailed(prepared.config.phone_number_id, prepared.config.access_token, prepared.to, prepared.body);
+        observedSend = sent;
+        if (args.execution && sent.outcome !== "verified_success") {
+          const outcome = sent.outcome ?? "outcome_unknown";
+          controlledResult = { ok: false, reason: sent.cause ?? outcome, outcome, dispatched: sent.dispatched ?? true };
+          // Unknown delivery remains claimed; never record send_failed or resend it.
+          const saved = await db.from("ai_tasks").update({ status: outcome === "outcome_unknown" ? "running" : "failed",
+            output: { delivery_outcome: outcome, cause: sent.cause ?? null, dispatched: sent.dispatched ?? true,
+              http_status: sent.httpStatus ?? null, quotationId: input.quotationId }, error: outcome,
+          }).eq("agency_id", args.agencyId).eq("id", id).select("id").single();
+          if (saved.error || !saved.data?.id) throw new Error("action_result_persistence_failed");
+          throw new Error("controlled_dispatch_incomplete");
+        }
         const verified = sent.ok && !!sent.providerMessageId;
         const message = await db.from("messages").insert({
           id, agency_id: args.agencyId, conversation_id: input.conversationId, sender: "ai", body: prepared.body,
@@ -105,6 +139,15 @@ export async function deliverCallingQuotation(args: {
         await db.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("agency_id", args.agencyId).eq("id", input.conversationId);
         return receipt;
       } catch (error) {
+        if (args.execution) {
+          const providerEvidence = observedSend?.providerMessageId ? { providerMessageId: observedSend.providerMessageId, quotationId: input.quotationId } : undefined;
+          controlledResult ??= { ok: false, reason: dispatchStarted ? "dispatch_unverified" : "dispatch_not_started",
+            outcome: dispatchStarted ? "outcome_unknown" : "cancelled", dispatched: dispatchStarted, ...(providerEvidence ? { providerEvidence } : {}) };
+          if (providerEvidence) await db.from("ai_tasks").update({ status: "running", error: "receipt_reconciliation_required",
+            output: { ...providerEvidence, delivery_outcome: "outcome_unknown" },
+          }).eq("agency_id", args.agencyId).eq("id", id);
+          throw error;
+        }
         await db.from("ai_tasks").update({ status: "failed", error: "dispatch_unverified", completed_at: new Date().toISOString() }).eq("agency_id", args.agencyId).eq("id", id);
         throw error;
       }
@@ -115,9 +158,9 @@ export async function deliverCallingQuotation(args: {
       supabase: db as ToolExecutionContext["supabase"], agencyId: args.agencyId, correlationId: `voice:${args.callId}:${args.sequence}`,
       grantedPermissions: ["external"], allowedTools: [CALL_QUOTATION_TOOL],
     });
-    return outcome.status === "executed" ? { ok: true, receipt: outcome.result as QuotationReceipt } : { ok: false, reason: outcome.reason };
+    return outcome.status === "executed" ? { ok: true, receipt: outcome.result as QuotationReceipt } : controlledResult ?? { ok: false, reason: outcome.reason };
   } catch {
-    return { ok: false, reason: "quotation_action_unavailable" };
+    return controlledResult ?? { ok: false, reason: "quotation_action_unavailable" };
   }
 }
 

@@ -19,7 +19,7 @@ it("bounds the complete governed send, including a stalled response body after H
     } }), { status: 200, headers: { "Content-Type": "application/json" } });
   }));
   let settled = false;
-  const sent = sendWhatsappTextDetailed("synthetic-phone-id", "synthetic-test-credential", "60123456789", "Synthetic test quotation")
+  const sent = sendWhatsappTextDetailed("synthetic-phone-id", "synthetic-test-credential", "60123456789", "Synthetic test quotation", { signal: new AbortController().signal })
     .finally(() => { settled = true; });
   await headers;
   await vi.advanceTimersByTimeAsync(25_000);
@@ -34,6 +34,9 @@ it("bounds the complete governed send, including a stalled response body after H
       body.enqueue(new TextEncoder().encode(JSON.stringify({ messages: [{ id: "synthetic-receipt" }] })));
       body.close();
     }
-    await sent;
+    const result = await sent;
+    expect(result).toMatchObject({ ok: false, outcome: "outcome_unknown", cause: "timeout", dispatched: true });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   }
 });

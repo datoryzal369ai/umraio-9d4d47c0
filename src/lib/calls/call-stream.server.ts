@@ -20,7 +20,15 @@ export async function callingTurnResponse(args: {
   signal: AbortSignal;
   run: (emit: ((ack: CallingAcknowledgement) => void) | undefined, signal: AbortSignal) => Promise<VoiceTurnResult>;
 }): Promise<Response> {
-  if (!args.streaming) return Response.json(wire(await args.run(undefined, args.signal)));
+  if (!args.streaming) {
+    const result = await args.run(undefined, args.signal);
+    if (result.ok && result.speechEligibility) {
+      if (!await result.speechEligibility() || args.signal.aborted) return Response.json(wire({ ok: false, reason: "stale_turn" }));
+    }
+    const response = Response.json(wire(result));
+    if (result.ok && !args.signal.aborted) result.onHandoff?.();
+    return response;
+  }
   const abort = new AbortController();
   const signal = AbortSignal.any([args.signal, abort.signal]);
   const encoder = new TextEncoder();
@@ -28,11 +36,16 @@ export async function callingTurnResponse(args: {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = (value: unknown) => {
-        if (!cancelled && !signal.aborted) controller.enqueue(encoder.encode(JSON.stringify(value) + "\n"));
+        if (cancelled || signal.aborted) return false;
+        controller.enqueue(encoder.encode(JSON.stringify(value) + "\n"));
+        return true;
       };
       void args.run(ack => send({ type: "ack", speech_text: ack.text,
         voice_id: ack.voiceId, language_boost: ack.languageBoost, end_call: false }), signal)
-        .then(result => send({ type: "final", ...wire(result) }))
+        .then(async result => {
+          if (result.ok && result.speechEligibility && !await result.speechEligibility()) return;
+          if (send({ type: "final", ...wire(result) }) && result.ok) result.onHandoff?.();
+        })
         .catch(() => send({ type: "error", reason: "turn_failed" }))
         .finally(() => { if (!cancelled) controller.close(); });
     },

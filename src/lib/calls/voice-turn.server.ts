@@ -28,6 +28,9 @@ import { synthesizeCallSpeech } from "./call-audio.server";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
 import { acknowledgementOptions, contextualAcknowledgement, deliveredHistory, entityDecision, preventUnverifiedActionClaim, protectBookingAuthority, reconcilePlayback, requestsQuotationSend, structuredCallNotes } from "./call-executive.core";
 import { deliverCallingQuotation, quotationDeliveryReply, type QuotationReceipt } from "./call-quotation.server";
+import type { CallingLifetime } from "./calling-lifetime.server";
+import type { CallingDb } from "./caller-turn-ledger.server";
+import { handleCognitiveVoiceTurn } from "./cognitive-bridge.server";
 import type { CallingAcknowledgement } from "./call-stream.server";
 import {
   advanceClosing,
@@ -86,6 +89,9 @@ export type VoiceTurnResult =
       endCall: boolean;
       reason?: string;
       backchannelTexts?: string[];
+      /** Calling-local ownership gates, never serialized to the media protocol. */
+      speechEligibility?: () => Promise<boolean>;
+      onHandoff?: () => void;
     }
   | { ok: false; reason: string };
 
@@ -101,7 +107,7 @@ function synthesizeInWorker(): boolean {
 }
 
 const SESSION_COLUMNS =
-  "id, agency_id, call_id, caller_phone, status, meta_accepted_at, transcript, turn_count, detected_language, voice_intents, lead_id, conversation_id, closing_state, disclosure_spoken, voice_latency, renagi_signals";
+  "id, agency_id, call_id, gateway_session_id, caller_phone, status, meta_accepted_at, transcript, turn_count, detected_language, voice_intents, lead_id, conversation_id, closing_state, disclosure_spoken, voice_latency, renagi_signals";
 
 function base64ToBytes(value: string): Uint8Array | null {
   try {
@@ -230,6 +236,7 @@ export async function handleVoiceTurn(args: {
   now?: () => Date;
   onAcknowledgement?: ((ack: CallingAcknowledgement) => void) | undefined;
   signal?: AbortSignal;
+  lifetime?: CallingLifetime;
 }): Promise<VoiceTurnResult> {
   const { db, payload } = args;
   const now = args.now ?? (() => new Date());
@@ -276,6 +283,31 @@ export async function handleVoiceTurn(args: {
     controls: ((settings as any)?.voice_controls as Record<string, unknown> | null) ?? null,
     voice: ((settings as any)?.voice_name as string | null) ?? null,
   };
+
+  if (args.lifetime) {
+    const gatewaySessionId = (data as { gateway_session_id?: string } | null)?.gateway_session_id;
+    if (!gatewaySessionId || typeof (db as CallingDb).rpc !== "function") return { ok: false, reason: "cognitive_binding_unavailable" };
+    const bridged = await handleCognitiveVoiceTurn({ db: db as CallingDb, binding: { agencyId: row.agency_id,
+      sessionId: row.id, callId: row.call_id, gatewaySessionId }, payload, lifetime: args.lifetime,
+      signal: args.signal ?? new AbortController().signal, receivedAt: startedAt, callerPhone: row.caller_phone,
+      language: row.detected_language ?? agencyLanguage, agencyName, disclosureSpoken: row.disclosure_spoken === true,
+      voiceId: MINIMAX_DEFAULT_VOICE_ID, languageBoost: languageBoostFor,
+      onAcknowledgement: synthesizeInWorker() ? undefined : args.onAcknowledgement,
+      present: async (replyText, language) => {
+        const spoken = prepareSpokenResponse({ replyText, language, persona: voicePersona });
+        const text = callingSpokenText(spoken.spokenText.trim() || replyText);
+        let replyOggBase64: string | null = null;
+        if (synthesizeInWorker()) {
+          const tts = await synthesizeCallSpeech({ callId: payload.call_id, text, language, voice: spoken.voice,
+            speed: spoken.speed, instructions: spoken.instructions });
+          if (!tts.ok) throw new Error("calling_presentation_unavailable");
+          replyOggBase64 = bytesToBase64(tts.bytes);
+        }
+        return { text, replyOggBase64, voiceId: MINIMAX_DEFAULT_VOICE_ID, languageBoost: languageBoostFor(language) };
+      },
+    });
+    if (bridged !== null) return bridged;
+  }
 
   const history = reconcilePlayback(readTranscript(row.transcript), payload.media_metrics, payload.sequence);
   let transcript = "";

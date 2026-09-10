@@ -2,7 +2,7 @@ import { generateText, Output } from "ai";
 import { getAiConfig } from "@/lib/ai/config.server";
 import { getProviderAdapter } from "@/lib/ai/providers.server";
 import { buildVoiceSystemPrompt } from "./voice-turn.core";
-import { cognitiveDecisionSchema, type CognitiveEngine } from "./cognitive-bridge.contract";
+import { cognitiveDecisionSchema, type CognitiveEngine, type EngineMetadata } from "./cognitive-bridge.contract";
 import { withinCallingBudget } from "./calling-lifetime.server";
 
 export const CALLING_COGNITIVE_INSTRUCTIONS = [
@@ -28,6 +28,11 @@ export const CALLING_COGNITIVE_INSTRUCTIONS = [
 ].join("\n");
 
 /** Calling-local engine seam: no transport, database write or execution authority. */
+export class CallingEngineFailure extends Error {
+  constructor(readonly metadata: EngineMetadata, name: string) {
+    super("calling_cognitive_invocation_failed"); this.name = name;
+  }
+}
 export const currentCallingEngine: CognitiveEngine = {
   async decide({ packet, deadline, signal }) {
     const config = getAiConfig();
@@ -35,14 +40,22 @@ export const currentCallingEngine: CognitiveEngine = {
     const started = Date.now();
     const budget = Math.min(config.timeouts.reasoning, deadline - started);
     if (budget <= 0) throw new DOMException("Calling reasoning deadline", "TimeoutError");
-    const result = await withinCallingBudget(signal, budget, abortSignal => generateText({
+    let result;
+    try { result = await withinCallingBudget(signal, budget, abortSignal => generateText({
       model: adapter.model(config.model, "reasoning"),
       providerOptions: adapter.requestOptions("reasoning") as never,
       output: Output.object({ schema: cognitiveDecisionSchema }),
       system: [buildVoiceSystemPrompt({ agencyName: null, preferredLanguage: packet.person.language, isGreeting: false, callerPhone: null }),
         CALLING_COGNITIVE_INSTRUCTIONS].join("\n"),
       prompt: JSON.stringify(packet), abortSignal, maxRetries: 0,
-    }));
+    })); } catch (error) {
+      const name = error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name) ? error.name : "Error";
+      throw new CallingEngineFailure({ configured_provider: config.provider, configured_model: config.model,
+        returned_provider: null, returned_model: null, started_at: new Date(started).toISOString(), completed_at: new Date().toISOString(),
+        latency_ms: Date.now() - started, input_tokens: null, output_tokens: null, fallback: false,
+        cancellation: signal.aborted ? "response_cancelled" : name === "TimeoutError" ? "model_timeout" : null,
+      }, name);
+    }
     // Only allowlisted metadata. Never persist response headers, raw requests or private reasoning.
     return { decision: result.output, metadata: {
       configured_provider: config.provider, configured_model: config.model,

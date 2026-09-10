@@ -21,7 +21,8 @@ export type CognitivePacket = {
   business: { booking_refs: string[]; quotation_refs: string[]; traveller_refs: string[]; package_refs: string[];
     selected_booking: string | null; selected_quotation: string | null; state_complete: boolean };
   current_call: { current_caller: CallerTurn; caller_refs: string[]; delivered_assistant_refs: string[];
-    objective: string | null; open_questions: string[]; corrections: string[]; unresolved_turns: number[]; missing_sequences: number[] };
+    objective: string | null; open_questions: string[]; corrections: string[];
+    objective_ref: string | null; open_question_refs: string[]; correction_refs: string[]; unresolved_turns: number[]; missing_sequences: number[] };
   cross_channel_refs: string[];
   open_commitment_refs: string[];
   available_actions: Array<{ tool: "deliver_existing_quotation_whatsapp"; quotation_id: string; lead_id: string;

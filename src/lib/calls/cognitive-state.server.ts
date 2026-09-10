@@ -4,10 +4,11 @@ import { BRIDGE_VERSION, type CognitivePacket, type Evidence, type ClosingState 
 import { resolveAddress } from "./cognitive-router.core";
 import { requestsQuotationSend } from "./call-executive.core";
 
+type StoredMemory = { text: string; source_refs: string[]; observed_at?: string };
 export type BridgeSnapshot = { live: boolean; revision: number; generation: string; current_sequence: number;
   closing_state: ClosingState; closing_episode: string | null; closing_clarifications: number; farewell_id: string | null;
-  memory: { objective?: { text: string; source_refs: string[] }; corrections?: Array<{ text: string; source_refs: string[] }>;
-    open_questions?: Array<{ text: string; source_refs: string[] }> };
+  memory: { objective?: StoredMemory | null; corrections?: StoredMemory[]; open_questions?: StoredMemory[] };
+  actions?: Array<{id: string; quotation_id: string; state: string; receipt: unknown; claimed_at: string; completed_at: string | null}>;
   callers: CallerTurn[]; events: Array<{ id: string; sequence: number; kind: string; payload: any; created_at: string }> };
 
 const phone = (value: string) => { const d = value.replace(/\D/g, ""); return d.startsWith("0") ? `60${d.slice(1)}` : d; };
@@ -23,7 +24,7 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
   if (!lead) return { lead: null, conversations: [], quotations: [], bookings: [], messages: [], previousCalls: [], identityConflict: matches.length > 1 };
   const results = await Promise.all([
     scoped("conversations", "id,lead_id,channel,ai_enabled,human_attention_required,last_message_at").eq("lead_id", lead.id).eq("channel", "whatsapp").order("last_message_at", { ascending: false }).limit(2).abortSignal(input.signal),
-    scoped("quotations", "id,quotation_number,status,total,deposit_amount,number_of_pilgrims,customer_name,customer_phone,package_id,travel_month,updated_at")
+    scoped("quotations", "id,quotation_number,status,total,deposit_amount,number_of_pilgrims,customer_name,customer_phone,package_id,package_snapshot,travel_month,updated_at")
       .eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(6).abortSignal(input.signal),
     scoped("bookings", "id,status,deposit_paid,amount_myr,balance_myr,pax,quotation_id,package_id,updated_at")
       .eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(6).abortSignal(input.signal),
@@ -42,7 +43,7 @@ export type CallingRecords = Awaited<ReturnType<typeof loadCallingRecords>>;
 export async function includeRequestedQuotation(db: CallingDb, records: CallingRecords, binding: CallingBinding, transcript: string, signal: AbortSignal) {
   const references = Array.from(new Set(transcript.match(/\bQ-[A-Z0-9]+-[A-Z0-9]+\b/gi)?.map(ref => ref.toUpperCase()) ?? []));
   if (!records.lead || references.length !== 1 || records.quotations.some(q => String(q.quotation_number).toUpperCase() === references[0])) return records;
-  const quotation = rows(await db.from("quotations").select("id,quotation_number,status,total,deposit_amount,number_of_pilgrims,customer_name,customer_phone,package_id,travel_month,updated_at")
+  const quotation = rows(await db.from("quotations").select("id,quotation_number,status,total,deposit_amount,number_of_pilgrims,customer_name,customer_phone,package_id,package_snapshot,travel_month,updated_at")
     .eq("agency_id", binding.agencyId).eq("lead_id", records.lead.id).eq("quotation_number", references[0]).limit(1).abortSignal(signal));
   if (!quotation.length) return records;
   const linked = rows(await db.from("bookings").select("id,status,deposit_paid,amount_myr,balance_myr,pax,quotation_id,package_id,updated_at")
@@ -70,7 +71,7 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
   if (!callerRefs.includes(`caller:${caller.id}`)) callerRefs.push(add(`caller:${caller.id}`, { text: caller.transcript, sequence: caller.sequence, confidence: caller.confidence },
     "calling_caller_turns", caller.id, "transcript", "caller_statement", "stated", caller.persisted_at, "caller"));
   const delivered = s.events.filter(e => e.kind === "playback_complete").sort((a,b) => a.sequence-b.sequence).slice(-6);
-  const deliveredRefs = delivered.map(event => add(`playback:${event.id}`, { text: event.payload.text, sequence: event.sequence,
+  const deliveredRefs = delivered.map(event => add(`playback:${event.id}`, { text: String(event.payload.text ?? "").slice(0, 800), sequence: event.sequence,
     closing_question: event.payload.closing_question === true }, "calling_bridge_events", event.id, "playback_complete", "delivered_speech", "verified", event.created_at, "playback"));
   const identityRefs = r.lead ? record("leads", r.lead, ["full_name"], "verified_identity") : [];
   const address = resolveAddress(r.lead?.full_name);
@@ -78,7 +79,8 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     "full_name", "verified_identity", "verified", r.lead.updated_at ?? null) : null;
   if (r.identityConflict) uncertainties.push({ id: "identity_conflict", kind: "conflict", detail: "More than one contact matches this caller; do not select one.", evidence_refs: [], blocking: true });
   if (!r.lead) uncertainties.push({ id: "identity_unknown", kind: "missing_identity", detail: "Stored caller identity is unverified.", evidence_refs: [], blocking: true });
-  const refs = Array.from(new Set(caller.transcript.match(/\bQ-[A-Z0-9]+-[A-Z0-9]+\b/gi)?.map(x => x.toUpperCase()) ?? []));
+  const selectionText = /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(caller.transcript) ? caller.transcript : s.memory.objective?.text ?? caller.transcript;
+  const refs = Array.from(new Set(selectionText.match(/\bQ-[A-Z0-9]+-[A-Z0-9]+\b/gi)?.map(x => x.toUpperCase()) ?? []));
   const requested = refs.length === 1 ? r.quotations.find(q => String(q.quotation_number).toUpperCase() === refs[0]) : null;
   const quote = refs.length ? requested : r.quotations.length === 1 ? r.quotations[0] : null;
   const linkedBookings = quote ? r.bookings.filter(b => b.quotation_id === quote.id) : r.bookings;
@@ -96,6 +98,9 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     quoteState.verification = "conflicted"; quoteState.conflicts = [`bookings:${booking.id}:deposit_paid`];
     uncertainties.push({ id: "payment_conflict", kind: "conflict", detail: "Booking deposit_paid is authoritative for payment; quotation status is stale/conflicting.", evidence_refs: quoteState.conflicts, blocking: false });
   }
+  const packageRefs = quotationRows.filter(q => q.package_snapshot && typeof q.package_snapshot.name === "string").map(q =>
+    add(`quotations:${q.id}:package_name`, String(q.package_snapshot.name).slice(0,200), "quotations", q.id, "package_snapshot.name",
+      "business_record", "verified", q.updated_at ?? null));
   const relationshipRefs = r.lead ? record("leads", r.lead, ["stage", "package_interest", "pax"]) : [];
   const crossRefs = r.messages.slice(0, 6).filter(m => m.sender === "customer" || m.modality === "call_summary"
     || ["sent", "delivered", "read"].includes(m.delivery_status)).map(m => add(`messages:${m.id}`, { text: String(m.body ?? "").slice(0, 320),
@@ -104,6 +109,11 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
   for (const prior of r.previousCalls.slice(0, 2)) if (prior.call_id !== binding.callId && prior.call_summary) {
     crossRefs.push(add(`prior_call:${prior.id}`, String(prior.call_summary).slice(0, 320), "whatsapp_call_sessions", prior.id, "call_summary",
       "historical_claim", "unverified", prior.ended_at ?? null, "message"));
+  }
+  const actionRefs = (s.actions ?? []).filter(a => a.state === "verified_success").slice(0,4).map(a => add(`receipt:${a.id}`, a.receipt,
+    "calling_bridge_actions", a.id, "receipt", "verified_execution", "verified", a.completed_at, "action_receipt"));
+  for (const action of (s.actions ?? []).filter(a => ["claimed", "dispatching", "outcome_unknown"].includes(a.state))) {
+    uncertainties.push({ id: `action:${action.id}`, kind: "unknown_action_outcome", detail: "A previous quotation dispatch is unverified. Do not resend or claim completion.", evidence_refs: [], blocking: requestsQuotationSend(caller.transcript) });
   }
   const resultRefs = s.events.filter(e => e.kind === "action_verified").slice(-4).map(e => add(`receipt:${e.id}`, e.payload,
     "calling_bridge_events", e.id, "receipt", "verified_execution", "verified", e.created_at, "action_receipt"));
@@ -115,21 +125,35 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
   const sequences = s.callers.map(t => t.sequence);
   for (let i = Math.max(2, input.sequence - 10); i < input.sequence; i++) if (!sequences.includes(i)) missing.push(i);
   if (caller.confidence === "unknown") uncertainties.push({ id: "asr_confidence_unknown", kind: "asr", detail: "ASR did not supply confidence. Resolve ambiguous fragments before entity changes/actions.", evidence_refs: [`caller:${caller.id}`], blocking: false });
+  const memoryRef = (item: StoredMemory, field: string, index: number) => add(`memory:${field}:${index}`,
+    { text: item.text, source_refs: item.source_refs }, "calling_caller_turns", item.source_refs[0]?.replace(/^caller:/, "") ?? "unknown", field,
+    "caller_statement", "stated", item.observed_at ?? null, "caller");
+  const objectiveRef = s.memory.objective ? memoryRef(s.memory.objective, "objective", 0) : null;
+  const questionRefs = (s.memory.open_questions ?? []).slice(-4).map((item, i) => memoryRef(item, "question", i));
+  const correctionRefs = (s.memory.corrections ?? []).slice(-6).map((item, i) => memoryRef(item, "correction", i));
   const packet: CognitivePacket = { version: BRIDGE_VERSION, packet_id: crypto.randomUUID(), built_at: now,
     identity: { ...binding, sequence: input.sequence, caller_turn_id: caller.id, input_revision: s.revision, generation: s.generation }, evidence,
     person: { identity_refs: identityRefs, honorific_ref: honorificRef, language: input.language, register: r.lead?.conversational_style ?? "warm conversational BM/Manglish", relationship_refs: relationshipRefs },
     business: { booking_refs: bookingRefs, quotation_refs: quotationRefs,
       traveller_refs: [...bookingRefs, ...quotationRefs].filter(id => /:(?:pax|number_of_pilgrims|customer_name)$/.test(id)),
-      package_refs: [...bookingRefs, ...relationshipRefs].filter(id => /:package_/.test(id)),
+      package_refs: [...packageRefs, ...bookingRefs, ...relationshipRefs].filter(id => /:package_/.test(id)),
       selected_booking: booking?.id ?? null, selected_quotation: selectedQuote?.id ?? null, state_complete: true },
     current_call: { current_caller: caller, caller_refs: callerRefs, delivered_assistant_refs: deliveredRefs,
-      objective: s.memory.objective?.text ?? null, open_questions: (s.memory.open_questions ?? []).map(q => q.text).slice(-4),
+      objective: s.memory.objective?.text ?? null, objective_ref: objectiveRef, open_question_refs: questionRefs, correction_refs: correctionRefs, open_questions: (s.memory.open_questions ?? []).map(q => q.text).slice(-4),
       corrections: (s.memory.corrections ?? []).map(q => q.text).slice(-6), unresolved_turns: sequences.filter(seq => !delivered.some(e => e.sequence === seq)).slice(-6), missing_sequences: missing },
     cross_channel_refs: crossRefs, open_commitment_refs: [], available_actions: eligible ? [{ tool: "deliver_existing_quotation_whatsapp",
       quotation_id: selectedQuote.id, lead_id: r.lead.id, conversation_id: conversation.id, recipient: "verified_caller_whatsapp", evidence_refs: quotationRefs }] : [],
-    action_result_refs: resultRefs, uncertainties,
+    action_result_refs: [...actionRefs,...resultRefs], uncertainties,
     closing: { state: s.closing_state, episode_id: s.closing_episode, clarification_count: s.closing_clarifications, farewell_id: s.farewell_id }, renagi: null };
   // Do not truncate the current request or silently remove authoritative evidence to fit a prompt.
+  while (JSON.stringify(packet).length > 28_000 && packet.cross_channel_refs.length) {
+    const id = packet.cross_channel_refs.pop(); packet.evidence = packet.evidence.filter(e => e.id !== id);
+  }
+  while (JSON.stringify(packet).length > 28_000 && packet.current_call.caller_refs.length > 1) {
+    const id = packet.current_call.caller_refs.find(ref => ref !== `caller:${caller.id}`);
+    packet.current_call.caller_refs = packet.current_call.caller_refs.filter(ref => ref !== id);
+    packet.evidence = packet.evidence.filter(e => e.id !== id);
+  }
   if (JSON.stringify(packet).length > 28_000) throw new Error("calling_packet_budget_exceeded");
   return packet;
 }
