@@ -1,0 +1,9 @@
+{
+  "name": "calling-bridge-runtime-tests",
+  "private": true,
+  "description": "Offline Calling-only Worker lifetime and PostgreSQL migration regression tools.",
+  "dependencies": {
+    "@electric-sql/pglite": "0.3.14",
+    "miniflare": "4.20260515.0"
+  }
+}
