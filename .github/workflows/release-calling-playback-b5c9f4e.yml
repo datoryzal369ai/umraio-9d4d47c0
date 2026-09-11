@@ -1,8 +1,8 @@
-name: Controlled gateway-only playback release b5c9f4e
+name: Controlled gateway-only qualified interruption release f3e3b3c
 
 on:
   push:
-    branches: [codex/release-calling-playback-b5c9f4e]
+    branches: [codex/release-calling-qualified-f3e3b3c]
 
 permissions:
   contents: read
@@ -14,13 +14,13 @@ concurrency:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/codex/release-calling-playback-b5c9f4e'
+    if: github.ref == 'refs/heads/codex/release-calling-qualified-f3e3b3c'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      CANDIDATE: b5c9f4ebc720a76d05b1d3ccb0dbbc4ec79029fc
-      ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:676344eb825bd9e1dadb60ddd0a7761e9fe4c366d50c70ce8a28d28cf52f7c71
-      CANDIDATE_IMAGE: registry.fly.io/umraio-voice-gateway:playback-b5c9f4ebc720a76d05b1d3ccb0dbbc4ec79029fc
+      CANDIDATE: f3e3b3c7cd371a41c0ed739bf9e5a7a7f402bf85
+      ROLLBACK_IMAGE: registry.fly.io/umraio-voice-gateway@sha256:6b7820b5523eb4e78c2027277f793623b9e3993da6716ece96084c4200dc9dad
+      CANDIDATE_IMAGE: registry.fly.io/umraio-voice-gateway:qualified-f3e3b3c7cd371a41c0ed739bf9e5a7a7f402bf85
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -28,11 +28,11 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: b5c9f4ebc720a76d05b1d3ccb0dbbc4ec79029fc
+          ref: f3e3b3c7cd371a41c0ed739bf9e5a7a7f402bf85
           path: candidate
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact source and existing successful validation
+      - name: Verify exact source matches completed qualification validation
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 release-driver/scripts/release-calling-playback-b5c9f4e.py source
@@ -50,15 +50,13 @@ jobs:
           flyctl auth docker >/dev/null
           docker pull "$ROLLBACK_IMAGE"
           python3 release-driver/scripts/release-calling-playback-b5c9f4e.py rollback-image
-      - name: Build exact gateway image using unchanged production Dockerfile
-        run: |
-          docker build --network host --build-arg BUILD_VERSION="$CANDIDATE" \
-            --label org.opencontainers.image.revision="$CANDIDATE" \
-            --tag "$CANDIDATE_IMAGE" candidate/voice-gateway
-          docker run --rm --network none --entrypoint /bin/sh "$CANDIDATE_IMAGE" -c \
-            'grep -aq "ice session snapshot" /gateway && grep -aq "ice candidate pair observed" /gateway && grep -aq "ice diagnostic capture complete" /gateway'
-          docker push "$CANDIDATE_IMAGE"
-          python3 release-driver/scripts/release-calling-playback-b5c9f4e.py image
+      - name: Verify deployment state and retrievable rollback before release
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 release-driver/scripts/preflight-qualified-interruption.py
+      - name: Reuse existing exact candidate or package it once if absent
+        run: python3 release-driver/scripts/prepare-qualified-image.py
       - name: Release image only with zero-session guard and automatic rollback
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -68,3 +66,7 @@ jobs:
           git -C candidate diff --exit-code
           git -C release-driver diff --exit-code
           echo 'Exact gateway-only release. Worker publication, secrets and network configuration untouched. Founder acceptance pending.'
+      - name: Verify baseline rollback remains retrievable after release
+        run: |
+          docker pull "$ROLLBACK_IMAGE"
+          python3 release-driver/scripts/release-calling-playback-b5c9f4e.py rollback-image
