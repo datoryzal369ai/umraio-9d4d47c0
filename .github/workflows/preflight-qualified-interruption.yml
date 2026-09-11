@@ -1,0 +1,32 @@
+name: Qualified interruption read-only release preflight
+on:
+  push:
+    branches: [codex/preflight-calling-qualified-20260911]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: voice-gateway-production-deploy
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.101
+      - name: Retrieve baseline rollback image without deployment
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl auth docker >/dev/null
+          docker pull registry.fly.io/umraio-voice-gateway@sha256:6b7820b5523eb4e78c2027277f793623b9e3993da6716ece96084c4200dc9dad
+      - name: Verify production identity and available rollback read-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/preflight-qualified-interruption.py
