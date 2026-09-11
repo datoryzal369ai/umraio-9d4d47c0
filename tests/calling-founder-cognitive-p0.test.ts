@@ -185,7 +185,10 @@ describe("latest Founder call through the real bridge and PostgreSQL guards", ()
   it("never converts a supplied name into authorization, then reuses the existing verified resolver",async()=>{
     const f=await runtime();await f.wire(1);expect((await f.wire(2)).speech_text).toContain("nama penuh");
     f.setText("Nama saya Dato Synthetic.");f.setDecision(async p=>decisionFixture(p,{spoken_response:"Tempahan sudah disahkan."}));
-    const unverified=await f.wire(3);expect(unverified.speech_text).toContain("masih belum dapat disahkan");expect(unverified.speech_text).not.toContain("?");
+    const unverified=await f.wire(3);
+    expect(unverified.speech_text).toContain("Apakah nombor rujukan sebut harga yang diterima daripada agensi?");
+    expect(unverified.speech_text.match(/\?/g)).toHaveLength(1);
+    expect(unverified.speech_text).not.toMatch(/nama penuh|Tempahan sudah disahkan|macam mana/);
     expect(f.model.mock.calls.at(-1)![0].packet.person.identity_refs).toEqual([]);
     // Simulate independent authoritative resolution in the isolated fixture, not through a spoken-name write.
     await f.pg.query("DELETE FROM leads WHERE id=$1",[f.duplicate]);

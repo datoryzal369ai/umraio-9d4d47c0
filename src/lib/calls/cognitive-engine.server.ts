@@ -68,42 +68,108 @@ export function reconstructCallingMemory(raw: unknown, packet: CognitivePacket, 
 }
 
 /** Calling-local engine seam: no transport, database write or execution authority. */
+export type CallingFailureStage = "configuration" | "model_setup" | "generation_schema" | "provider_request" | "engine_wait"
+  | "structured_output_parse" | "structured_output_binding" | "engine_result";
+export type CallingEngineFailureEvidence = {
+  failure_stage: CallingFailureStage;
+  failure_class: "PROVIDER_UNAVAILABLE" | "PROVIDER_HTTP_ERROR" | "PROVIDER_TIMEOUT" | "STRUCTURED_OUTPUT_PARSE"
+    | "STRUCTURED_OUTPUT_BINDING" | "ENGINE_INTERNAL" | "REQUEST_CANCELLED";
+  failure_type: string; provider_http_status: number | null; correlation_id: string; elapsed_ms: number;
+  validation_stage: "before_semantic_validation"; cancelled: boolean; timed_out: boolean;
+};
+
+/** Error messages, request/response bodies, headers, causes and Zod issues never leave this boundary. */
+export async function callingEngineFailureEvidence(error: unknown, stage: CallingFailureStage,
+  packet: CognitivePacket, signal: AbortSignal, elapsedMs: number): Promise<CallingEngineFailureEvidence> {
+  const allowedNames = new Set(["Error", "TypeError", "SyntaxError", "AbortError", "TimeoutError", "ZodError",
+    "AI_APICallError", "AI_LoadAPIKeyError", "AI_NoSuchModelError", "AI_NoSuchProviderError", "AI_RetryError",
+    "AI_NoObjectGeneratedError", "AI_NoOutputGeneratedError", "AI_JSONParseError", "AI_TypeValidationError", "AI_InvalidResponseDataError"]);
+  const chain: Array<{ name?: unknown; statusCode?: unknown; code?: unknown; cause?: unknown }> = [];
+  let cause = error;
+  for (let i = 0; i < 4 && cause && typeof cause === "object"; i++) {
+    if (chain.includes(cause)) break;
+    chain.push(cause); cause = (cause as { cause?: unknown }).cause;
+  }
+  const type = typeof chain[0]?.name === "string" && allowedNames.has(chain[0].name) ? chain[0].name : "Error";
+  const http = chain.find(e => e.name === "AI_APICallError" && Number.isInteger(e.statusCode)
+    && Number(e.statusCode) >= 400 && Number(e.statusCode) <= 599);
+  const status = http ? Number(http.statusCode) : null;
+  const deadlineAborted = signal.aborted && signal.reason instanceof DOMException && signal.reason.name === "TimeoutError";
+  const cancelled = signal.aborted && !deadlineAborted;
+  const timedOut = !cancelled && (deadlineAborted || chain.some(e => e.name === "TimeoutError"
+    || ["ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT"].includes(String(e.code))) || status === 408 || status === 504);
+  let classification: CallingEngineFailureEvidence["failure_class"] = "ENGINE_INTERNAL";
+  if (cancelled) classification = "REQUEST_CANCELLED";
+  else if (timedOut) classification = "PROVIDER_TIMEOUT";
+  else if (stage === "structured_output_binding") classification = "STRUCTURED_OUTPUT_BINDING";
+  else if (status !== null) classification = "PROVIDER_HTTP_ERROR";
+  else if (stage === "structured_output_parse" || chain.some(e => ["AI_NoObjectGeneratedError", "AI_NoOutputGeneratedError",
+    "AI_JSONParseError", "AI_TypeValidationError", "AI_InvalidResponseDataError"].includes(String(e.name)))) {
+    classification = "STRUCTURED_OUTPUT_PARSE"; stage = "structured_output_parse";
+  } else if (chain.some(e => ["AI_APICallError", "AI_LoadAPIKeyError", "AI_NoSuchModelError", "AI_NoSuchProviderError"].includes(String(e.name))
+    || ["ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(String(e.code)))) classification = "PROVIDER_UNAVAILABLE";
+  // Stable for this server-owned turn/generation, without exposing session IDs or caller content.
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([
+    packet.identity.sessionId, packet.identity.sequence, packet.identity.generation,
+  ])));
+  return { failure_stage: stage, failure_class: classification, failure_type: type, provider_http_status: status,
+    correlation_id: Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join(""),
+    elapsed_ms: Math.max(0, Math.round(elapsedMs)), validation_stage: "before_semantic_validation",
+    cancelled, timed_out: timedOut };
+}
+
 export class CallingEngineFailure extends Error {
-  constructor(readonly metadata: EngineMetadata, name: string) {
+  constructor(readonly metadata: EngineMetadata, name: string, readonly failure: CallingEngineFailureEvidence) {
     super("calling_cognitive_invocation_failed"); this.name = name;
   }
 }
 export const currentCallingEngine: CognitiveEngine = {
   async decide({ packet, deadline, signal }) {
-    const config = getAiConfig();
-    const adapter = getProviderAdapter(config.provider);
     const started = Date.now();
-    const budget = Math.min(config.timeouts.reasoning, deadline - started);
-    if (budget <= 0) throw new DOMException("Calling reasoning deadline", "TimeoutError");
+    let stage: CallingFailureStage = "configuration";
+    let provider = "unresolved", model = "unresolved";
     let result;
     let decision: CognitiveDecision;
-    try { result = await withinCallingBudget(signal, budget, abortSignal => generateText({
-      model: adapter.model(config.model, "reasoning"),
-      providerOptions: adapter.requestOptions("reasoning") as never,
-      output: Output.object({ schema: callingGenerationSchema(packet) }),
+    try {
+      const config = getAiConfig();
+      provider = config.provider; model = config.model;
+      const adapter = getProviderAdapter(config.provider);
+      const budget = Math.min(config.timeouts.reasoning, deadline - started);
+      if (budget <= 0) throw new DOMException("Calling reasoning deadline", "TimeoutError");
+      result = await withinCallingBudget(signal, budget, abortSignal => {
+        stage = "model_setup";
+        const handle = adapter.model(config.model, "reasoning");
+        const providerOptions = adapter.requestOptions("reasoning");
+        stage = "generation_schema";
+        const output = Output.object({ schema: callingGenerationSchema(packet) });
+        stage = "provider_request";
+        return generateText({ model: handle, providerOptions: providerOptions as never, output,
       system: [buildVoiceSystemPrompt({ agencyName: null, preferredLanguage: packet.person.language, isGreeting: false, callerPhone: null }),
         CALLING_COGNITIVE_INSTRUCTIONS].join("\n"),
       prompt: JSON.stringify(packet), abortSignal, maxRetries: 0,
-    })); decision = bindCallingGeneratedDecision(result.output, packet); } catch (error) {
+      }); });
+      stage = "structured_output_parse";
+      const output = result.output;
+      stage = "structured_output_binding";
+      decision = bindCallingGeneratedDecision(output, packet);
+      stage = "engine_result";
+      // Keep successful output unchanged; failures reading SDK result metadata are still engine failures.
+      return { decision, metadata: {
+        configured_provider: provider, configured_model: model,
+        returned_provider: null, returned_model: result.response.modelId ?? null,
+        started_at: new Date(started).toISOString(), completed_at: new Date().toISOString(), latency_ms: Date.now() - started,
+        input_tokens: result.usage.inputTokens ?? null, output_tokens: result.usage.outputTokens ?? null,
+        fallback: false, cancellation: null,
+      } };
+    } catch (error) {
       const name = error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name) ? error.name : "Error";
-      throw new CallingEngineFailure({ configured_provider: config.provider, configured_model: config.model,
-        returned_provider: null, returned_model: null, started_at: new Date(started).toISOString(), completed_at: new Date().toISOString(),
-        latency_ms: Date.now() - started, input_tokens: null, output_tokens: null, fallback: false,
-        cancellation: signal.aborted ? "response_cancelled" : name === "TimeoutError" ? "model_timeout" : null,
-      }, name);
+      const completed = Date.now();
+      const failure = await callingEngineFailureEvidence(error, stage, packet, signal, completed - started);
+      throw new CallingEngineFailure({ configured_provider: provider, configured_model: model,
+        returned_provider: null, returned_model: null, started_at: new Date(started).toISOString(), completed_at: new Date(completed).toISOString(),
+        latency_ms: completed - started, input_tokens: null, output_tokens: null, fallback: false,
+        cancellation: failure.cancelled ? "response_cancelled" : failure.timed_out ? "model_timeout" : null,
+      }, name, failure);
     }
-    // Only allowlisted metadata. Never persist response headers, raw requests or private reasoning.
-    return { decision, metadata: {
-      configured_provider: config.provider, configured_model: config.model,
-      returned_provider: null, returned_model: result.response.modelId ?? null,
-      started_at: new Date(started).toISOString(), completed_at: new Date().toISOString(), latency_ms: Date.now() - started,
-      input_tokens: result.usage.inputTokens ?? null, output_tokens: result.usage.outputTokens ?? null,
-      fallback: false, cancellation: null,
-    } };
   },
 };

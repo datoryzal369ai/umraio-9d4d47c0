@@ -46,6 +46,8 @@ export function callingContractRecovery(packet: CognitivePacket): CognitiveDecis
   const en = packet.person.language.startsWith("en");
   const dialogue = packet.dialogue;
   const missing = dialogue?.missing;
+  const identity = packet.evidence.find(e => e.id === "runtime:identity_continuation" && e.authority === "runtime"
+    && e.verification === "verified")?.value as { name_received?: boolean; next_step?: string } | undefined;
   const ask = missing && !missing.offered && !missing.response_received ? missing : null;
   const current = packet.current_call.current_caller.transcript;
   const social = /\b(?:apa khabar|sihat|how are you)\b/i.test(current);
@@ -53,7 +55,9 @@ export function callingContractRecovery(packet: CognitivePacket): CognitiveDecis
   const used = [...(dialogue?.source_refs ?? [])];
   const claims: CognitiveDecision["claim_requests"] = [];
   let spoken = callingRecovery(packet.person.language);
-  if (ask) spoken = apology + (dialogue?.topic === "booking" && ask.fact !== "completion" ? (en ? "About the booking status. " : "Tentang status tempahan tadi. ") : "") + ask.question;
+  if (ask) spoken = apology + (ask.fact === "caller_identity" && identity?.name_received
+    ? (en ? "Thank you, I have your stated name. To continue verification, " : "Terima kasih, nama sudah saya terima. Untuk teruskan pengesahan, ")
+    : dialogue?.topic === "booking" && ask.fact !== "completion" ? (en ? "About the booking status. " : "Tentang status tempahan tadi. ") : "") + ask.question;
   else if (social) spoken = en ? "I am ready to help, thank you for asking." : "Saya sedia membantu, terima kasih kerana bertanya.";
   else if (dialogue?.topic === "booking") {
     spoken = apology + (en ? "The earlier question was about the booking status. " : "Soalan tadi tentang status tempahan. ");
@@ -61,6 +65,9 @@ export function callingContractRecovery(packet: CognitivePacket): CognitiveDecis
       ? (en ? "The booking holder's identity is still unverified, so I cannot share private booking details."
         : "Identiti pemilik tempahan masih belum dapat disahkan, jadi butiran peribadi belum boleh saya kongsikan.")
       : (en ? "I cannot confirm its status from the available records yet." : "Statusnya belum dapat saya pastikan daripada rekod yang tersedia.");
+    if (missing?.fact === "caller_identity" && identity?.name_received) spoken += en
+      ? " The agency needs to verify the booking holder and linked WhatsApp number through its official contact channel; a name or quotation reference alone is insufficient."
+      : " Pengesahan pemilik tempahan dan nombor WhatsApp perlu dibuat dengan agensi melalui saluran rasmi; nama atau rujukan sahaja belum mencukupi.";
     if (packet.person.identity_refs.length && !missing) {
       const paid = packet.evidence.find(e => e.id === `bookings:${packet.business.selected_booking}:deposit_paid`
         && e.value === true && e.verification === "verified" && e.authority === "business_record");

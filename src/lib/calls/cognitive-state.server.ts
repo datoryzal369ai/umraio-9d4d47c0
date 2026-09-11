@@ -22,7 +22,7 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
   const matches = contacts.filter(lead => phone(lead.phone ?? "") === phone(input.callerPhone));
   const lead = matches.length === 1 ? matches[0] : null;
   if (!lead) return { lead: null, conversations: [], quotations: [], bookings: [], messages: [], previousCalls: [], identityConflict: matches.length > 1,
-    identityKey: matches.map(m => String(m.id)).sort().join("|") || "unmatched" };
+    identityKey: matches.map(m => String(m.id)).sort().join("|") || "unmatched", identityCandidates: matches };
   const results = await Promise.all([
     scoped("conversations", "id,lead_id,channel,ai_enabled,human_attention_required,last_message_at").eq("lead_id", lead.id).eq("channel", "whatsapp").order("last_message_at", { ascending: false }).limit(2).abortSignal(input.signal),
     scoped("quotations", "id,quotation_number,status,total,deposit_amount,number_of_pilgrims,customer_name,customer_phone,package_id,package_snapshot,travel_month,updated_at")
@@ -39,7 +39,63 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
   return { lead, conversations, quotations, bookings, messages, previousCalls, identityConflict: false };
 }
 export type CallingRecords = { lead: any; conversations: any[]; quotations: any[]; bookings: any[]; messages: any[];
-  previousCalls: any[]; identityConflict: boolean; identityKey?: string };
+  previousCalls: any[]; identityConflict: boolean; identityKey?: string; identityCandidates?: any[];
+  identityContinuation?: IdentityContinuation };
+
+type IdentityContinuation = { candidate_key: string; name_source_ref: string; narrowed_ids: string[];
+  reference_source_ref: string | null; step: "reference" | "agency" };
+const identityName = (text: string) => text.normalize("NFKC").toLocaleLowerCase("ms")
+  .replace(/^(?:nama saya|my name is|saya(?: ni| ini)?)\s+/u, "")
+  .replace(/^(?:(?:datuk|dato['’]?|encik|puan|tuan|haji|hajah)\s+)+/u, "")
+  .replace(/[.!?]+$/u, "").replace(/\s+/gu, " ").trim();
+
+/** Narrow routing candidates only. Names and guessable Q references NEVER grant record access.
+ * The unchanged, tenant-scoped unique-phone resolver above remains the verification authority.
+ * Persist only source references/IDs in server-owned proposal metadata, not another copy of names.
+ */
+export async function continueCallingIdentity(db: CallingDb, records: CallingRecords, binding: CallingBinding,
+  state: BridgeSnapshot, caller: CallerTurn, signal: AbortSignal): Promise<CallingRecords> {
+  if (records.lead) return records;
+  const candidates = records.identityCandidates ?? [];
+  const key = records.identityKey ?? "unmatched";
+  const previous = [...state.events].filter(e => e.kind === "proposal" && e.sequence < caller.sequence)
+    .sort((a,b) => b.sequence-a.sequence)[0]?.payload.identity_continuation as IdentityContinuation | undefined;
+  const retained = previous?.candidate_key === key && typeof previous.name_source_ref === "string"
+    && previous.name_source_ref.startsWith("caller:") && Array.isArray(previous.narrowed_ids) ? previous : undefined;
+  const nameOffer = priorClarificationOffers(state, caller.sequence).find(o => o.fact === "caller_identity"
+    && o.key === `caller_identity:${key}`);
+  const nameTurn = [...state.callers, caller].sort((a,b) => b.sequence-a.sequence).find(t => {
+    const text = t.transcript.trim();
+    if (!text || text.length > 160 || /\?|\b(?:tempahan|tembahan|booking|quotation|tanya|faham|rekod)\b/i.test(text)) return false;
+    return candidates.some(c => identityName(String(c.full_name ?? "")) === identityName(text))
+      || /^(?:nama saya|my name is|saya (?:ni |ini )?(?:datuk|dato|encik|puan|tuan|haji|hajah))\b/i.test(text)
+      || !!nameOffer && t.sequence === nameOffer.sequence + 1 && text.split(/\s+/).length <= 6;
+  });
+  if (!nameTurn && !retained) return records;
+  const sameName = !nameTurn || `caller:${nameTurn.id}` === retained?.name_source_ref;
+  const narrowed = retained && sameName ? candidates.filter(c => retained.narrowed_ids.includes(String(c.id)))
+    : candidates.filter(c => identityName(String(c.full_name ?? "")) === identityName(nameTurn!.transcript));
+  const continuation: IdentityContinuation = { candidate_key: key,
+    name_source_ref: nameTurn ? `caller:${nameTurn.id}` : retained!.name_source_ref,
+    narrowed_ids: narrowed.map(c => String(c.id)), reference_source_ref: sameName ? retained?.reference_source_ref ?? null : null, step: "agency" };
+  if (narrowed.length && !continuation.reference_source_ref) {
+    // Only determine whether the existing reference path is available. Do not put candidate records in the packet.
+    const referenceTurn = [...state.callers, caller].sort((a,b) => b.sequence-a.sequence)
+      .find(t => /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(t.transcript));
+    const refs = [...new Set(referenceTurn?.transcript.match(/\bQ-[A-Z0-9]+-[A-Z0-9]+\b/gi)?.map(s => s.toUpperCase()) ?? [])];
+    const query = db.from("quotations").select("id,lead_id").eq("agency_id", binding.agencyId)
+      .in("lead_id", continuation.narrowed_ids);
+    let matches: any[];
+    try { matches = rows(await (refs.length === 1 ? query.eq("quotation_number", refs[0]) : query).limit(3).abortSignal(signal)); }
+    catch { signal.throwIfAborted(); return { ...records, identityContinuation: continuation }; }
+    if (referenceTurn) {
+      continuation.reference_source_ref = `caller:${referenceTurn.id}`;
+      if (refs.length === 1) continuation.narrowed_ids = [...new Set(matches.map(q => String(q.lead_id)))];
+    } else if (matches.length) continuation.step = "reference";
+  }
+  // Even one name/reference match is not independently verified identity. No lead, business data or action is released.
+  return { ...records, identityContinuation: continuation };
+}
 
 /** Reuse the caller's most recent explicit reference; it does not establish customer identity. */
 export function callingSelectionText(s: BridgeSnapshot, current: string): string {
@@ -80,16 +136,20 @@ function callingDialogue(s: BridgeSnapshot, caller: CallerTurn, records: Calling
     && !/^(?:hi|ok|ya)[.!?\s]*$/i.test(current.trim())) fact = "caller_request";
   // Ambiguous current text is not proof of an unanswered business fact. The model can answer using prior evidence.
   if (topic === "general" && /\be-?mel\b.*\bbelum boleh hantar\b/i.test(current)) fact = "caller_request";
-  const evidenceKey = fact === "caller_identity" ? (records.identityKey ?? "unverified")
+  const identityStep = records.identityContinuation;
+  const evidenceKey = fact === "caller_identity" ? `${identityStep ? "reference:" : ""}${records.identityKey ?? "unverified"}`
     : fact === "booking_reference" ? records.quotations.map(q => String(q.id)).sort().join("|")
       : fact === "completion" ? s.closing_episode ?? "active" : "request";
   const key = `${fact}:${evidenceKey}`;
   const prior = offered.find(o => o.key === key);
   const responseReceived = !!prior && ordered.some(c => c.sequence > prior.sequence)
-    || fact === "caller_identity" && ordered.some(c => namedCaller.test(c.transcript))
+    || fact === "caller_identity" && (identityStep ? !!identityStep.reference_source_ref || identityStep.step === "agency"
+      : ordered.some(c => namedCaller.test(c.transcript)))
     || fact === "booking_reference" && ordered.some(c => /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(c.transcript));
   const questions = {
-    caller_identity: en ? "What full name was used for the booking?" : "Apakah nama penuh yang digunakan untuk tempahan itu?",
+    caller_identity: identityStep
+      ? (en ? "What quotation reference did you receive from the agency?" : "Apakah nombor rujukan sebut harga yang diterima daripada agensi?")
+      : (en ? "What full name was used for the booking?" : "Apakah nama penuh yang digunakan untuk tempahan itu?"),
     booking_reference: en ? "What is the booking or quotation reference?" : "Apakah nombor rujukan tempahan atau sebut harga yang dimaksudkan?",
     caller_request: en ? "What is the main thing you would like help with?" : "Apakah perkara utama yang ingin ditanya?",
     completion: en ? "Is that all for now?" : "Itu sahaja untuk sekarang?",
@@ -146,6 +206,10 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     "full_name", "verified_identity", "verified", r.lead.updated_at ?? null) : null;
   if (r.identityConflict) uncertainties.push({ id: "identity_conflict", kind: "conflict", detail: "More than one contact matches this caller; do not select one.", evidence_refs: [], blocking: true });
   if (!r.lead) uncertainties.push({ id: "identity_unknown", kind: "missing_identity", detail: "Stored caller identity is unverified.", evidence_refs: [], blocking: true });
+  if (r.identityContinuation) add("runtime:identity_continuation", { identity_verified: false,
+    name_received: true, next_step: r.identityContinuation.step, reference_received: !!r.identityContinuation.reference_source_ref,
+    narrowed_candidate_count: r.identityContinuation.narrowed_ids.length }, "calling_bridge_events", binding.sessionId,
+    "identity_continuation", "runtime", "verified", null, "runtime");
   const selectionText = callingSelectionText(s, caller.transcript);
   const refs = Array.from(new Set(selectionText.match(/\bQ-[A-Z0-9]+-[A-Z0-9]+\b/gi)?.map(x => x.toUpperCase()) ?? []));
   const requested = refs.length === 1 ? r.quotations.find(q => String(q.quotation_number).toUpperCase() === refs[0]) : null;

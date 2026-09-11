@@ -2,9 +2,9 @@ import { bindingArgs, callingRpc, retainCallerTurn, type CallingBinding, type Ca
 import { transcribeCaller, type CallerAsr } from "./caller-asr.server";
 import { boundedCallingDb } from "./calling-db-lifetime.server";
 import { retainBounded, withinCallingBudget, type CallingLifetime } from "./calling-lifetime.server";
-import { buildCognitivePacket, includeRequestedQuotation, loadCallingRecords, callingSelectionText, nextClarificationOffers, priorClarificationOffers, type BridgeSnapshot } from "./cognitive-state.server";
-import { currentCallingEngine, CallingEngineFailure, reconstructCallingMemory } from "./cognitive-engine.server";
-import { BRIDGE_VERSION, type CognitiveDecision, type CognitiveEngine, type EngineMetadata, type ClarificationOffer } from "./cognitive-bridge.contract";
+import { buildCognitivePacket, includeRequestedQuotation, loadCallingRecords, continueCallingIdentity, callingSelectionText, nextClarificationOffers, priorClarificationOffers, type BridgeSnapshot } from "./cognitive-state.server";
+import { currentCallingEngine, CallingEngineFailure, callingEngineFailureEvidence, reconstructCallingMemory, type CallingEngineFailureEvidence } from "./cognitive-engine.server";
+import { BRIDGE_VERSION, type CognitiveDecision, type CognitiveEngine, type CognitivePacket, type EngineMetadata, type ClarificationOffer } from "./cognitive-bridge.contract";
 import { validateCallingDecision, callingValidationFields } from "./call-decision-policy.core";
 import { callingRecovery, callingContractRecovery } from "./call-speech-claims.core";
 import { executeCallingDecision } from "./calling-action-lifecycle.server";
@@ -37,6 +37,9 @@ export async function handleCognitiveVoiceTurn(args: {
   let recovery: string | null = null;
   let cancellation: string | null = null;
   let contractRepair: { attempts: number; reason: string; fields: string[]; outcome: string } | null = null;
+  let engineFailure: CallingEngineFailureEvidence | null = null;
+  let enginePacket: CognitivePacket | null = null;
+  let engineAnswerReceived = false;
   const base = bindingArgs(args.binding);
   const record = (kind: string, payload: Record<string, unknown>) => retainBounded(args.lifetime, 3000, owner =>
     callingRpc(args.db, "calling_bridge_record", { ...base, p_sequence: args.payload.sequence,
@@ -96,6 +99,7 @@ export async function handleCognitiveVoiceTurn(args: {
         } else if (!records || !lease.turn) {
           recovery = "context_unavailable"; spoken = callingRecovery(language, "unavailable");
         } else {
+          records = await continueCallingIdentity(db, records, args.binding, state, lease.turn, response);
           const requested = callingSelectionText(state, lease.turn.transcript);
           records = await includeRequestedQuotation(db, records, args.binding, requested, response);
           const packet = buildCognitivePacket({ binding: args.binding, sequence: args.payload.sequence,
@@ -120,10 +124,12 @@ export async function handleCognitiveVoiceTurn(args: {
             })().catch(() => undefined);
           } : undefined;
           try {
+            enginePacket = packet;
             times["model_start"] = Date.now();
             const model = (args.engine ?? currentCallingEngine).decide({ packet, deadline: args.receivedAt + 16_000, signal: response })
               .finally(() => { pending = false; times["model_end"] = Date.now(); });
             const result = await withCallingBackchannel({ answer: model, signal: response, emit });
+            engineAnswerReceived = true;
             metadata = result.answer.metadata;
             state = await snapshot();
             times["policy_start"] = Date.now();
@@ -160,7 +166,7 @@ export async function handleCognitiveVoiceTurn(args: {
               }
             }
           } catch (error) {
-            if (error instanceof CallingEngineFailure) metadata = error.metadata;
+            if (error instanceof CallingEngineFailure) { metadata = error.metadata; engineFailure = error.failure; }
             response.throwIfAborted();
             recovery = "engine_or_execution_unavailable";
             state = await snapshot();
@@ -183,7 +189,8 @@ export async function handleCognitiveVoiceTurn(args: {
               intent: decision.intent, interaction_mode: decision.interaction_mode, understanding: decision.understanding,
               authoritative_facts_used: decision.authoritative_facts_used, uncertainties: decision.uncertainties,
               completion_intent: decision.completion_intent, decision_summary: decision.decision_summary,
-            } : null, recovery, contract_repair: contractRepair,
+            } : null, recovery, contract_repair: contractRepair, engine_failure: engineFailure,
+            identity_continuation: records?.identityContinuation ?? null,
             failure_classification: contractRepair ? "CONTRACT_FAILURE" : recovery ? "AVAILABILITY_FAILURE" : null,
             response_classification: decision?.requires_clarification ? "GENUINE_CLARIFICATION_REQUIRED" : "ANSWER_OR_ACT",
             clarification: decision?.clarification ?? null, clarification_offers: clarificationOffers },
@@ -204,13 +211,20 @@ export async function handleCognitiveVoiceTurn(args: {
     });
   } catch (error) {
     cancellation = args.signal.aborted ? "response_cancelled" : error instanceof DOMException && error.name === "TimeoutError" ? "processing_timeout" : null;
+    // The response budget can reject before the engine's abort handler settles. Retain that known boundary
+    // without delaying teardown for the model or pretending the provider itself reported an error.
+    if (!engineFailure && cancellation && enginePacket && !engineAnswerReceived) {
+      engineFailure = await callingEngineFailureEvidence(error, "engine_wait", enginePacket, args.signal,
+        Date.now() - times["model_start"]!);
+    }
     return failure(cancellation ?? "cognitive_turn_unavailable");
   } finally {
     if (lease?.state === "admitted") {
       times["response_complete"] = Date.now();
       // Media timings describe the previous sequence. Absence is unknown, never inferred playback.
       void record("telemetry", { version: BRIDGE_VERSION, packet_id: packetId, revision: lease.revision,
-        generation: lease.generation, timings: times, engine: metadata, asr_runtime: asrRuntime, recovery, cancellation, contract_repair: contractRepair,
+        generation: lease.generation, timings: times, engine: metadata, engine_failure: engineFailure,
+        asr_runtime: asrRuntime, recovery, cancellation, contract_repair: contractRepair,
         media_evidence: args.payload.media_metrics ?? null, speech_end_timestamp: null,
         playback: "requires_gateway_evidence" }).catch(() => undefined);
     }
