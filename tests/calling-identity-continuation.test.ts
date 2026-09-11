@@ -48,6 +48,64 @@ async function nameAnswer(f: Awaited<ReturnType<typeof runtime>>) {
 }
 
 describe("latest Founder call and bounded identity continuation", () => {
+  it.each(["Saya Dato' Rizal, saya nak cek tempahan saya lah.", "Saya Dato’ Rizal nak cek tempahan saya.", "Nama saya Datuk Rizal. Saya nak cek tempahan."])("extracts an evidence-bound name from combined intent: %s", async text => {
+    const f = await runtime(); await f.wire(1); f.setText(text);
+    const result = await f.wire(2); const p = lastPacket(f);
+    const stated = p.evidence.find(e => e.id.startsWith("caller_name:"));
+    expect(stated).toMatchObject({ authority: "caller_statement", verification: "stated", value: { identity_verified: false } });
+    expect(text).toContain((stated!.value as {text:string}).text);
+    expect(p.dialogue?.topic).toBe("booking");
+    expect(p.evidence.find(e => e.id === "runtime:identity_continuation")?.value).toMatchObject({ narrowed_candidate_count: 1, name_received: true });
+    expect(p.person.identity_refs).toEqual([]); expect(p.business.booking_refs).toEqual([]); expect(p.business.quotation_refs).toEqual([]);
+    expect(result.speech_text).toContain("Apakah nombor rujukan sebut harga yang diterima daripada agensi?");
+    expect(result.speech_text).not.toMatch(/nama penuh|macam mana/);
+    expect((await f.snapshot()).memory.objective.text).toBe(text);
+  });
+  it("recognizes only safe continuity from the exact tenant-bound WhatsApp thread", async () => {
+    const f = await runtime();
+    await f.pg.query("UPDATE conversations SET external_id='60123456789' WHERE id=$1", [businessIds.conversation]);
+    await f.pg.query("INSERT INTO messages(id,agency_id,conversation_id,sender,body) VALUES('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',$1,$2,'customer',$3)",
+      [binding.agencyId,businessIds.conversation,"Nama saya Dato' Rizal. Tempahan saya PRIVATE_BOOKING_PAYMENT_SECRET 29400."]);
+    await f.wire(1); f.setText("Saya Dato' Rizal, saya nak cek tempahan saya lah.");
+    const result = await f.wire(2); const p = lastPacket(f);
+    expect(result.speech_text).toBe("Dato', nombor WhatsApp ini ada sejarah perbualan dengan kami. Untuk teruskan pengesahan tempahan, Apakah nombor rujukan sebut harga yang diterima daripada agensi?");
+    expect(p.evidence.find(e => e.id === "runtime:whatsapp_recognition")?.value).toMatchObject({ prior_interaction: true, identity_verified: false, intent: "booking" });
+    expect(p.cross_channel_refs).toContain("runtime:whatsapp_recognition");
+    expect(p.evidence.find(e => e.id.startsWith("recognition_name:"))?.value).toEqual({ text: "Dato' Rizal", identity_verified: false });
+    expect(JSON.stringify(p)).not.toMatch(/PRIVATE_BOOKING_PAYMENT_SECRET|29400/);
+    expect(p.person.identity_refs).toEqual([]); expect(p.available_actions).toEqual([]); expect(p.business.quotation_refs).toEqual([]);
+    f.setText("Nombor Q-2026-0007."); const next = await f.wire(3);
+    expect(next.speech_text).not.toMatch(/\?|nama penuh/); expect(next.speech_text).toContain("saluran rasmi");
+    expect(lastPacket(f).person.identity_refs).toEqual([]); expect(send).not.toHaveBeenCalled();
+  });
+  it.each(["different tenant", "different number", "different channel", "ambiguous thread", "unmatched contact"])("withholds recognition for %s", async scenario => {
+    const f = await runtime();
+    await f.pg.query("UPDATE conversations SET external_id='60123456789' WHERE id=$1",[businessIds.conversation]);
+    await f.pg.query("INSERT INTO messages(id,agency_id,conversation_id,sender,body) VALUES('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',$1,$2,'customer','Nama saya Dato Rizal. PRIVATE_HISTORY')",[binding.agencyId,businessIds.conversation]);
+    if (scenario === "different tenant") await f.pg.exec("UPDATE conversations SET agency_id='99999999-9999-4999-8999-999999999999'");
+    if (scenario === "different number") await f.pg.exec("UPDATE conversations SET external_id='60999999999'");
+    if (scenario === "different channel") await f.pg.exec("UPDATE conversations SET channel='email'");
+    if (scenario === "unmatched contact") await f.pg.exec("UPDATE conversations SET lead_id='99999999-9999-4999-8999-999999999999'");
+    if (scenario === "ambiguous thread") await f.pg.query("INSERT INTO conversations(id,agency_id,lead_id,channel,last_message_at,external_id) VALUES('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',$1,$2,'whatsapp',now(),'60123456789')",[binding.agencyId,duplicate]);
+    await f.wire(1); f.setText("Saya Dato' Rizal, saya nak cek tempahan saya lah."); const response = await f.wire(2);
+    expect(lastPacket(f).cross_channel_refs).toEqual([]); expect(JSON.stringify(lastPacket(f))).not.toContain("PRIVATE_HISTORY");
+    expect(response.speech_text).not.toContain("sejarah perbualan"); expect(lastPacket(f).person.identity_refs).toEqual([]);
+  });
+  it("does not infer prior interaction from a thread with no retained customer messages", async () => {
+    const f = await runtime(); await f.pg.exec("UPDATE conversations SET external_id='60123456789'");
+    await f.wire(1); f.setText("Saya Dato' Rizal, saya nak cek tempahan saya lah."); await f.wire(2);
+    expect(lastPacket(f).cross_channel_refs).toEqual([]);
+  });
+  it("does not expose an unrelated name or arbitrary sensitive history through recognition", async () => {
+    const f = await runtime(); await f.pg.exec("UPDATE conversations SET external_id='60123456789'");
+    await f.pg.query("INSERT INTO messages(id,agency_id,conversation_id,sender,body) VALUES('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',$1,$2,'customer',$3)",
+      [binding.agencyId,businessIds.conversation,"Nama saya Private Person. PRIVATE_HISTORY payment 29400 api-key sk-secret"]);
+    await f.wire(1); f.setText("Saya Dato' Rizal, saya nak cek tempahan saya lah."); await f.wire(2);
+    const p = lastPacket(f);
+    expect(p.cross_channel_refs).toEqual(["runtime:whatsapp_recognition"]);
+    expect(JSON.stringify(p)).not.toMatch(/Private Person|PRIVATE_HISTORY|29400|sk-secret/);
+    expect(p.person.identity_refs).toEqual([]);
+  });
   it("reproduces both exact utterances with sanitized failure evidence and one useful next question", async () => {
     const f = await runtime(); const { first, second } = await nameAnswer(f);
     expect(first.speech_text).toContain("Apakah nama penuh yang digunakan untuk tempahan itu?");

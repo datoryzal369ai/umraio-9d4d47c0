@@ -7,7 +7,7 @@ export async function bridgeBusiness() {
     ALTER TABLE whatsapp_call_sessions ADD caller_phone text DEFAULT '60123456789', ADD ended_at timestamptz, ADD voice_intents jsonb, ADD renagi_signals jsonb;
     CREATE TABLE agency_settings(agency_id uuid,voice_persona text,voice_controls jsonb,voice_name text,voice_language text);
     CREATE TABLE leads(id uuid PRIMARY KEY,agency_id uuid,phone text,full_name text,do_not_contact boolean,stage text,preferred_language text,conversational_style text,package_interest text,pax int,updated_at timestamptz);
-    CREATE TABLE conversations(id uuid PRIMARY KEY,agency_id uuid,lead_id uuid,channel text,ai_enabled boolean,human_attention_required boolean,last_message_at timestamptz);
+    CREATE TABLE conversations(id uuid PRIMARY KEY,agency_id uuid,lead_id uuid,channel text,ai_enabled boolean,human_attention_required boolean,last_message_at timestamptz,external_id text);
     CREATE TABLE quotations(id uuid PRIMARY KEY,agency_id uuid,lead_id uuid,quotation_number text,status text,total numeric,deposit_amount numeric,number_of_pilgrims int,customer_name text,customer_phone text,package_id uuid,travel_month text,updated_at timestamptz,created_at timestamptz DEFAULT now(),public_token text,package_snapshot jsonb);
     CREATE TABLE bookings(id uuid PRIMARY KEY,agency_id uuid,lead_id uuid,status text,deposit_paid boolean,amount_myr numeric,balance_myr numeric,pax int,quotation_id uuid,package_id uuid,updated_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE activity_log(agency_id uuid,actor text,action text,entity text,entity_id text,meta jsonb);
@@ -15,7 +15,7 @@ export async function bridgeBusiness() {
     ALTER TABLE ai_tasks ADD lead_id uuid, ADD worker_key text, ADD title text, ADD requires_approval boolean, ADD origin text, ADD minutes_saved int, ADD started_at timestamptz, ADD completed_at timestamptz, ADD error text;
     ALTER TABLE messages ADD conversation_id uuid, ADD sender text, ADD body text, ADD modality text, ADD created_at timestamptz DEFAULT now();
     INSERT INTO leads(id,agency_id,phone,full_name,do_not_contact) VALUES('${businessIds.lead}','${binding.agencyId}','60123456789','Dato\u2019 Synthetic',false);
-    INSERT INTO conversations VALUES('${businessIds.conversation}','${binding.agencyId}','${businessIds.lead}','whatsapp',true,false,now());
+    INSERT INTO conversations(id,agency_id,lead_id,channel,ai_enabled,human_attention_required,last_message_at) VALUES('${businessIds.conversation}','${binding.agencyId}','${businessIds.lead}','whatsapp',true,false,now());
     INSERT INTO quotations(id,agency_id,lead_id,quotation_number,status,total,number_of_pilgrims,customer_name,customer_phone,public_token)
       VALUES('${businessIds.quotation}','${binding.agencyId}','${businessIds.lead}','Q-2026-0007','deposit_paid',29400,3,'Synthetic','60123456789','synthetic-document');
     INSERT INTO whatsapp_configs VALUES('${binding.agencyId}','synthetic-number','synthetic-key');`);

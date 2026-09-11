@@ -75,8 +75,34 @@ export type CallingEngineFailureEvidence = {
   failure_class: "PROVIDER_UNAVAILABLE" | "PROVIDER_HTTP_ERROR" | "PROVIDER_TIMEOUT" | "STRUCTURED_OUTPUT_PARSE"
     | "STRUCTURED_OUTPUT_BINDING" | "ENGINE_INTERNAL" | "REQUEST_CANCELLED";
   failure_type: string; provider_http_status: number | null; correlation_id: string; elapsed_ms: number;
+  provider_error_code: string | null; provider_error_type: string | null; provider_error_parameter: string | null;
+  provider_diagnostic: string | null;
   validation_stage: "before_semantic_validation"; cancelled: boolean; timed_out: boolean;
 };
+
+/** Provider strings are untrusted: emit fixed vocabulary, never a redacted copy of arbitrary prose. */
+function safeProviderDiagnostic(data: unknown) {
+  const empty = { provider_error_code: null, provider_error_type: null, provider_error_parameter: null, provider_diagnostic: null };
+  if (!data || typeof data !== "object") return empty;
+  const error = (data as { error?: unknown }).error;
+  if (!error || typeof error !== "object") return empty;
+  const e = error as Record<string, unknown>;
+  const allow = (value: unknown, values: string[]) => typeof value === "string" && values.includes(value) ? value : null;
+  const code = allow(e["code"], ["invalid_json_schema", "invalid_request_error", "unsupported_parameter", "unsupported_value", "invalid_parameter",
+    "model_not_found", "context_length_exceeded", "rate_limit_exceeded", "insufficient_quota", "server_error", "invalid_api_key"]);
+  const type = allow(e["type"], ["invalid_request_error", "authentication_error", "permission_error", "rate_limit_error", "server_error", "insufficient_quota"]);
+  const parameter = allow(e["param"], ["text.format", "text.format.schema", "response_format", "response_format.json_schema.schema", "model", "tools",
+    "tool_choice", "temperature", "top_p", "max_output_tokens", "store", "reasoning.effort", "reasoning.summary", "input"]);
+  let diagnostic = code === "invalid_json_schema" ? "Provider rejected the structured-output schema."
+    : code === "unsupported_parameter" ? "Provider rejected an unsupported request parameter."
+    : code || type || parameter ? "Provider rejected the request; diagnostic content withheld." : null;
+  // Only static contract field names can be mentioned. Packet IDs, quotes, enums and values cannot escape.
+  if (code === "invalid_json_schema" && typeof e["message"] === "string" && e["message"].length <= 8192) {
+    const missing = /Missing '([a-z_]+)'/.exec(e["message"])?.[1];
+    if (missing && Object.hasOwn(cognitiveDecisionSchema.shape, missing)) diagnostic += ` Missing required field: ${missing}.`;
+  }
+  return { provider_error_code: code, provider_error_type: type, provider_error_parameter: parameter, provider_diagnostic: diagnostic?.slice(0, 200) ?? null };
+}
 
 /** Error messages, request/response bodies, headers, causes and Zod issues never leave this boundary. */
 export async function callingEngineFailureEvidence(error: unknown, stage: CallingFailureStage,
@@ -84,7 +110,7 @@ export async function callingEngineFailureEvidence(error: unknown, stage: Callin
   const allowedNames = new Set(["Error", "TypeError", "SyntaxError", "AbortError", "TimeoutError", "ZodError",
     "AI_APICallError", "AI_LoadAPIKeyError", "AI_NoSuchModelError", "AI_NoSuchProviderError", "AI_RetryError",
     "AI_NoObjectGeneratedError", "AI_NoOutputGeneratedError", "AI_JSONParseError", "AI_TypeValidationError", "AI_InvalidResponseDataError"]);
-  const chain: Array<{ name?: unknown; statusCode?: unknown; code?: unknown; cause?: unknown }> = [];
+  const chain: Array<{ name?: unknown; statusCode?: unknown; code?: unknown; cause?: unknown; data?: unknown }> = [];
   let cause = error;
   for (let i = 0; i < 4 && cause && typeof cause === "object"; i++) {
     if (chain.includes(cause)) break;
@@ -113,6 +139,7 @@ export async function callingEngineFailureEvidence(error: unknown, stage: Callin
     packet.identity.sessionId, packet.identity.sequence, packet.identity.generation,
   ])));
   return { failure_stage: stage, failure_class: classification, failure_type: type, provider_http_status: status,
+    ...safeProviderDiagnostic(http?.data),
     correlation_id: Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join(""),
     elapsed_ms: Math.max(0, Math.round(elapsedMs)), validation_stage: "before_semantic_validation",
     cancelled, timed_out: timedOut };
@@ -141,7 +168,9 @@ export const currentCallingEngine: CognitiveEngine = {
         const handle = adapter.model(config.model, "reasoning");
         const providerOptions = adapter.requestOptions("reasoning");
         stage = "generation_schema";
-        const output = Output.object({ schema: callingGenerationSchema(packet) });
+        // OpenAI strict Structured Outputs requires every property in `required`. The shared
+        // semantic contract stays backward-compatible; only the generation wire shape is required/null.
+        const output = Output.object({ schema: callingGenerationSchema(packet).required({ clarification: true }) });
         stage = "provider_request";
         return generateText({ model: handle, providerOptions: providerOptions as never, output,
       system: [buildVoiceSystemPrompt({ agencyName: null, preferredLanguage: packet.person.language, isGreeting: false, callerPhone: null }),

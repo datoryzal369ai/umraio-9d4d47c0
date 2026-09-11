@@ -33,6 +33,30 @@ async function failure(p = packet()) {
 }
 
 describe("sanitized engine failures, without a provider request or retry", () => {
+  it("retains an allowlisted provider rejection without any quoted private content", async () => {
+    const e = apiError(400);
+    Object.assign(e, { data: { error: { code: "invalid_json_schema", type: "invalid_request_error", param: "text.format.schema",
+      message: `Invalid schema. Missing 'clarification'. ${privateValue} authorization: Bearer private-token user@example.invalid +60123456789` } } });
+    mocks.generate.mockRejectedValue(e);
+    expect((await failure()).failure).toMatchObject({ provider_error_code: "invalid_json_schema", provider_error_type: "invalid_request_error",
+      provider_error_parameter: "text.format.schema", provider_diagnostic: "Provider rejected the structured-output schema. Missing required field: clarification." });
+  });
+  it.each(["code", "type", "param", "message"])("does not copy arbitrary provider %s text", async field => {
+    const e = apiError(400); Object.assign(e, { data: { error: { [field]: privateValue } } }); mocks.generate.mockRejectedValue(e);
+    const result = (await failure()).failure;
+    expect(result).toMatchObject({ provider_error_code: null, provider_error_type: null, provider_error_parameter: null, provider_diagnostic: null });
+  });
+  it("withholds unknown schema paths and missing fields, including names embedded in provider messages", async () => {
+    const e = apiError(400); Object.assign(e, { data: { error: { code: "invalid_json_schema", type: "invalid_request_error",
+      param: `text.format.schema.${privateValue}`, message: `Missing '${privateValue}'.` } } }); mocks.generate.mockRejectedValue(e);
+    expect((await failure()).failure).toMatchObject({ provider_error_parameter: null, provider_diagnostic: "Provider rejected the structured-output schema." });
+  });
+  it("retains the safe unsupported-parameter category independently of schema rejection", async () => {
+    const e = apiError(400); Object.assign(e, { data: { error: { code: "unsupported_parameter", type: "invalid_request_error", param: "temperature", message: privateValue } } });
+    mocks.generate.mockRejectedValue(e);
+    expect((await failure()).failure).toMatchObject({ provider_error_code: "unsupported_parameter", provider_error_parameter: "temperature",
+      provider_diagnostic: "Provider rejected an unsupported request parameter." });
+  });
   it.each([400, 401, 429, 500, 503])("retains HTTP %i without request, output, header or message content", async status => {
     mocks.generate.mockRejectedValue(apiError(status));
     expect((await failure()).failure).toMatchObject({ failure_class: "PROVIDER_HTTP_ERROR", failure_stage: "provider_request",

@@ -1,4 +1,5 @@
 import { BRIDGE_VERSION, type CognitiveDecision, type CognitivePacket } from "./cognitive-bridge.contract";
+import { resolveAddress } from "./cognitive-router.core";
 
 /** A deterministic last boundary in addition to semantic claim_requests. */
 export function unsupportedActionSpeech(text: string): boolean {
@@ -53,9 +54,18 @@ export function callingContractRecovery(packet: CognitivePacket): CognitiveDecis
   const social = /\b(?:apa khabar|sihat|how are you)\b/i.test(current);
   const apology = dialogue?.correction ? (en ? "Sorry, I misunderstood earlier. " : "Maaf, saya tersalah faham tadi. ") : "";
   const used = [...(dialogue?.source_refs ?? [])];
+  const recognition = packet.evidence.find(e => e.id === "runtime:whatsapp_recognition" && e.authority === "runtime"
+    && e.verification === "verified" && (e.value as {prior_interaction?: boolean})?.prior_interaction === true);
+  const name = packet.evidence.find(e => e.id.startsWith("caller_name:") && e.authority === "caller_statement" && e.verification === "stated")
+    ?? packet.evidence.find(e => e.id.startsWith("recognition_name:") && e.authority === "caller_statement" && e.verification === "stated");
+  const honorific = name ? resolveAddress((name.value as {text?: string})?.text).honorific : null;
+  const recognitionIntro = recognition ? (honorific ? `${honorific}, ` : "") + (en
+    ? "this WhatsApp number has a previous conversation with us. " : "nombor WhatsApp ini ada sejarah perbualan dengan kami. ") : "";
   const claims: CognitiveDecision["claim_requests"] = [];
   let spoken = callingRecovery(packet.person.language);
-  if (ask) spoken = apology + (ask.fact === "caller_identity" && identity?.name_received
+  if (ask) spoken = apology + (recognition && ask.fact === "caller_identity"
+    ? recognitionIntro + (en ? "To continue booking verification, " : "Untuk teruskan pengesahan tempahan, ")
+    : ask.fact === "caller_identity" && identity?.name_received
     ? (en ? "Thank you, I have your stated name. To continue verification, " : "Terima kasih, nama sudah saya terima. Untuk teruskan pengesahan, ")
     : dialogue?.topic === "booking" && ask.fact !== "completion" ? (en ? "About the booking status. " : "Tentang status tempahan tadi. ") : "") + ask.question;
   else if (social) spoken = en ? "I am ready to help, thank you for asking." : "Saya sedia membantu, terima kasih kerana bertanya.";
@@ -87,6 +97,11 @@ export function callingContractRecovery(packet: CognitivePacket): CognitiveDecis
     }
   } else if (dialogue?.correction) spoken = apology + (en ? "I will not ask you to repeat the same explanation." : "Tidak perlu ulang penjelasan yang sama.");
   else if (/\b(?:assalamualaikum|salam|hello|hi)\b/i.test(current)) spoken = en ? "Hello, I am here to help." : "Salam, saya sedia membantu.";
+  if (recognition) {
+    if (!spoken.includes(recognitionIntro)) spoken = recognitionIntro + spoken;
+    used.push(recognition.id);
+    if (name && honorific) used.push(name.id);
+  }
   const quote = current.slice(0, 500);
   const memory = { text: quote, evidence_quote: quote, source_refs: [`caller:${packet.identity.caller_turn_id}`] };
   return {

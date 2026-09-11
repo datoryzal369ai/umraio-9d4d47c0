@@ -22,7 +22,8 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
   const matches = contacts.filter(lead => phone(lead.phone ?? "") === phone(input.callerPhone));
   const lead = matches.length === 1 ? matches[0] : null;
   if (!lead) return { lead: null, conversations: [], quotations: [], bookings: [], messages: [], previousCalls: [], identityConflict: matches.length > 1,
-    identityKey: matches.map(m => String(m.id)).sort().join("|") || "unmatched", identityCandidates: matches };
+    identityKey: matches.map(m => String(m.id)).sort().join("|") || "unmatched", identityCandidates: matches,
+    recognition: await loadCallingRecognition(db, input, matches) };
   const results = await Promise.all([
     scoped("conversations", "id,lead_id,channel,ai_enabled,human_attention_required,last_message_at").eq("lead_id", lead.id).eq("channel", "whatsapp").order("last_message_at", { ascending: false }).limit(2).abortSignal(input.signal),
     scoped("quotations", "id,quotation_number,status,total,deposit_amount,number_of_pilgrims,customer_name,customer_phone,package_id,package_snapshot,travel_month,updated_at")
@@ -40,7 +41,41 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
 }
 export type CallingRecords = { lead: any; conversations: any[]; quotations: any[]; bookings: any[]; messages: any[];
   previousCalls: any[]; identityConflict: boolean; identityKey?: string; identityCandidates?: any[];
-  identityContinuation?: IdentityContinuation };
+  identityContinuation?: IdentityContinuation; nameEvidence?: { text: string; caller: CallerTurn };
+  recognition?: CallingRecognition | null };
+
+type CallingRecognition = { conversation_id: string; observed_at: string | null; language: string | null;
+  caller_name: { text: string; message_id: string; recorded_at: string | null } | null;
+  intent: "booking" | "umrah" | null };
+
+/** Only an exact, tenant-bound WhatsApp thread may supply recognition before record authorization.
+ * Never return raw messages, contact IDs, bookings, quotations, payments or arbitrary conversation summaries.
+ * Absence, ambiguity and lookup failure leave recognition unknown; they cannot authorize a contact.
+ */
+async function loadCallingRecognition(db: CallingDb, input: { binding: CallingBinding; callerPhone: string; signal: AbortSignal }, candidates: any[]): Promise<CallingRecognition | null> {
+  if (!candidates.length) return null;
+  try {
+    const normalized = phone(input.callerPhone);
+    const threads = rows(await db.from("conversations").select("id,lead_id,external_id,last_message_at")
+      .eq("agency_id", input.binding.agencyId).eq("channel", "whatsapp")
+      .in("external_id", [normalized, `+${normalized}`]).limit(2).abortSignal(input.signal));
+    if (threads.length !== 1 || !threads[0].last_message_at) return null;
+    const thread = threads[0];
+    const candidate = candidates.find(c => c.id === thread.lead_id);
+    if (!candidate || phone(thread.external_id) !== normalized) return null;
+    const messages = rows(await db.from("messages").select("id,body,created_at")
+      .eq("agency_id", input.binding.agencyId).eq("conversation_id", thread.id).eq("sender", "customer")
+      .order("created_at", { ascending: false }).limit(8).abortSignal(input.signal));
+    if (!messages.length) return null;
+    const named = messages.map(m => ({ message: m, name: extractCallingName(String(m.body ?? "").slice(0, 1200), false) }))
+      .find(m => m.name && identityName(m.name) === identityName(String(candidate.full_name ?? "")));
+    return { conversation_id: thread.id, observed_at: thread.last_message_at,
+      language: ["ms", "ms-MY", "en", "en-MY"].includes(candidate.preferred_language) ? candidate.preferred_language : null,
+      caller_name: named?.name ? { text: named.name, message_id: named.message.id, recorded_at: named.message.created_at ?? null } : null,
+      intent: messages.some(m => bookingTopic.test(String(m.body ?? "").slice(0, 1200))) ? "booking"
+        : messages.some(m => /\bumrah\b/i.test(String(m.body ?? "").slice(0, 1200))) ? "umrah" : null };
+  } catch { input.signal.throwIfAborted(); return null; }
+}
 
 type IdentityContinuation = { candidate_key: string; name_source_ref: string; narrowed_ids: string[];
   reference_source_ref: string | null; step: "reference" | "agency" };
@@ -48,6 +83,16 @@ const identityName = (text: string) => text.normalize("NFKC").toLocaleLowerCase(
   .replace(/^(?:nama saya|my name is|saya(?: ni| ini)?)\s+/u, "")
   .replace(/^(?:(?:datuk|dato['’]?|encik|puan|tuan|haji|hajah)\s+)+/u, "")
   .replace(/[.!?]+$/u, "").replace(/\s+/gu, " ").trim();
+
+/** Extract only a caller-stated name span; the rest of the utterance remains authoritative intent evidence. */
+function extractCallingName(text: string, standalone: boolean): string | null {
+  const explicit = /\b(?:nama saya|my name is)\s+([^,;:.!?\n]+)|\bsaya(?: ni| ini)?\s+((?:datuk|dato['’]?|encik|puan|tuan|haji|hajah)\s+[^,;:.!?\n]+)/iu.exec(text);
+  const span = (explicit?.[1] ?? explicit?.[2] ?? (standalone ? text : ""))
+    .split(/\s+(?:saya|nak|ingin|mahu|hendak|dan|and|want|would)\b/iu)[0]!.replace(/[.!?]+$/u, "").trim();
+  if (!span || span.length > 80 || span.split(/\s+/u).length > 6 || !/^[\p{L}\p{M}'’ -]+$/u.test(span)
+    || /\b(?:bukan|not|tempahan|tembahan|booking|quotation|tanya|faham|rekod|cek)\b/iu.test(span)) return null;
+  return text.includes(span) ? span : null;
+}
 
 /** Narrow routing candidates only. Names and guessable Q references NEVER grant record access.
  * The unchanged, tenant-scoped unique-phone resolver above remains the verification authority.
@@ -64,17 +109,14 @@ export async function continueCallingIdentity(db: CallingDb, records: CallingRec
     && previous.name_source_ref.startsWith("caller:") && Array.isArray(previous.narrowed_ids) ? previous : undefined;
   const nameOffer = priorClarificationOffers(state, caller.sequence).find(o => o.fact === "caller_identity"
     && o.key === `caller_identity:${key}`);
-  const nameTurn = [...state.callers, caller].sort((a,b) => b.sequence-a.sequence).find(t => {
-    const text = t.transcript.trim();
-    if (!text || text.length > 160 || /\?|\b(?:tempahan|tembahan|booking|quotation|tanya|faham|rekod)\b/i.test(text)) return false;
-    return candidates.some(c => identityName(String(c.full_name ?? "")) === identityName(text))
-      || /^(?:nama saya|my name is|saya (?:ni |ini )?(?:datuk|dato|encik|puan|tuan|haji|hajah))\b/i.test(text)
-      || !!nameOffer && t.sequence === nameOffer.sequence + 1 && text.split(/\s+/).length <= 6;
-  });
+  const named = [...state.callers, caller].sort((a,b) => b.sequence-a.sequence).map(t => ({ caller: t,
+    text: extractCallingName(t.transcript, candidates.some(c => identityName(String(c.full_name ?? "")) === identityName(t.transcript))
+      || !!nameOffer && t.sequence === nameOffer.sequence + 1) })).find(t => t.text);
+  const nameTurn = named?.caller;
   if (!nameTurn && !retained) return records;
   const sameName = !nameTurn || `caller:${nameTurn.id}` === retained?.name_source_ref;
   const narrowed = retained && sameName ? candidates.filter(c => retained.narrowed_ids.includes(String(c.id)))
-    : candidates.filter(c => identityName(String(c.full_name ?? "")) === identityName(nameTurn!.transcript));
+    : candidates.filter(c => identityName(String(c.full_name ?? "")) === identityName(named!.text!));
   const continuation: IdentityContinuation = { candidate_key: key,
     name_source_ref: nameTurn ? `caller:${nameTurn.id}` : retained!.name_source_ref,
     narrowed_ids: narrowed.map(c => String(c.id)), reference_source_ref: sameName ? retained?.reference_source_ref ?? null : null, step: "agency" };
@@ -87,14 +129,15 @@ export async function continueCallingIdentity(db: CallingDb, records: CallingRec
       .in("lead_id", continuation.narrowed_ids);
     let matches: any[];
     try { matches = rows(await (refs.length === 1 ? query.eq("quotation_number", refs[0]) : query).limit(3).abortSignal(signal)); }
-    catch { signal.throwIfAborted(); return { ...records, identityContinuation: continuation }; }
+    catch { signal.throwIfAborted(); return { ...records, identityContinuation: continuation,
+      ...(named?.text ? { nameEvidence: { text: named.text, caller: named.caller } } : {}) }; }
     if (referenceTurn) {
       continuation.reference_source_ref = `caller:${referenceTurn.id}`;
       if (refs.length === 1) continuation.narrowed_ids = [...new Set(matches.map(q => String(q.lead_id)))];
     } else if (matches.length) continuation.step = "reference";
   }
   // Even one name/reference match is not independently verified identity. No lead, business data or action is released.
-  return { ...records, identityContinuation: continuation };
+  return { ...records, identityContinuation: continuation, ...(named?.text ? { nameEvidence: { text: named.text, caller: named.caller } } : {}) };
 }
 
 /** Reuse the caller's most recent explicit reference; it does not establish customer identity. */
@@ -107,7 +150,6 @@ export function callingSelectionText(s: BridgeSnapshot, current: string): string
 
 const bookingTopic = /\b(?:tempahan|tembahan|booking|quotation|sebut harga|deposit|status saya|my (?:booking|status))\b/i;
 const socialTurn = /\b(?:apa khabar|sihat|how are you)\b/i;
-const namedCaller = /\b(?:nama saya|my name is|saya (?:ni |ini )?(?:datuk|dato|encik|puan|tuan|haji|hajah))\b/i;
 
 export function priorClarificationOffers(s: BridgeSnapshot, sequence: number): ClarificationOffer[] {
   const previous = [...s.events].filter(e => e.kind === "proposal" && e.sequence < sequence).sort((a,b) => b.sequence-a.sequence)[0];
@@ -144,7 +186,7 @@ function callingDialogue(s: BridgeSnapshot, caller: CallerTurn, records: Calling
   const prior = offered.find(o => o.key === key);
   const responseReceived = !!prior && ordered.some(c => c.sequence > prior.sequence)
     || fact === "caller_identity" && (identityStep ? !!identityStep.reference_source_ref || identityStep.step === "agency"
-      : ordered.some(c => namedCaller.test(c.transcript)))
+      : ordered.some(c => extractCallingName(c.transcript, false) !== null))
     || fact === "booking_reference" && ordered.some(c => /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(c.transcript));
   const questions = {
     caller_identity: identityStep
@@ -210,6 +252,8 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     name_received: true, next_step: r.identityContinuation.step, reference_received: !!r.identityContinuation.reference_source_ref,
     narrowed_candidate_count: r.identityContinuation.narrowed_ids.length }, "calling_bridge_events", binding.sessionId,
     "identity_continuation", "runtime", "verified", null, "runtime");
+  if (r.nameEvidence) add(`caller_name:${r.nameEvidence.caller.id}`, { text: r.nameEvidence.text, identity_verified: false },
+    "calling_caller_turns", r.nameEvidence.caller.id, "transcript", "caller_statement", "stated", r.nameEvidence.caller.persisted_at, "caller");
   const selectionText = callingSelectionText(s, caller.transcript);
   const refs = Array.from(new Set(selectionText.match(/\bQ-[A-Z0-9]+-[A-Z0-9]+\b/gi)?.map(x => x.toUpperCase()) ?? []));
   const requested = refs.length === 1 ? r.quotations.find(q => String(q.quotation_number).toUpperCase() === refs[0]) : null;
@@ -237,6 +281,15 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     || ["sent", "delivered", "read"].includes(m.delivery_status)).map(m => add(`messages:${m.id}`, { text: String(m.body ?? "").slice(0, 320),
       modality: m.modality, sender: m.sender }, "messages", m.id, "body", m.sender === "customer" ? "caller_statement" : "historical_claim",
       m.sender === "customer" ? "stated" : "unverified", m.created_at ?? null, "message"));
+  if (r.recognition) {
+    const recognition = r.recognition;
+    crossRefs.push(add("runtime:whatsapp_recognition", { prior_interaction: true, identity_verified: false,
+      language: recognition.language, intent: recognition.intent }, "conversations", recognition.conversation_id,
+      "external_id", "runtime", "verified", recognition.observed_at, "runtime"));
+    if (recognition.caller_name) crossRefs.push(add(`recognition_name:${recognition.caller_name.message_id}`,
+      { text: recognition.caller_name.text, identity_verified: false }, "messages", recognition.caller_name.message_id,
+      "body", "caller_statement", "stated", recognition.caller_name.recorded_at, "message"));
+  }
   for (const prior of r.previousCalls.slice(0, 2)) if (prior.call_id !== binding.callId && prior.call_summary) {
     crossRefs.push(add(`prior_call:${prior.id}`, String(prior.call_summary).slice(0, 320), "whatsapp_call_sessions", prior.id, "call_summary",
       "historical_claim", "unverified", prior.ended_at ?? null, "message"));
