@@ -19,7 +19,7 @@ release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 release.SHA = 'f3e3b3c7cd371a41c0ed739bf9e5a7a7f402bf85'
 release.BASE = 'b5c9f4ebc720a76d05b1d3ccb0dbbc4ec79029fc'
-WORKER = '1c92ce16e7f98687af1901320b4afa13935fe693'
+WORKER = '0e55ac4a224f4a70bea5654fe1e7ce8d548d9484'
 
 
 def git(*args):
