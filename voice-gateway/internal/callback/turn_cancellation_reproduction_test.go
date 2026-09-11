@@ -80,7 +80,7 @@ func cancellationAwait[T any](t *testing.T, c <-chan T) T {
 	return zero
 }
 
-func TestCancellationHTTPTransientVADDisconnectsPendingWorker(t *testing.T) {
+func TestCancellationHTTPOnlyQualifiedVADDisconnectsPendingWorker(t *testing.T) {
 	for _, headers := range []bool{false, true} {
 		name := "before_response_headers"
 		if headers {
@@ -156,7 +156,20 @@ func TestCancellationHTTPTransientVADDisconnectsPendingWorker(t *testing.T) {
 				t.Fatal("two-frame activity cancelled request")
 			default:
 			}
-			push(1, 40) // no finalization, no new HTTP request, just third VAD frame
+			push(1, 40) // third frame is provisional, not authority to abort HTTP
+			select {
+			case <-client.result:
+				t.Fatal("short VAD cancelled the valid Worker request")
+			default:
+			}
+			push(35, 3)  // discard the pulse; no replacement request
+			push(15, 40) // 300ms is still provisional
+			select {
+			case <-client.result:
+				t.Fatal("cancelled before sufficient speech evidence")
+			default:
+			}
+			push(1, 40) // 320ms qualifies; still before utterance finalization
 			if err := cancellationAwait(t, cancelled); !errors.Is(err, context.Canceled) {
 				t.Fatalf("server request cause: %v", err)
 			}

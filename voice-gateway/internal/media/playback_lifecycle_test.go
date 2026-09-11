@@ -143,7 +143,7 @@ func TestPlaybackLifecyclePreparationCancellationPreventsHandoff(t *testing.T) {
 				time.Sleep(5 * time.Second) // synthesis is in flight, no playable packets yet
 				synctest.Wait()
 				if cause == "barge_in" {
-					pushSpeech(p, p.cfg.VAD.StartFrames)
+					pushSpeech(p, (p.cfg.VAD.MinUtteranceMs+p.cfg.VAD.FrameMs-1)/p.cfg.VAD.FrameMs) // qualified interruption; retain cancellation assertions
 				} else {
 					p.Close("caller_terminated")
 				}
@@ -170,7 +170,7 @@ func TestPlaybackLifecycleCancellationAfterProcessingDeadline(t *testing.T) {
 				before := tr.count()
 				switch cause {
 				case "barge_in":
-					pushSpeech(p, p.cfg.VAD.StartFrames)
+					pushSpeech(p, (p.cfg.VAD.MinUtteranceMs+p.cfg.VAD.FrameMs-1)/p.cfg.VAD.FrameMs) // qualified interruption; retain cancellation assertions
 				case "caller_teardown", "explicit_termination":
 					p.Close(cause)
 				case "session_cancel":

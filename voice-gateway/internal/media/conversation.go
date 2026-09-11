@@ -158,10 +158,12 @@ type ConversationPipeline struct {
 	// A size-limited VAD segment is not a conversational end-of-speech.
 	// Keep caller ownership across resets until the existing silence threshold.
 	callerQuiet chan struct{}
-	silenceMs   int
-	speaking    bool
-	cancelTTS   chan struct{}
-	bargeIns    int
+	// Provisional activity pauses speech eligibility, not request ownership.
+	provisionalQuiet chan struct{}
+	silenceMs        int
+	speaking         bool
+	cancelTTS        chan struct{}
+	bargeIns         int
 
 	// Instrumentation only — never influences conversational behaviour.
 	now          func() time.Time
@@ -308,21 +310,31 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 		close(p.callerQuiet)
 		p.callerQuiet = nil
 	}
+	wasQualified := p.seg.Qualified()
 	event, utterance := p.seg.Push(frame)
-	switch event {
-	case VADSpeechStart:
+	// A qualifying frame can also hit the maximum segment boundary. An
+	// accepted final segment proves qualification even after Segmenter reset.
+	qualifiedNow := !wasQualified && (p.seg.Qualified() || event == VADUtteranceEnd)
+	if event == VADSpeechStart && !qualifiedNow && p.provisionalQuiet == nil {
+		p.provisionalQuiet = make(chan struct{})
+	}
+	if qualifiedNow {
 		p.generation++
 		if p.cancelTurn != nil {
 			p.cancelTurn()
 		}
 		if p.speaking {
-			// BARGE-IN: stop talking over the caller, immediately.
+			// Qualified interruption: retire playback and stale work once.
 			p.stopPlaybackLocked("barge_in")
 			p.bargeIns++
-			p.mu.Unlock()
 			p.logger.Info("barge_in", "call_id", p.callID)
-			return
 		}
+	}
+	if (qualifiedNow || event == VADDiscarded || event == VADUtteranceEnd) && p.provisionalQuiet != nil {
+		close(p.provisionalQuiet)
+		p.provisionalQuiet = nil
+	}
+	switch event {
 	case VADUtteranceEnd:
 		if p.client == nil || !p.accepted || p.turns >= p.cfg.MaxTurns {
 			p.mu.Unlock()
@@ -505,7 +517,7 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st 
 	}
 	// Admit only prepared, current audio while the processing budget is valid.
 	// Waiting for caller silence is still preparation, not detached playback.
-	if len(packets) == 0 || !p.waitForCallerQuiet(tctx, st.generation) || tctx.Err() != nil {
+	if len(packets) == 0 || !p.waitForSpeechEligibility(tctx, st.generation) || tctx.Err() != nil {
 		return ""
 	}
 	// Playback belongs to the live turn/session, not its spent processing
@@ -527,20 +539,49 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st 
 	return ""
 }
 
-// play streams reply packets at real time and stops the instant a barge-in,
+// Pending work survives provisional activity under its existing deadline.
+// A rejected segment reopens eligibility; qualification invalidates generation.
+func (p *ConversationPipeline) waitForSpeechEligibility(ctx context.Context, generation uint64) bool {
+	if !p.waitForCallerQuiet(ctx, generation) {
+		return false
+	}
+	for {
+		p.mu.Lock()
+		valid := !p.closed && p.generation == generation && ctx.Err() == nil
+		quiet := p.provisionalQuiet
+		p.mu.Unlock()
+		if !valid || quiet == nil {
+			return valid
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-quiet:
+		}
+	}
+}
+
+// play streams reply packets at real time and stops the instant a qualified barge-in,
 // termination or context cancellation occurs.
 func (p *ConversationPipeline) playTurn(ctx context.Context, packets [][]byte, generation uint64) (time.Time, bool) {
 	var firstAudioAt time.Time
 	if len(packets) == 0 {
 		return firstAudioAt, false
 	}
-	if !p.waitForCallerQuiet(ctx, generation) {
-		return firstAudioAt, false
-	}
-	p.mu.Lock()
-	if p.closed || p.transport == nil || p.seg.Speaking() || p.generation != generation || ctx.Err() != nil {
-		p.mu.Unlock()
-		return firstAudioAt, false
+	for {
+		if !p.waitForSpeechEligibility(ctx, generation) {
+			return firstAudioAt, false
+		}
+		p.mu.Lock()
+		if p.provisionalQuiet != nil { // activity raced the eligibility check
+			p.mu.Unlock()
+			continue
+		}
+		if p.closed || p.transport == nil || p.seg.Speaking() || p.generation != generation || ctx.Err() != nil {
+			p.mu.Unlock()
+			return firstAudioAt, false
+		}
+		break // hold mu until playback ownership is installed
 	}
 	cancelCh := make(chan struct{})
 	p.cancelTTS = cancelCh
@@ -562,6 +603,15 @@ func (p *ConversationPipeline) playTurn(ctx context.Context, packets [][]byte, g
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for _, packet := range packets {
+		waitStarted := time.Now()
+		if !p.waitForSpeechEligibility(ctx, generation) {
+			return firstAudioAt, false
+		}
+		if time.Since(waitStarted) >= interval {
+			// A provisional pause must not release an overdue tick and burst
+			// consecutive packets when the retained playback resumes.
+			ticker.Reset(interval)
+		}
 		select {
 		case <-ctx.Done():
 			return firstAudioAt, false
@@ -583,7 +633,7 @@ func (p *ConversationPipeline) playTurn(ctx context.Context, packets [][]byte, g
 		case <-ticker.C:
 		}
 	}
-	return firstAudioAt, true
+	return firstAudioAt, p.waitForSpeechEligibility(ctx, generation)
 }
 
 // recordTurnMetrics stores the media-plane timings of the turn that just
@@ -655,6 +705,10 @@ func (p *ConversationPipeline) Close(reason string) {
 	p.ackCache = nil
 	p.stopPlaybackLocked(reason)
 	p.seg.Reset()
+	if p.provisionalQuiet != nil {
+		close(p.provisionalQuiet)
+		p.provisionalQuiet = nil
+	}
 	cancel := p.cancel
 	p.mu.Unlock()
 	if cancel != nil {

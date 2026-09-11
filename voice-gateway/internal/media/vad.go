@@ -53,7 +53,7 @@ func (c VADConfig) normalized() VADConfig {
 	if c.EndSilenceMs <= 0 {
 		c.EndSilenceMs = d.EndSilenceMs
 	}
-	if c.MinUtteranceMs < 0 {
+	if c.MinUtteranceMs <= 0 {
 		c.MinUtteranceMs = d.MinUtteranceMs
 	}
 	if c.MaxUtteranceMs <= 0 {
@@ -71,7 +71,7 @@ type VADEvent int
 const (
 	// VADNone: nothing observable changed.
 	VADNone VADEvent = iota
-	// VADSpeechStart: the caller just started speaking (barge-in trigger).
+	// VADSpeechStart: provisional activity; not yet an interruption.
 	VADSpeechStart
 	// VADUtteranceEnd: a complete, long-enough utterance is available.
 	VADUtteranceEnd
@@ -99,6 +99,8 @@ type Segmenter struct {
 	buffered   [][]byte
 	preroll    [][]byte
 	durationMs int
+	speechMs   int
+	qualified  bool
 }
 
 func NewSegmenter(cfg VADConfig) *Segmenter {
@@ -122,6 +124,10 @@ func (s *Segmenter) Config() VADConfig { return s.cfg }
 // Speaking reports whether an utterance is currently open.
 func (s *Segmenter) Speaking() bool { return s.inSpeech }
 
+// Qualified reports enough speech-sized frames in this segment to supersede
+// assistant work. Silence and elapsed buffering time are not speech evidence.
+func (s *Segmenter) Qualified() bool { return s.qualified }
+
 // Reset drops all buffered audio and returns to the listening state.
 func (s *Segmenter) Reset() {
 	s.lastSpeechAt = time.Time{}
@@ -131,6 +137,8 @@ func (s *Segmenter) Reset() {
 	s.buffered = nil
 	s.preroll = nil
 	s.durationMs = 0
+	s.speechMs = 0
+	s.qualified = false
 }
 
 // Push feeds one inbound Opus frame. When it returns VADUtteranceEnd the second
@@ -159,6 +167,8 @@ func (s *Segmenter) Push(frame OpusFrame) (VADEvent, [][]byte) {
 		s.inSpeech = true
 		s.buffered = append([][]byte{}, s.preroll...)
 		s.durationMs = len(s.buffered) * s.cfg.FrameMs
+		s.speechMs = s.durationMs // pre-roll consists of consecutive speech frames
+		s.qualified = s.speechMs >= s.cfg.MinUtteranceMs
 		s.preroll = nil
 		s.silenceRun = 0
 		return VADSpeechStart, nil
@@ -168,6 +178,8 @@ func (s *Segmenter) Push(frame OpusFrame) (VADEvent, [][]byte) {
 	s.durationMs += s.cfg.FrameMs
 	if isSpeech {
 		s.silenceRun = 0
+		s.speechMs += s.cfg.FrameMs
+		s.qualified = s.speechMs >= s.cfg.MinUtteranceMs
 	} else {
 		s.silenceRun++
 	}
@@ -187,12 +199,12 @@ func (s *Segmenter) clock() time.Time {
 }
 
 func (s *Segmenter) close(trailingSilenceMs int) (VADEvent, [][]byte) {
-	voicedMs := s.durationMs - trailingSilenceMs
+	qualified := s.qualified
 	utterance := s.buffered
 	speechEnd := s.lastSpeechAt
 	s.Reset()
 	s.speechEndAt = speechEnd
-	if voicedMs < s.cfg.MinUtteranceMs {
+	if !qualified {
 		return VADDiscarded, nil
 	}
 	return VADUtteranceEnd, utterance

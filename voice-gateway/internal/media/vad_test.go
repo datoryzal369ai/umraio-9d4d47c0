@@ -71,3 +71,41 @@ func TestVADConfigDefaultsAreApplied(t *testing.T) {
 		t.Fatalf("defaults not applied: %+v", seg.Config())
 	}
 }
+
+func TestVADQualificationRequiresSpeechEvidence(t *testing.T) {
+	seg := NewSegmenter(VADConfig{})
+	if seg.Config().MinUtteranceMs != 320 {
+		t.Fatal("zero config bypassed qualification")
+	}
+	ev, _ := frames(seg, 3, 40)
+	if ev != VADSpeechStart || seg.Qualified() {
+		t.Fatal("60ms must remain provisional")
+	}
+	frames(seg, 20, 3) // 400ms buffering is not additional speech evidence
+	if seg.Qualified() {
+		t.Fatal("silence qualified an interruption")
+	}
+	frames(seg, 12, 40)
+	if seg.Qualified() {
+		t.Fatal("300ms speech qualified too early")
+	}
+	frames(seg, 1, 40)
+	if !seg.Qualified() {
+		t.Fatal("320ms speech did not qualify promptly")
+	}
+	ev, audio := frames(seg, 35, 3)
+	if ev != VADUtteranceEnd || len(audio) == 0 || seg.Qualified() {
+		t.Fatal("qualified utterance lost or qualification did not reset")
+	}
+}
+
+func TestVADBufferedSilenceCannotTurnShortPulsesIntoValidUtterance(t *testing.T) {
+	seg := NewSegmenter(VADConfig{})
+	frames(seg, 3, 40)
+	frames(seg, 25, 3)
+	frames(seg, 3, 40) // 120ms total speech despite 620ms elapsed buffering
+	ev, audio := frames(seg, 35, 3)
+	if ev != VADDiscarded || audio != nil || seg.Qualified() {
+		t.Fatal("sparse short activity qualified by elapsed time instead of speech evidence")
+	}
+}
