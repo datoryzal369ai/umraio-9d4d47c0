@@ -44,12 +44,17 @@ it("uses one semantic invocation, durable caller evidence and only confirmed ass
 });
 it.each(["Ja","Skjab, skjab","Saya nak e-mel belum boleh hantar."])("clarifies uncertain input %s without entity writes",async text=>{
  const f=await runtime();await f.wire(1);f.setText(text);f.setDecision(async p=>decisionFixture(p,{interaction_mode:"CLARIFY",requires_clarification:true,spoken_response:"Maksudnya macam mana ya?"}));
- const result=await f.wire(2);expect(result.at(-1).speech_text).toBe("Maksudnya macam mana ya?");
+ const result=await f.wire(2);expect(result.at(-1).speech_text).toBe("Apakah perkara utama yang ingin ditanya?");
+ const proposal=(await f.snapshot()).events.find((e:{kind:string;sequence:number})=>e.kind==="proposal"&&e.sequence===2);
+ expect(proposal.payload.response_classification).toBe("GENUINE_CLARIFICATION_REQUIRED");
+ expect(proposal.payload.clarification.fact).toBe("caller_request");
  expect((await f.pg.query("SELECT full_name FROM leads")).rows[0].full_name).toBe("Dato’ Synthetic");
 });
 it.each(["Saya akan hantar quotation.","Quotation akan dihantar.","Pihak agensi akan uruskan.","Quotation sudah dibaca."])("blocks unsupported execution speech: %s",async speech=>{
  const f=await runtime();await f.wire(1);f.setDecision(async p=>decisionFixture(p,{spoken_response:speech}));
- const result=await f.wire(2);expect(result.at(-1).speech_text).not.toBe(speech);expect(result.at(-1).speech_text).toContain("Maksudnya");
+ const result=await f.wire(2);expect(result.at(-1).speech_text).not.toBe(speech);
+ expect(result.at(-1).speech_text).toBe("Saya sedia membantu, terima kasih kerana bertanya.");
+ expect(result.at(-1).speech_text).not.toContain("?");
 });
 it("delivers a real governed receipt before speaking completion",async()=>{
  const f=await runtime();await f.wire(1);f.setText("Hantar quotation sekarang dekat WhatsApp, boleh?");

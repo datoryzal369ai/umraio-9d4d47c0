@@ -1,5 +1,5 @@
 import { cognitiveDecisionSchema, type CognitiveDecision, type CognitivePacket } from "./cognitive-bridge.contract";
-import { claimsSupported } from "./call-speech-claims.core";
+import { claimsSupported, callingContractRecovery } from "./call-speech-claims.core";
 import { requestsQuotationSend, protectBookingAuthority } from "./call-executive.core";
 
 /** Safety vetoes only. Ordinary intent and completion are decided semantically. */
@@ -23,7 +23,7 @@ export function validateCallingDecision(raw: unknown, packet: CognitivePacket, c
   const byId = new Map(packet.evidence.map(item => [item.id, item]));
   const allRefs = [...d.authoritative_facts_used, ...d.uncertainties.flatMap(u => u.source_refs),
     ...(d.memory_update.objective?.source_refs ?? []), ...d.memory_update.corrections.flatMap(m => m.source_refs),
-    ...d.memory_update.open_questions.flatMap(m => m.source_refs)];
+    ...d.memory_update.open_questions.flatMap(m => m.source_refs), ...d.claim_requests.map(c => c.source_ref)];
   if (allRefs.some(id => !byId.has(id))) return { ok: false, reason: "invented_source" };
   if (d.authoritative_facts_used.some(id => ["unverified", "unknown", "conflicted"].includes(byId.get(id)!.verification))) return { ok: false, reason: "unverified_fact" };
   const currentText = packet.current_call.current_caller.transcript;
@@ -31,7 +31,24 @@ export function validateCallingDecision(raw: unknown, packet: CognitivePacket, c
     if (item && (item.text !== item.evidence_quote || !item.evidence_quote.trim() || !currentText.includes(item.evidence_quote)
       || !item.source_refs.includes(`caller:${packet.identity.caller_turn_id}`))) return { ok: false, reason: "unsupported_memory" };
   }
+  if (/\b(?:maksudnya macam mana|what did you mean|could you clarify what you need)\b/i.test(d.spoken_response))
+    return { ok: false, reason: "generic_clarification" };
+  if (d.spoken_response.includes("?") && (d.interaction_mode !== "SOCIAL" || packet.dialogue?.correction)
+    && !d.requires_clarification && d.interaction_mode !== "CLOSE")
+    return { ok: false, reason: "unclassified_question" };
   if (d.requires_clarification && d.interaction_mode !== "CLARIFY") return { ok: false, reason: "clarification_required" };
+  if (d.interaction_mode === "CLARIFY" || d.clarification) {
+    const missing = packet.dialogue?.missing;
+    if (!missing || !d.requires_clarification || d.interaction_mode !== "CLARIFY"
+      || d.clarification?.fact !== missing.fact || d.clarification.key !== missing.key
+      || !d.spoken_response.endsWith(missing.question) || (d.spoken_response.match(/\?/g) ?? []).length !== 1)
+      return { ok: false, reason: "clarification_not_specific" };
+    if (missing.offered || missing.response_received) return { ok: false, reason: "duplicate_clarification" };
+  }
+  // Identity ambiguity cannot be resolved by model prose or a caller's unverified spoken name.
+  if (packet.dialogue?.missing?.fact === "caller_identity" && d.interaction_mode !== "CLOSE"
+    && d.spoken_response !== callingContractRecovery(packet).spoken_response)
+    return { ok: false, reason: "identity_not_verified" };
   if (d.action_required) {
     const action = packet.available_actions.find(a => a.tool === d.allowed_tool && a.quotation_id === d.requested_action?.quotation_id);
     if (!action || d.interaction_mode !== "EXECUTE" || d.requires_clarification || d.requires_confirmation
@@ -52,4 +69,28 @@ export function validateCallingDecision(raw: unknown, packet: CognitivePacket, c
   if (payment?.value === true && protectBookingAuthority(d.spoken_response, { booking: { deposit_paid: true } }, packet.person.language) !== d.spoken_response) return { ok: false, reason: "contradicts_payment_record" };
   if (!claimsSupported(d, packet)) return { ok: false, reason: "unsupported_claim" };
   return { ok: true, decision: d };
+}
+
+/** Allowlisted failure paths only: no rejected text, evidence values or hidden model reasoning. */
+export function callingValidationFields(raw: unknown, packet: CognitivePacket, reason: string): string[] {
+  const parsed = cognitiveDecisionSchema.safeParse(raw);
+  if (!parsed.success) return ["decision_schema"];
+  const d = parsed.data;
+  const ids = new Set(packet.evidence.map(e => e.id));
+  const fields: string[] = [];
+  const refs = (path: string, values: string[]) => { if (values.some(id => !ids.has(id))) fields.push(path); };
+  refs("authoritative_facts_used", d.authoritative_facts_used);
+  d.uncertainties.forEach((u,i) => refs(`uncertainties.${i}.source_refs`, u.source_refs));
+  d.claim_requests.forEach((c,i) => refs(`claim_requests.${i}.source_ref`, [c.source_ref]));
+  const memory = (path: string, item: NonNullable<CognitiveDecision["memory_update"]["objective"]>) => {
+    refs(`${path}.source_refs`, item.source_refs);
+    if (reason !== "unsupported_memory") return;
+    if (item.text !== item.evidence_quote) fields.push(`${path}.text_quote_equality`);
+    if (!item.evidence_quote.trim() || !packet.current_call.current_caller.transcript.includes(item.evidence_quote)) fields.push(`${path}.current_caller_quote`);
+    if (!item.source_refs.includes(`caller:${packet.identity.caller_turn_id}`)) fields.push(`${path}.current_caller_reference`);
+  };
+  if (d.memory_update.objective) memory("memory_update.objective", d.memory_update.objective);
+  d.memory_update.corrections.forEach((m,i) => memory(`memory_update.corrections.${i}`, m));
+  d.memory_update.open_questions.forEach((m,i) => memory(`memory_update.open_questions.${i}`, m));
+  return fields.length ? fields.slice(0, 12) : ["decision_policy"];
 }

@@ -10,9 +10,12 @@ describe("Calling semantic contract and application policy", () => {
     if (result.ok) { expect(result.decision.interaction_mode).toBe("SOCIAL"); expect(result.decision.action_required).toBe(false); }
   });
   it.each(["Ja", "Skjab, skjab", "Saya nak e-mel belum boleh hantar."])("accepts clarification without entity mutation: %s", text => {
-    const p = packetFixture(text); const d = decisionFixture(p, { interaction_mode: "CLARIFY", requires_clarification: true,
-      uncertainties: [{ detail: "Meaning is ambiguous", source_refs: [`caller:${p.identity.caller_turn_id}`] }], spoken_response: "Maksudnya macam mana ya?" });
+    const p = packetFixture(text); const missing = p.dialogue!.missing!;
+    const d = decisionFixture(p, { interaction_mode: "CLARIFY", requires_clarification: true,
+      clarification: {fact: missing.fact, key: missing.key},
+      uncertainties: [{ detail: "The caller request is missing", source_refs: [`caller:${p.identity.caller_turn_id}`] }], spoken_response: missing.question });
     expect(validateCallingDecision(d, p, current).ok).toBe(true);
+    expect(validateCallingDecision({...d, spoken_response:"Maksudnya macam mana ya?"}, p, current)).toEqual({ok:false,reason:"generic_clarification"});
     expect(d.memory_update.corrections).toEqual([]);
   });
   it.each([

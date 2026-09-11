@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { CallingBinding, CallingDb, CallerTurn } from "./caller-turn-ledger.server";
-import { BRIDGE_VERSION, type CognitivePacket, type Evidence, type ClosingState } from "./cognitive-bridge.contract";
+import { BRIDGE_VERSION, type CognitivePacket, type Evidence, type ClosingState, type CallingDialogue, type ClarificationOffer, type ClarificationFact } from "./cognitive-bridge.contract";
 import { resolveAddress } from "./cognitive-router.core";
 import { requestsQuotationSend } from "./call-executive.core";
 
@@ -15,13 +15,14 @@ const phone = (value: string) => { const d = value.replace(/\D/g, ""); return d.
 const rows = (result: any): any[] => { if (result.error) throw new Error(`calling_context_${result.error.code ?? "unavailable"}`); return Array.isArray(result.data) ? result.data : result.data ? [result.data] : []; };
 
 /** Read only, tenant-scoped and bounded. No imports from any Voice Note implementation. */
-export async function loadCallingRecords(db: CallingDb, input: { binding: CallingBinding; callerPhone: string; signal: AbortSignal }) {
+export async function loadCallingRecords(db: CallingDb, input: { binding: CallingBinding; callerPhone: string; signal: AbortSignal }): Promise<CallingRecords> {
   const scoped = (table: string, columns: string) => db.from(table).select(columns).eq("agency_id", input.binding.agencyId);
   const contacts = rows(await scoped("leads", "id,full_name,phone,stage,preferred_language,conversational_style,package_interest,pax,do_not_contact,updated_at")
     .ilike("phone", `%${phone(input.callerPhone).slice(-9)}`).limit(3).abortSignal(input.signal));
   const matches = contacts.filter(lead => phone(lead.phone ?? "") === phone(input.callerPhone));
   const lead = matches.length === 1 ? matches[0] : null;
-  if (!lead) return { lead: null, conversations: [], quotations: [], bookings: [], messages: [], previousCalls: [], identityConflict: matches.length > 1 };
+  if (!lead) return { lead: null, conversations: [], quotations: [], bookings: [], messages: [], previousCalls: [], identityConflict: matches.length > 1,
+    identityKey: matches.map(m => String(m.id)).sort().join("|") || "unmatched" };
   const results = await Promise.all([
     scoped("conversations", "id,lead_id,channel,ai_enabled,human_attention_required,last_message_at").eq("lead_id", lead.id).eq("channel", "whatsapp").order("last_message_at", { ascending: false }).limit(2).abortSignal(input.signal),
     scoped("quotations", "id,quotation_number,status,total,deposit_amount,number_of_pilgrims,customer_name,customer_phone,package_id,package_snapshot,travel_month,updated_at")
@@ -37,7 +38,73 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
     .eq("conversation_id", conversation.id).order("created_at", { ascending: false }).limit(8).abortSignal(input.signal)) : [];
   return { lead, conversations, quotations, bookings, messages, previousCalls, identityConflict: false };
 }
-export type CallingRecords = Awaited<ReturnType<typeof loadCallingRecords>>;
+export type CallingRecords = { lead: any; conversations: any[]; quotations: any[]; bookings: any[]; messages: any[];
+  previousCalls: any[]; identityConflict: boolean; identityKey?: string };
+
+/** Reuse the caller's most recent explicit reference; it does not establish customer identity. */
+export function callingSelectionText(s: BridgeSnapshot, current: string): string {
+  const hasReference = (text: string) => /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(text);
+  if (hasReference(current)) return current;
+  return [...s.callers].sort((a,b) => b.sequence-a.sequence).find(c => hasReference(c.transcript))?.transcript
+    ?? s.memory.objective?.text ?? current;
+}
+
+const bookingTopic = /\b(?:tempahan|tembahan|booking|quotation|sebut harga|deposit|status saya|my (?:booking|status))\b/i;
+const socialTurn = /\b(?:apa khabar|sihat|how are you)\b/i;
+const namedCaller = /\b(?:nama saya|my name is|saya (?:ni |ini )?(?:datuk|dato|encik|puan|tuan|haji|hajah))\b/i;
+
+export function priorClarificationOffers(s: BridgeSnapshot, sequence: number): ClarificationOffer[] {
+  const previous = [...s.events].filter(e => e.kind === "proposal" && e.sequence < sequence).sort((a,b) => b.sequence-a.sequence)[0];
+  return (Array.isArray(previous?.payload.clarification_offers) ? previous.payload.clarification_offers : [])
+    .filter((x: any) => ["caller_identity", "booking_reference", "caller_request", "completion"].includes(x.fact)
+      && typeof x.key === "string" && x.key.length <= 500 && Number.isInteger(x.sequence) && x.sequence < sequence).slice(-6);
+}
+
+/** Persisted question offers are reused, without confusing a spoken name with verified identity. */
+function callingDialogue(s: BridgeSnapshot, caller: CallerTurn, records: CallingRecords, language: string,
+  recordSelectionMissing: boolean): CallingDialogue {
+  const en = language.startsWith("en");
+  const ordered = [...s.callers].sort((a,b) => a.sequence-b.sequence);
+  const current = caller.transcript;
+  const objective = [...ordered].reverse().find(c => bookingTopic.test(c.transcript));
+  const topic = objective || bookingTopic.test(s.memory.objective?.text ?? "") ? "booking" : "general";
+  const correction = /\b(?:tadi|bukan itu|salah faham|tak faham|takfaham|tanya.*(?:banyak|ulang)|keeps? asking|already (?:said|told)|misunderst[ao]nd)\b/i.test(current);
+  const offered = priorClarificationOffers(s, caller.sequence);
+  let fact: ClarificationFact | null = null;
+  const lastDelivered = [...s.events].filter(e => e.kind === "playback_complete").sort((a,b) => b.sequence-a.sequence)[0];
+  if (/^\s*(?:ok(?:ay)?|baik|ya|yes)[.!\s]*$/i.test(current) && lastDelivered?.payload.closing_question !== true) fact = "completion";
+  else if (topic === "booking" && !socialTurn.test(current)) {
+    if (!records.lead) fact = "caller_identity";
+    else if (recordSelectionMissing) fact = "booking_reference";
+  } else if (topic === "general" && /^(?:ja|skjab|skjap|ede|[a-z]{1,2})(?:[\s,.!?]+(?:skjab|skjap|ja))*[\s,.!?]*$/i.test(current.trim())
+    && !/^(?:hi|ok|ya)[.!?\s]*$/i.test(current.trim())) fact = "caller_request";
+  // Ambiguous current text is not proof of an unanswered business fact. The model can answer using prior evidence.
+  if (topic === "general" && /\be-?mel\b.*\bbelum boleh hantar\b/i.test(current)) fact = "caller_request";
+  const evidenceKey = fact === "caller_identity" ? (records.identityKey ?? "unverified")
+    : fact === "booking_reference" ? records.quotations.map(q => String(q.id)).sort().join("|")
+      : fact === "completion" ? s.closing_episode ?? "active" : "request";
+  const key = `${fact}:${evidenceKey}`;
+  const prior = offered.find(o => o.key === key);
+  const responseReceived = !!prior && ordered.some(c => c.sequence > prior.sequence)
+    || fact === "caller_identity" && ordered.some(c => namedCaller.test(c.transcript))
+    || fact === "booking_reference" && ordered.some(c => /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(c.transcript));
+  const questions = {
+    caller_identity: en ? "What full name was used for the booking?" : "Apakah nama penuh yang digunakan untuk tempahan itu?",
+    booking_reference: en ? "What is the booking or quotation reference?" : "Apakah nombor rujukan tempahan atau sebut harga yang dimaksudkan?",
+    caller_request: en ? "What is the main thing you would like help with?" : "Apakah perkara utama yang ingin ditanya?",
+    completion: en ? "Is that all for now?" : "Itu sahaja untuk sekarang?",
+  };
+  return { topic, correction, source_refs: [...new Set([...(objective ? [`caller:${objective.id}`] : []), `caller:${caller.id}`])], offered,
+    missing: fact ? { fact, key, question: questions[fact], offered: !!prior || fact === "completion" && s.closing_clarifications >= 1, response_received: !!responseReceived } : null };
+}
+
+export function nextClarificationOffers(packet: CognitivePacket, decision: CognitiveDecisionLike): ClarificationOffer[] {
+  const offered = packet.dialogue?.offered ?? [];
+  const clarification = decision?.clarification;
+  return clarification ? [...offered.filter(o => o.fact !== clarification.fact),
+    { ...clarification, sequence: packet.identity.sequence }].slice(-6) : offered;
+}
+type CognitiveDecisionLike = { clarification?: { fact: ClarificationFact; key: string } | null | undefined } | null;
 
 /** Identifier retrieval does not infer intent or silently select a different linked record. */
 export async function includeRequestedQuotation(db: CallingDb, records: CallingRecords, binding: CallingBinding, transcript: string, signal: AbortSignal) {
@@ -79,7 +146,7 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     "full_name", "verified_identity", "verified", r.lead.updated_at ?? null) : null;
   if (r.identityConflict) uncertainties.push({ id: "identity_conflict", kind: "conflict", detail: "More than one contact matches this caller; do not select one.", evidence_refs: [], blocking: true });
   if (!r.lead) uncertainties.push({ id: "identity_unknown", kind: "missing_identity", detail: "Stored caller identity is unverified.", evidence_refs: [], blocking: true });
-  const selectionText = /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(caller.transcript) ? caller.transcript : s.memory.objective?.text ?? caller.transcript;
+  const selectionText = callingSelectionText(s, caller.transcript);
   const refs = Array.from(new Set(selectionText.match(/\bQ-[A-Z0-9]+-[A-Z0-9]+\b/gi)?.map(x => x.toUpperCase()) ?? []));
   const requested = refs.length === 1 ? r.quotations.find(q => String(q.quotation_number).toUpperCase() === refs[0]) : null;
   const quote = refs.length ? requested : r.quotations.length === 1 ? r.quotations[0] : null;
@@ -145,6 +212,8 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
       quotation_id: selectedQuote.id, lead_id: r.lead.id, conversation_id: conversation.id, recipient: "verified_caller_whatsapp", evidence_refs: quotationRefs }] : [],
     action_result_refs: [...actionRefs,...resultRefs], uncertainties,
     closing: { state: s.closing_state, episode_id: s.closing_episode, clarification_count: s.closing_clarifications, farewell_id: s.farewell_id }, renagi: null };
+  packet.dialogue = callingDialogue(s, caller, r, input.language, uncertainties.some(u => u.id === "record_selection"));
+  packet.dialogue.source_refs = packet.dialogue.source_refs.filter(id => evidence.some(e => e.id === id));
   // Do not truncate the current request or silently remove authoritative evidence to fit a prompt.
   while (JSON.stringify(packet).length > 28_000 && packet.cross_channel_refs.length) {
     const id = packet.cross_channel_refs.pop(); packet.evidence = packet.evidence.filter(e => e.id !== id);
@@ -154,6 +223,7 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     packet.current_call.caller_refs = packet.current_call.caller_refs.filter(ref => ref !== id);
     packet.evidence = packet.evidence.filter(e => e.id !== id);
   }
+  packet.dialogue.source_refs = packet.dialogue.source_refs.filter(id => packet.evidence.some(e => e.id === id));
   if (JSON.stringify(packet).length > 28_000) throw new Error("calling_packet_budget_exceeded");
   return packet;
 }

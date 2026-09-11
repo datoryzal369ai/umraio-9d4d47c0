@@ -1,4 +1,4 @@
-import type { CognitiveDecision, CognitivePacket } from "./cognitive-bridge.contract";
+import { BRIDGE_VERSION, type CognitiveDecision, type CognitivePacket } from "./cognitive-bridge.contract";
 
 /** A deterministic last boundary in addition to semantic claim_requests. */
 export function unsupportedActionSpeech(text: string): boolean {
@@ -37,6 +37,65 @@ export function claimsSupported(decision: CognitiveDecision, packet: CognitivePa
 }
 
 export function callingRecovery(language: string, reason: "ambiguity" | "unavailable" = "ambiguity"): string {
-  if (language.startsWith("en")) return reason === "unavailable" ? "Sorry, I couldn't verify that just now. Could you clarify what you need?" : "Sorry, I want to get that right. What did you mean?";
-  return reason === "unavailable" ? "Maaf, saya belum dapat pastikan perkara itu. Boleh jelaskan apa yang diperlukan?" : "Maaf, saya nak pastikan saya faham betul. Maksudnya macam mana ya?";
+  if (language.startsWith("en")) return reason === "unavailable" ? "Sorry, I cannot verify that information right now." : "Sorry, I cannot give a reliable answer to that yet.";
+  return reason === "unavailable" ? "Maaf, maklumat itu belum dapat saya pastikan sekarang." : "Maaf, jawapan itu belum dapat saya pastikan.";
+}
+
+/** A fresh non-action response from packet evidence, never salvaged unvalidated model speech. */
+export function callingContractRecovery(packet: CognitivePacket): CognitiveDecision {
+  const en = packet.person.language.startsWith("en");
+  const dialogue = packet.dialogue;
+  const missing = dialogue?.missing;
+  const ask = missing && !missing.offered && !missing.response_received ? missing : null;
+  const current = packet.current_call.current_caller.transcript;
+  const social = /\b(?:apa khabar|sihat|how are you)\b/i.test(current);
+  const apology = dialogue?.correction ? (en ? "Sorry, I misunderstood earlier. " : "Maaf, saya tersalah faham tadi. ") : "";
+  const used = [...(dialogue?.source_refs ?? [])];
+  const claims: CognitiveDecision["claim_requests"] = [];
+  let spoken = callingRecovery(packet.person.language);
+  if (ask) spoken = apology + (dialogue?.topic === "booking" && ask.fact !== "completion" ? (en ? "About the booking status. " : "Tentang status tempahan tadi. ") : "") + ask.question;
+  else if (social) spoken = en ? "I am ready to help, thank you for asking." : "Saya sedia membantu, terima kasih kerana bertanya.";
+  else if (dialogue?.topic === "booking") {
+    spoken = apology + (en ? "The earlier question was about the booking status. " : "Soalan tadi tentang status tempahan. ");
+    spoken += missing?.fact === "caller_identity"
+      ? (en ? "The booking holder's identity is still unverified, so I cannot share private booking details."
+        : "Identiti pemilik tempahan masih belum dapat disahkan, jadi butiran peribadi belum boleh saya kongsikan.")
+      : (en ? "I cannot confirm its status from the available records yet." : "Statusnya belum dapat saya pastikan daripada rekod yang tersedia.");
+    if (packet.person.identity_refs.length && !missing) {
+      const paid = packet.evidence.find(e => e.id === `bookings:${packet.business.selected_booking}:deposit_paid`
+        && e.value === true && e.verification === "verified" && e.authority === "business_record");
+      const status = packet.evidence.find(e => e.id === `bookings:${packet.business.selected_booking}:status`
+        && e.verification === "verified" && e.authority === "business_record");
+      const statusText: Record<string, [string,string]> = {
+        confirmed: ["Rekod menunjukkan tempahan disahkan.", "The record shows the booking is confirmed."],
+        booked: ["Rekod menunjukkan tempahan disahkan.", "The record shows the booking is confirmed."],
+        cancelled: ["Rekod menunjukkan tempahan dibatalkan.", "The record shows the booking is cancelled."],
+        refunded: ["Status dalam rekod ialah refunded.", "The recorded status is refunded."],
+      };
+      const span = paid && !["cancelled", "refunded"].includes(String(status?.value))
+        ? (en ? "The booking record shows the deposit has been paid." : "Rekod tempahan menunjukkan deposit sudah dibayar.")
+        : statusText[String(status?.value)]?.[en ? 1 : 0];
+      const fact = paid && !["cancelled", "refunded"].includes(String(status?.value)) ? paid : status;
+      if (span && fact) { spoken = apology + span; used.push(fact.id); claims.push({kind:"business_status",source_ref:fact.id,spoken_span:span}); }
+    }
+  } else if (dialogue?.correction) spoken = apology + (en ? "I will not ask you to repeat the same explanation." : "Tidak perlu ulang penjelasan yang sama.");
+  else if (/\b(?:assalamualaikum|salam|hello|hi)\b/i.test(current)) spoken = en ? "Hello, I am here to help." : "Salam, saya sedia membantu.";
+  const quote = current.slice(0, 500);
+  const memory = { text: quote, evidence_quote: quote, source_refs: [`caller:${packet.identity.caller_turn_id}`] };
+  return {
+    decision_version: BRIDGE_VERSION, packet_id: packet.packet_id, input_revision: packet.identity.input_revision,
+    caller_turn_id: packet.identity.caller_turn_id, generation: packet.identity.generation,
+    intent: ask ? "specific_clarification" : "supported_recovery", intent_confidence: 1,
+    interaction_mode: ask ? "CLARIFY" : social ? "SOCIAL" : "ANSWER",
+    understanding: "Respond using retained caller context without asserting an unverified business outcome.",
+    authoritative_facts_used: used, uncertainties: [],
+    requires_clarification: !!ask, clarification: ask ? { fact: ask.fact, key: ask.key } : null,
+    response_strategy: ask ? "Ask one missing critical fact." : "Acknowledge retained context and state the exact limit without a repeated question.",
+    action_required: false, requested_action: null, allowed_tool: null, requires_confirmation: false,
+    completion_intent: ask?.fact === "completion" ? "possible" : "none", next_state: ask?.fact === "completion" ? "possible_completion" : "active", spoken_response: spoken, claim_requests: claims,
+    memory_update: { objective: !packet.current_call.objective && dialogue?.topic === "booking"
+      && /\b(?:status|tempahan|booking)\b/i.test(current) ? memory : null,
+      corrections: dialogue?.correction ? [memory] : [], open_questions: [] },
+    decision_summary: ask ? "A specific missing fact requires clarification; identity remains unverified." : "Internal failure was not converted into caller ambiguity.",
+  };
 }

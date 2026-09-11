@@ -2,11 +2,11 @@ import { bindingArgs, callingRpc, retainCallerTurn, type CallingBinding, type Ca
 import { transcribeCaller, type CallerAsr } from "./caller-asr.server";
 import { boundedCallingDb } from "./calling-db-lifetime.server";
 import { retainBounded, withinCallingBudget, type CallingLifetime } from "./calling-lifetime.server";
-import { buildCognitivePacket, includeRequestedQuotation, loadCallingRecords, type BridgeSnapshot } from "./cognitive-state.server";
-import { currentCallingEngine, CallingEngineFailure } from "./cognitive-engine.server";
-import { BRIDGE_VERSION, type CognitiveDecision, type CognitiveEngine, type EngineMetadata } from "./cognitive-bridge.contract";
-import { validateCallingDecision } from "./call-decision-policy.core";
-import { callingRecovery } from "./call-speech-claims.core";
+import { buildCognitivePacket, includeRequestedQuotation, loadCallingRecords, callingSelectionText, nextClarificationOffers, priorClarificationOffers, type BridgeSnapshot } from "./cognitive-state.server";
+import { currentCallingEngine, CallingEngineFailure, reconstructCallingMemory } from "./cognitive-engine.server";
+import { BRIDGE_VERSION, type CognitiveDecision, type CognitiveEngine, type EngineMetadata, type ClarificationOffer } from "./cognitive-bridge.contract";
+import { validateCallingDecision, callingValidationFields } from "./call-decision-policy.core";
+import { callingRecovery, callingContractRecovery } from "./call-speech-claims.core";
 import { executeCallingDecision } from "./calling-action-lifecycle.server";
 import { quotationDeliveryReply } from "./call-quotation.server";
 import { acknowledgementOptions } from "./call-executive.core";
@@ -36,6 +36,7 @@ export async function handleCognitiveVoiceTurn(args: {
   let packetId: string | null = null;
   let recovery: string | null = null;
   let cancellation: string | null = null;
+  let contractRepair: { attempts: number; reason: string; fields: string[]; outcome: string } | null = null;
   const base = bindingArgs(args.binding);
   const record = (kind: string, payload: Record<string, unknown>) => retainBounded(args.lifetime, 3000, owner =>
     callingRpc(args.db, "calling_bridge_record", { ...base, p_sequence: args.payload.sequence,
@@ -87,6 +88,7 @@ export async function handleCognitiveVoiceTurn(args: {
         const address = resolveAddress(records?.lead?.full_name);
         let spoken: string;
         let decision: CognitiveDecision | null = null;
+        let clarificationOffers: ClarificationOffer[] = priorClarificationOffers(state, args.payload.sequence);
         let nextState: "active" | "possible_completion" | "farewell_committed" = "active";
         if (args.payload.kind === "greeting") {
           spoken = buildCallOpening({ agencyName: args.agencyName, language, disclosureAlreadySpoken: args.disclosureSpoken,
@@ -94,12 +96,12 @@ export async function handleCognitiveVoiceTurn(args: {
         } else if (!records || !lease.turn) {
           recovery = "context_unavailable"; spoken = callingRecovery(language, "unavailable");
         } else {
-          const requested = /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(lease.turn.transcript)
-            ? lease.turn.transcript : state.memory.objective?.text ?? lease.turn.transcript;
+          const requested = callingSelectionText(state, lease.turn.transcript);
           records = await includeRequestedQuotation(db, records, args.binding, requested, response);
           const packet = buildCognitivePacket({ binding: args.binding, sequence: args.payload.sequence,
             snapshot: state, caller: lease.turn, records, language });
           packetId = packet.packet_id;
+          clarificationOffers = nextClarificationOffers(packet, null);
           let pending = true;
           let ackWork: Promise<unknown> | undefined;
           let ackSent = false;
@@ -125,15 +127,30 @@ export async function handleCognitiveVoiceTurn(args: {
             metadata = result.answer.metadata;
             state = await snapshot();
             times["policy_start"] = Date.now();
-            const validated = validateCallingDecision(result.answer.decision, packet, { ...state, cancelled: response.aborted });
+            let validated = validateCallingDecision(result.answer.decision, packet, { ...state, cancelled: response.aborted });
             times["policy_end"] = Date.now();
             if (!validated.ok) {
               if (validated.reason === "stale_decision") return failure("cognitive_stale_turn");
-              recovery = validated.reason; spoken = validated.reason === "duplicate_closing_clarification"
-                ? (language.startsWith("en") ? "I am listening." : "Baik, saya dengar.") : callingRecovery(language);
-            } else {
+              recovery = validated.reason;
+              contractRepair = { attempts: 1, reason: validated.reason,
+                fields: callingValidationFields(result.answer.decision, packet, validated.reason), outcome: "blocked" };
+              times["contract_repair_start"] = Date.now();
+              // Exactly one bounded local repair. No second reasoning call, ASR, context query or action.
+              const reconstructed = reconstructCallingMemory(result.answer.decision, packet, validated.reason);
+              const repaired = reconstructed ? validateCallingDecision(reconstructed, packet, { ...state, cancelled: response.aborted }) : null;
+              if (repaired?.ok) { validated = repaired; contractRepair.outcome = "evidence_bound"; }
+              else {
+                // Failed repair does not release any unvalidated model speech. Construct a fresh, safe response.
+                validated = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
+                contractRepair.outcome = validated.ok ? "safe_response" : "blocked";
+              }
+              times["contract_repair_end"] = Date.now();
+            }
+            if (!validated.ok) return failure(validated.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
+            {
               decision = validated.decision;
               spoken = decision.spoken_response; nextState = decision.next_state;
+              clarificationOffers = nextClarificationOffers(packet, decision);
               if (decision.action_required) {
                 pending = true;
                 const executing = executeCallingDecision({ db: args.db, binding: args.binding, packet, decision,
@@ -145,8 +162,12 @@ export async function handleCognitiveVoiceTurn(args: {
           } catch (error) {
             if (error instanceof CallingEngineFailure) metadata = error.metadata;
             response.throwIfAborted();
-            recovery = "engine_or_execution_unavailable"; spoken = callingRecovery(language, "unavailable");
-            decision = null; nextState = "active";
+            recovery = "engine_or_execution_unavailable";
+            state = await snapshot();
+            const safe = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
+            if (!safe.ok) return failure(safe.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
+            decision = safe.decision; spoken = decision.spoken_response; nextState = decision.next_state;
+            clarificationOffers = nextClarificationOffers(packet, decision);
           } finally { pending = false; await ackWork; }
         }
         response.throwIfAborted();
@@ -162,7 +183,10 @@ export async function handleCognitiveVoiceTurn(args: {
               intent: decision.intent, interaction_mode: decision.interaction_mode, understanding: decision.understanding,
               authoritative_facts_used: decision.authoritative_facts_used, uncertainties: decision.uncertainties,
               completion_intent: decision.completion_intent, decision_summary: decision.decision_summary,
-            } : null, recovery },
+            } : null, recovery, contract_repair: contractRepair,
+            failure_classification: contractRepair ? "CONTRACT_FAILURE" : recovery ? "AVAILABILITY_FAILURE" : null,
+            response_classification: decision?.requires_clarification ? "GENUINE_CLARIFICATION_REQUIRED" : "ANSWER_OR_ACT",
+            clarification: decision?.clarification ?? null, clarification_offers: clarificationOffers },
         }, response);
         if (!output.ok) return failure(output.reason ?? "cognitive_stale_output");
         times["output_commit_end"] = Date.now();
@@ -186,7 +210,7 @@ export async function handleCognitiveVoiceTurn(args: {
       times["response_complete"] = Date.now();
       // Media timings describe the previous sequence. Absence is unknown, never inferred playback.
       void record("telemetry", { version: BRIDGE_VERSION, packet_id: packetId, revision: lease.revision,
-        generation: lease.generation, timings: times, engine: metadata, asr_runtime: asrRuntime, recovery, cancellation,
+        generation: lease.generation, timings: times, engine: metadata, asr_runtime: asrRuntime, recovery, cancellation, contract_repair: contractRepair,
         media_evidence: args.payload.media_metrics ?? null, speech_end_timestamp: null,
         playback: "requires_gateway_evidence" }).catch(() => undefined);
     }

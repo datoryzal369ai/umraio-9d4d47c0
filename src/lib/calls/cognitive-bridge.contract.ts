@@ -13,6 +13,14 @@ export type Evidence = {
 };
 export type AdvisoryEnvelope = { version: string; source: string; observed_at: string; expiry: string;
   confidence: number | null; advisory: unknown };
+export type ClarificationFact = "caller_identity" | "booking_reference" | "caller_request" | "completion";
+// An offered question is conversation bookkeeping, never proof of identity or delivery.
+export type ClarificationOffer = { key: string; fact: ClarificationFact; sequence: number };
+export type CallingDialogue = {
+  topic: "booking" | "general"; correction: boolean; source_refs: string[];
+  offered: ClarificationOffer[];
+  missing: { key: string; fact: ClarificationFact; question: string; offered: boolean; response_received: boolean } | null;
+};
 export type CognitivePacket = {
   version: typeof BRIDGE_VERSION; packet_id: string; built_at: string;
   identity: CallingBinding & { sequence: number; caller_turn_id: string; input_revision: number; generation: string };
@@ -30,6 +38,7 @@ export type CognitivePacket = {
   action_result_refs: string[];
   uncertainties: Array<{ id: string; kind: string; detail: string; evidence_refs: string[]; blocking: boolean }>;
   closing: { state: ClosingState; episode_id: string | null; clarification_count: number; farewell_id: string | null };
+  dialogue?: CallingDialogue;
   renagi: null;
 };
 
@@ -45,6 +54,7 @@ export const cognitiveDecisionSchema = z.object({
   authoritative_facts_used: refs,
   uncertainties: z.array(z.object({ detail: short, source_refs: refs }).strict()).max(8),
   requires_clarification: z.boolean(), response_strategy: short, action_required: z.boolean(),
+  clarification: z.object({ fact: z.enum(["caller_identity", "booking_reference", "caller_request", "completion"]), key: z.string().min(1).max(500) }).strict().nullable().optional(),
   requested_action: z.object({ name: z.literal("deliver_existing_quotation_whatsapp"), quotation_id: z.string().min(1),
     evidence_quote: short }).strict().nullable(),
   allowed_tool: z.literal("deliver_existing_quotation_whatsapp").nullable(), requires_confirmation: z.boolean(),
@@ -58,6 +68,37 @@ export const cognitiveDecisionSchema = z.object({
   decision_summary: short,
 }).strict();
 export type CognitiveDecision = z.infer<typeof cognitiveDecisionSchema>;
+
+/** Constrain construction, not just the later veto. No generated IDs or memory paraphrases. */
+export function callingGenerationSchema(packet: CognitivePacket) {
+  const source = z.enum(packet.evidence.map(e => e.id) as [string, ...string[]]);
+  const boundRefs = z.array(source).max(20);
+  const text = packet.current_call.current_caller.transcript;
+  const quotes = [...new Set([...(text.length <= 500 ? [text] : []),
+    ...(text.match(/[^.!?\n]+[.!?]?/gu) ?? []).map(q => q.trim()).filter(q => q.length <= 500),
+  ].filter(q => q.trim() && text.includes(q)))].slice(0, 16);
+  const quote = z.enum((quotes.length ? quotes : [text.slice(0, 500)]) as [string, ...string[]]);
+  // The model selects a quote. The application supplies both its identical text and canonical reference.
+  const memory = z.object({ evidence_quote: quote }).strict();
+  return cognitiveDecisionSchema.extend({
+    packet_id: z.literal(packet.packet_id), input_revision: z.literal(packet.identity.input_revision),
+    caller_turn_id: z.literal(packet.identity.caller_turn_id), generation: z.literal(packet.identity.generation),
+    authoritative_facts_used: boundRefs,
+    uncertainties: z.array(z.object({ detail: short, source_refs: boundRefs }).strict()).max(8),
+    memory_update: z.object({ objective: memory.nullable(), corrections: z.array(memory).max(4), open_questions: z.array(memory).max(4) }).strict(),
+    claim_requests: z.array(cognitiveDecisionSchema.shape.claim_requests.element.extend({ source_ref: source })).max(12),
+  });
+}
+
+export function bindCallingGeneratedDecision(raw: unknown, packet: CognitivePacket): CognitiveDecision {
+  const generated = callingGenerationSchema(packet).parse(raw);
+  const bind = (item: { evidence_quote: string }) => ({ text: item.evidence_quote, evidence_quote: item.evidence_quote,
+    source_refs: [`caller:${packet.identity.caller_turn_id}`] });
+  return { ...generated, memory_update: {
+    objective: generated.memory_update.objective ? bind(generated.memory_update.objective) : null,
+    corrections: generated.memory_update.corrections.map(bind), open_questions: generated.memory_update.open_questions.map(bind),
+  } };
+}
 export type EngineMetadata = { configured_provider: string; configured_model: string; returned_provider: string | null;
   returned_model: string | null; started_at: string; completed_at: string; latency_ms: number;
   input_tokens: number | null; output_tokens: number | null; fallback: boolean; cancellation: string | null };
