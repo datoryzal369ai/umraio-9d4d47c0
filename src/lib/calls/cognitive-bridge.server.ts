@@ -10,7 +10,7 @@ import { callingRecovery, callingContractRecovery } from "./call-speech-claims.c
 import { executeCallingDecision } from "./calling-action-lifecycle.server";
 import { quotationDeliveryReply } from "./call-quotation.server";
 import { acknowledgementOptions, contextualAcknowledgement } from "./call-executive.core";
-import { buildCallOpening, callingFarewellText, isExplicitHangupCommand } from "./call-experience.core";
+import { buildCallOpening, callingFarewellText, isExplicitHangupCommand, reopensAfterFarewell } from "./call-experience.core";
 import { resolveAddress } from "./cognitive-router.core";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
 import { detectSpokenLanguage, type VoiceTurnRequest } from "./voice-turn.core";
