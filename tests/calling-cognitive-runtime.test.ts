@@ -128,3 +128,35 @@ it("measures local bridge overhead over 30 live turns while keeping one cognitiv
  const {mkdir,writeFile}=await import("node:fs/promises");await mkdir("logs",{recursive:true});
  await writeFile("logs/calling-bridge-latency.json",JSON.stringify({sample_count:30,scope:"local PGlite; synthetic ASR and engine; no TTS/network; not Founder latency",p50_ms:sorted[14],p95_ms:sorted[28],max_ms:sorted.at(-1),model_invocations:30}));
 });
+
+it("speaks a committed farewell even when caller audio supersedes the turn without new business",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("Itu sahaja, terima kasih.");
+ f.setDecision(async p=>decisionFixture(p,{interaction_mode:"CLOSE",completion_intent:"confirmed",next_state:"farewell_committed",spoken_response:"Baik, terima kasih. Assalamualaikum."}));
+ const close=await f.turn(2);expect(close).toMatchObject({ok:true,endCall:true,reason:"conversation_complete"});
+ f.setText("Ok.");await f.wire(3);
+ if(close?.ok) expect(await close.speechEligibility?.()).toBe(true);
+});
+it("re-commits the farewell and ends the call when the caller speaks again with no new business",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("Itu sahaja, terima kasih.");
+ f.setDecision(async p=>decisionFixture(p,{interaction_mode:"CLOSE",completion_intent:"confirmed",next_state:"farewell_committed",spoken_response:"Baik, terima kasih. Assalamualaikum."}));
+ await f.wire(2);expect(f.model).toHaveBeenCalledTimes(1);
+ f.setText("Ok.");const events=await f.wire(3);
+ expect(events.at(-1)).toMatchObject({type:"final",end_call:true,reason:"conversation_complete"});
+ expect(events.at(-1).speech_text).not.toContain("?");
+ expect(f.model).toHaveBeenCalledTimes(1);
+ expect((await f.snapshot()).closing_state).toBe("farewell_committed");
+});
+it("keeps answering when the caller raises new business after a farewell",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("Itu sahaja, terima kasih.");
+ f.setDecision(async p=>decisionFixture(p,{interaction_mode:"CLOSE",completion_intent:"confirmed",next_state:"farewell_committed",spoken_response:"Baik, terima kasih. Assalamualaikum."}));
+ await f.wire(2);
+ f.setText("Sekejap, harga pakej Umrah berapa ya?");f.setDecision(async p=>decisionFixture(p,{spoken_response:"Ya, saya jelaskan."}));
+ const events=await f.wire(3);expect(events.at(-1)).toMatchObject({end_call:false});expect(f.model).toHaveBeenCalledTimes(2);
+});
+it("ends the call on an explicit hangup instruction without a model turn",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("Awak putuskanlah panggilan ni.");
+ const events=await f.wire(2);
+ expect(events.at(-1)).toMatchObject({type:"final",end_call:true,reason:"conversation_complete"});
+ expect(events.at(-1).speech_text).toMatch(/terima kasih|assalamualaikum/i);
+ expect(f.model).not.toHaveBeenCalled();
+});
