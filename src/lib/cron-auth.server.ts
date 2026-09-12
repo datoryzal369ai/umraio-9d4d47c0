@@ -58,14 +58,30 @@ export async function authorizeCronRequest(request: Request): Promise<CronAuthRe
   const envSecret = process.env["CRON_SECRET"] ?? "";
   if (envSecret && secretsMatch(token, envSecret)) return { ok: true };
 
-  try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin.rpc("verify_cron_secret", { token });
-    if (!error && data === true) return { ok: true };
-  } catch {
-    // fall through to rejection
+  // The vault check can fail transiently (cold start, contention). Distinguish
+  // "verification unavailable" from "wrong secret" and retry once, so a
+  // scheduled tick is not silently dropped. Never log token material.
+  let unavailable: string | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data, error } = await supabaseAdmin.rpc("verify_cron_secret", { token });
+      if (!error && data === true) return { ok: true };
+      if (error) {
+        unavailable = error.code ?? "rpc_error";
+        continue;
+      }
+      unavailable = null;
+      break;
+    } catch (err) {
+      unavailable = err instanceof Error ? err.name : "rpc_exception";
+    }
   }
 
-  console.error("[cron-auth] rejected: invalid credential");
+  console.error(
+    unavailable
+      ? `[cron-auth] rejected: vault verification unavailable (${unavailable})`
+      : "[cron-auth] rejected: invalid credential",
+  );
   return unauthorized();
 }
