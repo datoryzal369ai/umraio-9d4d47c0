@@ -51,8 +51,9 @@ export function validateCallingDecision(raw: unknown, packet: CognitivePacket, c
   // package questions continue naturally instead of collapsing to the same identity sentence.
   if (packet.dialogue?.missing?.fact === "caller_identity" && d.interaction_mode !== "CLOSE"
     && d.spoken_response !== callingContractRecovery(packet).spoken_response) {
-    const exposesRecord = d.authoritative_facts_used.some(id => ["business_record", "verified_identity", "verified_execution"]
-      .includes(byId.get(id)?.authority ?? ""))
+    const exposesRecord = packet.dialogue?.topic === "booking"
+      || d.authoritative_facts_used.some(id => ["business_record", "verified_identity", "verified_execution"]
+        .includes(byId.get(id)?.authority ?? ""))
       || d.claim_requests.some(c => ["business_status", "identity", "execution_sent", "execution_read"].includes(c.kind));
     if (exposesRecord) return { ok: false, reason: "identity_not_verified" };
   }
