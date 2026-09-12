@@ -22,6 +22,16 @@ export function acknowledgementOptions(address: CallerAddress, language: string)
     : [`Baik${title}.`, `Faham${title}.`, `Oh begitu${title}.`];
 }
 
+/**
+ * Spoken while a real lookup or dispatch is running, so a multi-second wait is
+ * not silent. It promises attention, never a completed action, and never uses
+ * the written-register word "semak".
+ */
+export function waitingPhrase(address: CallerAddress, language: string): string {
+  const title = address.honorific ? ` ${address.honorific}` : "";
+  return language.startsWith("en") ? `Okay${title}, one moment while I check.` : `Okay${title}, kejap ya, saya cek dulu.`;
+}
+
 export function contextualAcknowledgement(args: { address: CallerAddress; language: string; transcript: string; previous?: string }): string {
   const options = acknowledgementOptions(args.address, args.language);
   // Reflect the current activity: request, explanation/correction, or concern.
