@@ -180,8 +180,16 @@ export async function handleCognitiveVoiceTurn(args: {
               }
               times["contract_repair_end"] = Date.now();
             }
-            if (!validated.ok) return failure(validated.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
-            {
+            if (!validated.ok && validated.reason === "stale_decision") return failure("cognitive_stale_turn");
+            if (!validated.ok) {
+              // LAST RESORT — an admitted, live turn must never end in silence. Blocking the
+              // model's speech is correct; returning nothing is not, because the gateway then
+              // plays no audio at all and the caller hears the line die. Speak one safe,
+              // claim-free line instead; the blocked reason is still recorded as telemetry.
+              recovery = `contract_blocked:${validated.reason}`;
+              spoken = callingRecovery(language, "unavailable");
+              nextState = "active";
+            } else {
               decision = validated.decision;
               spoken = decision.spoken_response; nextState = decision.next_state;
               clarificationOffers = nextClarificationOffers(packet, decision);
@@ -211,9 +219,12 @@ export async function handleCognitiveVoiceTurn(args: {
             recovery = "engine_or_execution_unavailable";
             state = await snapshot();
             const safe = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
-            if (!safe.ok) return failure(safe.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
-            decision = safe.decision; spoken = decision.spoken_response; nextState = decision.next_state;
-            clarificationOffers = nextClarificationOffers(packet, decision);
+            if (!safe.ok && safe.reason === "stale_decision") return failure("cognitive_stale_turn");
+            if (!safe.ok) { recovery = `contract_blocked:${safe.reason}`; spoken = callingRecovery(language, "unavailable"); nextState = "active"; }
+            else {
+              decision = safe.decision; spoken = decision.spoken_response; nextState = decision.next_state;
+              clarificationOffers = nextClarificationOffers(packet, decision);
+            }
           } finally { pending = false; await ackWork; }
         }
         response.throwIfAborted();
