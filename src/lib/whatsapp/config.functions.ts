@@ -117,3 +117,39 @@ export const disconnectWhatsappFn = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+/**
+ * Read the caller's WhatsApp configuration.
+ *
+ * The `authenticated` role has no table privilege on `whatsapp_configs` at
+ * all (the credential column must stay unreachable), so the browser cannot
+ * read it directly. This function authenticates the caller, confirms an
+ * owner/admin role in their own agency, and returns only the non-secret
+ * columns.
+ */
+export const getWhatsappConfigFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const agencyId = await callerAgencyId(supabase, userId);
+
+    const { data: roles, error: roleError } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("agency_id", agencyId);
+    if (roleError) throw new Error(roleError.message);
+    const allowed = (roles as { role: string }[] | null ?? []).some(
+      (r) => r.role === "owner" || r.role === "admin",
+    );
+    if (!allowed) throw new Error("Only agency owners or admins can view the WhatsApp connection.");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("whatsapp_configs")
+      .select(CLIENT_COLUMNS)
+      .eq("agency_id", agencyId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ?? null;
+  });
