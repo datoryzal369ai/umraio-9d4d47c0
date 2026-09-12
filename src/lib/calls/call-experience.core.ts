@@ -149,6 +149,21 @@ export function isExplicitHangupCommand(transcript: string): boolean {
  * the call. Shared by the legacy closing machine and the cognitive bridge so
  * both planes say goodbye in the same voice before termination.
  */
+/**
+ * After a farewell has already been committed, only genuinely new business may
+ * reopen the call. Anything else (a thank-you, a stray "ok", background noise
+ * picked up while the farewell was playing) must let the call end, otherwise
+ * the line stays alive after the conversation is over.
+ */
+export function reopensAfterFarewell(transcript: string): boolean {
+  const text = transcript.trim();
+  if (!text) return false;
+  if (isExplicitHangupCommand(text)) return false;
+  if (NATURAL_FAREWELL.test(text) || semanticFarewell(text)) return false;
+  return /\?/.test(text) || CONTINUES.test(text)
+    || /\b(?:harga|pakej|package|tempahan|booking|bayaran|payment|quotation|sebut\s*harga|tarikh|visa|hotel|penerbangan|flight)\b/i.test(text);
+}
+
 export function callingFarewellText(language: string, seed: number): string {
   const english = language.toLowerCase().startsWith("en");
   return pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed);

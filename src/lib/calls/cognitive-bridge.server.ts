@@ -9,8 +9,8 @@ import { validateCallingDecision, callingValidationFields } from "./call-decisio
 import { callingRecovery, callingContractRecovery } from "./call-speech-claims.core";
 import { executeCallingDecision } from "./calling-action-lifecycle.server";
 import { quotationDeliveryReply } from "./call-quotation.server";
-import { acknowledgementOptions, contextualAcknowledgement } from "./call-executive.core";
-import { buildCallOpening, callingFarewellText, isExplicitHangupCommand } from "./call-experience.core";
+import { acknowledgementOptions, contextualAcknowledgement, waitingPhrase } from "./call-executive.core";
+import { buildCallOpening, callingFarewellText, isExplicitHangupCommand, reopensAfterFarewell } from "./call-experience.core";
 import { resolveAddress } from "./cognitive-router.core";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
 import { detectSpokenLanguage, type VoiceTurnRequest } from "./voice-turn.core";
@@ -104,6 +104,16 @@ export async function handleCognitiveVoiceTurn(args: {
           // the media plane only AFTER this farewell finishes playing.
           spoken = callingFarewellText(language, args.payload.sequence);
           nextState = "farewell_committed";
+        } else if (lease.turn && !reopensAfterFarewell(lease.turn.transcript)
+          && state.events.some(e => (e.kind === "proposal" || e.kind === "handoff")
+            && e.sequence < args.payload.sequence && e.payload?.next_state === "farewell_committed")) {
+          // A farewell was already committed on an earlier turn, and the caller
+          // has not raised new business. The ledger resets the closing state on
+          // any fresh caller audio, so without this the call stays alive after
+          // the conversation is over. Re-commit the farewell deterministically
+          // (no model turn, no "anything else?") so the media plane tears down.
+          spoken = callingFarewellText(language, args.payload.sequence);
+          nextState = "farewell_committed";
         } else if (!records || !lease.turn) {
           recovery = "context_unavailable"; spoken = callingRecovery(language, "unavailable");
         } else {
@@ -117,6 +127,7 @@ export async function handleCognitiveVoiceTurn(args: {
           let pending = true;
           let ackWork: Promise<unknown> | undefined;
           let ackSent = false;
+          let waitingSent = false;
           // A neutral cached acknowledgement requires neither a classifier nor a fictitious lookup.
           // It now reflects what the caller just said and never repeats the previous turn's wording,
           // so the call keeps a natural rhythm instead of one canned "Baik." every turn.
@@ -125,10 +136,15 @@ export async function handleCognitiveVoiceTurn(args: {
             address, language, transcript: lease.turn.transcript,
             ...(typeof previousAck === "string" ? { previous: previousAck } : {}),
           }));
+          // Liveness for the acknowledgement is read in parallel with the model call, not at the
+          // moment we want to speak: the caller should not wait an extra database round-trip
+          // before hearing anything. Staleness within that window is still caught by the
+          // response signal and by the final speech-eligibility check.
+          const ackGuard = args.onAcknowledgement ? snapshot().catch(() => null) : null;
           const emit = args.onAcknowledgement ? () => {
             ackWork = (async () => {
-              const current = await snapshot();
-              if (ackSent || !pending || response.aborted || !current.live || current.generation !== lease!.generation) return;
+              const current = await ackGuard;
+              if (ackSent || !pending || response.aborted || !current?.live || current.generation !== lease!.generation) return;
               ackSent = true;
               args.onAcknowledgement?.({ text: acknowledgement, voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
               times["ack_handoff"] = Date.now();
@@ -173,7 +189,19 @@ export async function handleCognitiveVoiceTurn(args: {
                 pending = true;
                 const executing = executeCallingDecision({ db: args.db, binding: args.binding, packet, decision,
                   lifetime: args.lifetime, responseSignal: response, timings: times }).finally(() => { pending = false; });
-                const outcome = await withCallingBackchannel({ answer: executing, signal: response, emit });
+                // A dispatch takes seconds. One waiting phrase keeps that gap natural; the
+                // short acknowledgement already spoken does not suppress it, and it is the
+                // only extra utterance the turn may produce.
+                const waiting = args.onAcknowledgement ? () => {
+                  ackWork = (async () => {
+                    if (waitingSent || !pending || response.aborted) return;
+                    waitingSent = true;
+                    args.onAcknowledgement?.({ text: callingSpokenText(waitingPhrase(address, language)),
+                      voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
+                    await record("acknowledgement", { text: callingSpokenText(waitingPhrase(address, language)), delivery: "handoff_only" });
+                  })().catch(() => undefined);
+                } : undefined;
+                const outcome = await withCallingBackchannel({ answer: executing, signal: response, emit: waiting, delayMs: 600 });
                 spoken = quotationDeliveryReply(outcome.answer, language);
               }
             }
@@ -214,8 +242,15 @@ export async function handleCognitiveVoiceTurn(args: {
           ...(args.payload.kind === "greeting" ? { backchannelTexts: acknowledgementOptions(address, language).map(callingSpokenText) } : {}),
           speechEligibility: () => withinCallingBudget(args.signal, 2500, async owner => {
             const current = await callingRpc<BridgeSnapshot>(args.db, "calling_bridge_snapshot", base, owner);
-            return current.live && current.revision === lease!.revision && current.generation === lease!.generation
-              && (nextState !== "farewell_committed" || current.farewell_id === output.farewell_id);
+            if (!current.live) return false;
+            if (current.revision === lease!.revision && current.generation === lease!.generation) return true;
+            // The turn was superseded. For an ordinary answer that is the end of it, but a
+            // COMMITTED FAREWELL must still be spoken unless the caller genuinely reopened the
+            // conversation: caller audio picked up while the farewell was being synthesized
+            // supersedes the turn, and suppressing it left the line silent and still alive.
+            if (nextState !== "farewell_committed") return false;
+            return !(current.callers ?? []).some(turn => turn.sequence > args.payload.sequence
+              && reopensAfterFarewell(turn.transcript ?? ""));
           }),
           onHandoff: () => { void record("handoff", {}).catch(() => undefined); },
         };

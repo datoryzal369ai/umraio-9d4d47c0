@@ -46,9 +46,17 @@ export function validateCallingDecision(raw: unknown, packet: CognitivePacket, c
     if (missing.offered || missing.response_received) return { ok: false, reason: "duplicate_clarification" };
   }
   // Identity ambiguity cannot be resolved by model prose or a caller's unverified spoken name.
+  // It blocks PRIVATE answers only: an answer that neither cites a customer/booking record nor
+  // asserts a business/identity claim exposes nothing, so ordinary conversation and general
+  // package questions continue naturally instead of collapsing to the same identity sentence.
   if (packet.dialogue?.missing?.fact === "caller_identity" && d.interaction_mode !== "CLOSE"
-    && d.spoken_response !== callingContractRecovery(packet).spoken_response)
-    return { ok: false, reason: "identity_not_verified" };
+    && d.spoken_response !== callingContractRecovery(packet).spoken_response) {
+    const exposesRecord = packet.dialogue?.topic === "booking"
+      || d.authoritative_facts_used.some(id => ["business_record", "verified_identity", "verified_execution"]
+        .includes(byId.get(id)?.authority ?? ""))
+      || d.claim_requests.some(c => ["business_status", "identity", "execution_sent", "execution_read"].includes(c.kind));
+    if (exposesRecord) return { ok: false, reason: "identity_not_verified" };
+  }
   if (d.action_required) {
     const action = packet.available_actions.find(a => a.tool === d.allowed_tool && a.quotation_id === d.requested_action?.quotation_id);
     if (!action || d.interaction_mode !== "EXECUTE" || d.requires_clarification || d.requires_confirmation
