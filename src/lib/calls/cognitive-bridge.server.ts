@@ -229,8 +229,11 @@ export async function handleCognitiveVoiceTurn(args: {
           ...(args.payload.kind === "greeting" ? { backchannelTexts: acknowledgementOptions(address, language).map(callingSpokenText) } : {}),
           speechEligibility: () => withinCallingBudget(args.signal, 2500, async owner => {
             const current = await callingRpc<BridgeSnapshot>(args.db, "calling_bridge_snapshot", base, owner);
-            return current.live && current.revision === lease!.revision && current.generation === lease!.generation
-              && (nextState !== "farewell_committed" || current.farewell_id === output.farewell_id);
+            if (!current.live || current.generation !== lease!.generation) return false;
+            // A committed farewell is always spoken. Caller audio arriving while it is being
+            // synthesized bumps the revision and clears farewell_id in the ledger; suppressing
+            // the farewell there left the line silent and alive instead of ending the call.
+            return nextState === "farewell_committed" || current.revision === lease!.revision;
           }),
           onHandoff: () => { void record("handoff", {}).catch(() => undefined); },
         };
