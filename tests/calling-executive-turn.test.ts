@@ -115,7 +115,7 @@ describe("Worker-only executive conversation integration", () => {
       const emit = vi.fn();
       const fixture = callingDb();
       const pending = handleVoiceTurn({ db: fixture.db, payload, onAcknowledgement: emit });
-      await vi.advanceTimersByTimeAsync(349);
+      await vi.advanceTimersByTimeAsync(249);
       expect(emit).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(emit).toHaveBeenCalledOnce();

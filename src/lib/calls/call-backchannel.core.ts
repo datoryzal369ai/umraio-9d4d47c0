@@ -16,7 +16,9 @@ export async function withCallingBackchannel<T>(args: {
       args.emit?.();
       emitted = true;
     }
-  }, args.delayMs ?? 350) : undefined;
+    // 250ms: long enough that a genuinely fast turn answers without an extra
+    // utterance, short enough that the caller never hears unexplained silence.
+  }, args.delayMs ?? 250) : undefined;
   const cancel = () => clearTimeout(timer);
   args.signal?.addEventListener("abort", cancel, { once: true });
   try {
