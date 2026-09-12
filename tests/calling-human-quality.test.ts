@@ -11,7 +11,7 @@ describe("Calling backchannel timing", () => {
     let finish!: (value: string) => void;
     const emit = vi.fn();
     const work = withCallingBackchannel({ answer: new Promise<string>(r => { finish = r; }), emit });
-    await vi.advanceTimersByTimeAsync(349);
+    await vi.advanceTimersByTimeAsync(249);
     expect(emit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(emit).toHaveBeenCalledTimes(1);
