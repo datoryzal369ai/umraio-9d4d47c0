@@ -118,10 +118,14 @@ export async function handleCognitiveVoiceTurn(args: {
           let ackWork: Promise<unknown> | undefined;
           let ackSent = false;
           // A neutral cached acknowledgement requires neither a classifier nor a fictitious lookup.
-          const options = acknowledgementOptions(address, language).map(callingSpokenText);
-          const acknowledgement = options[language.startsWith("en") ? 1 : 0]!;
+          // It now reflects what the caller just said and never repeats the previous turn's wording,
+          // so the call keeps a natural rhythm instead of one canned "Baik." every turn.
           const previousAck = state.events.filter(e => e.kind === "acknowledgement").sort((a,b) => a.sequence - b.sequence).at(-1)?.payload.text;
-          const emit = args.onAcknowledgement && previousAck !== acknowledgement ? () => {
+          const acknowledgement = callingSpokenText(contextualAcknowledgement({
+            address, language, transcript: lease.turn.transcript,
+            ...(typeof previousAck === "string" ? { previous: previousAck } : {}),
+          }));
+          const emit = args.onAcknowledgement ? () => {
             ackWork = (async () => {
               const current = await snapshot();
               if (ackSent || !pending || response.aborted || !current.live || current.generation !== lease!.generation) return;
