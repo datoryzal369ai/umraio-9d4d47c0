@@ -144,6 +144,16 @@ export function isExplicitHangupCommand(transcript: string): boolean {
   return HANGUP_COMMAND.test(text);
 }
 
+/**
+ * The spoken farewell RAIŌ uses when the caller has explicitly asked to end
+ * the call. Shared by the legacy closing machine and the cognitive bridge so
+ * both planes say goodbye in the same voice before termination.
+ */
+export function callingFarewellText(language: string, seed: number): string {
+  const english = language.toLowerCase().startsWith("en");
+  return pick(english ? FAREWELLS_EN : FAREWELLS_MS, seed);
+}
+
 // Whole-turn completion only. A thank-you followed by business is not a goodbye.
 const NATURAL_FAREWELL = /^(?:(?:ok(?:ay|ey)?|baik(?:lah)?)[,\s]+)?(?:terima kasih(?:\s+ya)?|itu (?:sahaja|saja|je)|(?:dah|sudah) cukup|(?:dah\s+)?(?:tak ada|takde|tiada)(?:\s+apa(?:-apa)? lagi|\s+lagi|\s+dah)?|bye|goodbye|that'?s all)[\s.!]*$/i;
 
