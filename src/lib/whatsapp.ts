@@ -1,5 +1,8 @@
-import { supabase } from "@/integrations/supabase/client";
-import { disconnectWhatsappFn, saveWhatsappConfigFn } from "@/lib/whatsapp/config.functions";
+import {
+  disconnectWhatsappFn,
+  getWhatsappConfigFn,
+  saveWhatsappConfigFn,
+} from "@/lib/whatsapp/config.functions";
 
 /**
  * SECURITY: `access_token` is never selected into the browser, and the browser
