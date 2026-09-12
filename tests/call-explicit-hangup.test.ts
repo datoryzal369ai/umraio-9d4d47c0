@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceClosing, isExplicitHangupCommand } from "@/lib/calls/call-experience.core";
+import { advanceClosing, callingFarewellText, isExplicitHangupCommand } from "@/lib/calls/call-experience.core";
 
 const base = { language: "ms", turnCount: 3, maxTurns: 40 } as const;
 
