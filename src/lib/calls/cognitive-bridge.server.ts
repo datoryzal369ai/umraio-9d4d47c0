@@ -180,8 +180,16 @@ export async function handleCognitiveVoiceTurn(args: {
               }
               times["contract_repair_end"] = Date.now();
             }
-            if (!validated.ok) return failure(validated.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
-            {
+            if (!validated.ok && validated.reason === "stale_decision") return failure("cognitive_stale_turn");
+            if (!validated.ok) {
+              // LAST RESORT — an admitted, live turn must never end in silence. Blocking the
+              // model's speech is correct; returning nothing is not, because the gateway then
+              // plays no audio at all and the caller hears the line die. Speak one safe,
+              // claim-free line instead; the blocked reason is still recorded as telemetry.
+              recovery = `contract_blocked:${validated.reason}`;
+              spoken = callingRecovery(language, "unavailable");
+              nextState = "active";
+            } else {
               decision = validated.decision;
               spoken = decision.spoken_response; nextState = decision.next_state;
               clarificationOffers = nextClarificationOffers(packet, decision);
