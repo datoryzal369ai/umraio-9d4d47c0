@@ -242,11 +242,15 @@ export async function handleCognitiveVoiceTurn(args: {
           ...(args.payload.kind === "greeting" ? { backchannelTexts: acknowledgementOptions(address, language).map(callingSpokenText) } : {}),
           speechEligibility: () => withinCallingBudget(args.signal, 2500, async owner => {
             const current = await callingRpc<BridgeSnapshot>(args.db, "calling_bridge_snapshot", base, owner);
-            if (!current.live || current.generation !== lease!.generation) return false;
-            // A committed farewell is always spoken. Caller audio arriving while it is being
-            // synthesized bumps the revision and clears farewell_id in the ledger; suppressing
-            // the farewell there left the line silent and alive instead of ending the call.
-            return nextState === "farewell_committed" || current.revision === lease!.revision;
+            if (!current.live) return false;
+            if (current.revision === lease!.revision && current.generation === lease!.generation) return true;
+            // The turn was superseded. For an ordinary answer that is the end of it, but a
+            // COMMITTED FAREWELL must still be spoken unless the caller genuinely reopened the
+            // conversation: caller audio picked up while the farewell was being synthesized
+            // supersedes the turn, and suppressing it left the line silent and still alive.
+            if (nextState !== "farewell_committed") return false;
+            return !(current.callers ?? []).some(turn => turn.sequence > args.payload.sequence
+              && reopensAfterFarewell(turn.transcript ?? ""));
           }),
           onHandoff: () => { void record("handoff", {}).catch(() => undefined); },
         };
