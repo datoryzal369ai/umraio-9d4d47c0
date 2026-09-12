@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceClosing, isExplicitHangupCommand } from "@/lib/calls/call-experience.core";
+import { advanceClosing, callingFarewellText, isExplicitHangupCommand } from "@/lib/calls/call-experience.core";
 
 const base = { language: "ms", turnCount: 3, maxTurns: 40 } as const;
 
@@ -67,5 +67,17 @@ describe("explicit hangup command", () => {
     expect(out.action).toBe("farewell");
     const cont = advanceClosing({ ...base, state: "active", transcript: "Nak tanya satu lagi." });
     expect(cont.action).toBe("continue");
+  });
+});
+
+describe("callingFarewellText", () => {
+  it("speaks a farewell with no further question, in the caller's language", () => {
+    const ms = callingFarewellText("ms", 0);
+    const en = callingFarewellText("en", 0);
+    expect(ms).toMatch(/assalamualaikum/i);
+    expect(ms).not.toMatch(/\?/);
+    expect(en).toMatch(/thank/i);
+    expect(en).not.toMatch(/\?/);
+    expect(ms).not.toMatch(/\bsemak\b/i);
   });
 });

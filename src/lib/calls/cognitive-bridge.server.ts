@@ -10,7 +10,7 @@ import { callingRecovery, callingContractRecovery } from "./call-speech-claims.c
 import { executeCallingDecision } from "./calling-action-lifecycle.server";
 import { quotationDeliveryReply } from "./call-quotation.server";
 import { acknowledgementOptions } from "./call-executive.core";
-import { buildCallOpening } from "./call-experience.core";
+import { buildCallOpening, callingFarewellText, isExplicitHangupCommand } from "./call-experience.core";
 import { resolveAddress } from "./cognitive-router.core";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
 import { detectSpokenLanguage, type VoiceTurnRequest } from "./voice-turn.core";
@@ -96,6 +96,14 @@ export async function handleCognitiveVoiceTurn(args: {
         if (args.payload.kind === "greeting") {
           spoken = buildCallOpening({ agencyName: args.agencyName, language, disclosureAlreadySpoken: args.disclosureSpoken,
             knownName: address.spoken, variant: Array.from(args.binding.callId).reduce((sum, c) => sum + c.charCodeAt(0), 0) }).text;
+        } else if (lease.turn && isExplicitHangupCommand(lease.turn.transcript)) {
+          // DETERMINISTIC CLOSE: the caller told RAIŌ to hang up. This must not
+          // depend on the model proposing CLOSE (it may keep the call open, or
+          // its close may be vetoed), so the bridge speaks a natural farewell
+          // itself and commits the farewell state. Termination still happens on
+          // the media plane only AFTER this farewell finishes playing.
+          spoken = callingFarewellText(language, args.payload.sequence);
+          nextState = "farewell_committed";
         } else if (!records || !lease.turn) {
           recovery = "context_unavailable"; spoken = callingRecovery(language, "unavailable");
         } else {
