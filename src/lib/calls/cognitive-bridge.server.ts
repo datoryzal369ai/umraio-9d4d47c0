@@ -188,7 +188,19 @@ export async function handleCognitiveVoiceTurn(args: {
                 pending = true;
                 const executing = executeCallingDecision({ db: args.db, binding: args.binding, packet, decision,
                   lifetime: args.lifetime, responseSignal: response, timings: times }).finally(() => { pending = false; });
-                const outcome = await withCallingBackchannel({ answer: executing, signal: response, emit });
+                // A dispatch takes seconds. One waiting phrase keeps that gap natural; the
+                // short acknowledgement already spoken does not suppress it, and it is the
+                // only extra utterance the turn may produce.
+                const waiting = args.onAcknowledgement ? () => {
+                  ackWork = (async () => {
+                    if (waitingSent || !pending || response.aborted) return;
+                    waitingSent = true;
+                    args.onAcknowledgement?.({ text: callingSpokenText(waitingPhrase(address, language)),
+                      voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
+                    await record("acknowledgement", { text: callingSpokenText(waitingPhrase(address, language)), delivery: "handoff_only" });
+                  })().catch(() => undefined);
+                } : undefined;
+                const outcome = await withCallingBackchannel({ answer: executing, signal: response, emit: waiting, delayMs: 600 });
                 spoken = quotationDeliveryReply(outcome.answer, language);
               }
             }
