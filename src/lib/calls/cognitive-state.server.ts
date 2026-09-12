@@ -172,7 +172,13 @@ function callingDialogue(s: BridgeSnapshot, caller: CallerTurn, records: Calling
   const lastDelivered = [...s.events].filter(e => e.kind === "playback_complete").sort((a,b) => b.sequence-a.sequence)[0];
   if (/^\s*(?:ok(?:ay)?|baik|ya|yes)[.!\s]*$/i.test(current) && lastDelivered?.payload.closing_question !== true) fact = "completion";
   else if (topic === "booking" && !socialTurn.test(current)) {
-    if (!records.lead) fact = "caller_identity";
+    // The identity gate belongs to turns that actually touch the private
+    // booking, or to a reply continuing that verification. A later unrelated
+    // turn (pricing, thanks) must not be overwritten by the identity script.
+    const aboutBooking = bookingTopic.test(current)
+      || /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(current)
+      || (offered.some(o => o.fact === "caller_identity") && extractCallingName(current, true) !== null);
+    if (!records.lead) { if (aboutBooking) fact = "caller_identity"; }
     else if (recordSelectionMissing) fact = "booking_reference";
   } else if (topic === "general" && /^(?:ja|skjab|skjap|ede|[a-z]{1,2})(?:[\s,.!?]+(?:skjab|skjap|ja))*[\s,.!?]*$/i.test(current.trim())
     && !/^(?:hi|ok|ya)[.!?\s]*$/i.test(current.trim())) fact = "caller_request";
