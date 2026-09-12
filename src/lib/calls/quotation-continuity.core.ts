@@ -21,7 +21,7 @@ export type QuotationContinuityResult = {
 const QUOTATION = /\b(quotation|quote|sebut\s*harga)\b/i;
 const NO_REFERENCE =
   /\b(tak|tidak|tiada|takde|tak ada|tak tahu|lupa|don't|do not|no)\b[\s\S]{0,40}\b(nombor|number|quotation|quote|rujukan)\b|\b(nombor|number|rujukan)\b[\s\S]{0,30}\b(tak|tiada|lupa|don't|no)\b/i;
-const REFERENCE_LIKE = /\bQ[A-Z0-9][A-Z0-9\-/ ]{2,}\b/i;
+const REFERENCE_LIKE = /\bQ(?:T)?[- ]?\d{3,}(?:[-/]\d+)*\b/i;
 const FAILED_RECOVERY = /tak\s+(?:boleh|dapat)\s+semak/i;
 
 function clean(value: unknown): string | null {
