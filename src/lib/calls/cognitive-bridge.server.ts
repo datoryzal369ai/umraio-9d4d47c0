@@ -104,6 +104,16 @@ export async function handleCognitiveVoiceTurn(args: {
           // the media plane only AFTER this farewell finishes playing.
           spoken = callingFarewellText(language, args.payload.sequence);
           nextState = "farewell_committed";
+        } else if (lease.turn && !reopensAfterFarewell(lease.turn.transcript)
+          && state.events.some(e => (e.kind === "proposal" || e.kind === "handoff")
+            && e.sequence < args.payload.sequence && e.payload?.next_state === "farewell_committed")) {
+          // A farewell was already committed on an earlier turn, and the caller
+          // has not raised new business. The ledger resets the closing state on
+          // any fresh caller audio, so without this the call stays alive after
+          // the conversation is over. Re-commit the farewell deterministically
+          // (no model turn, no "anything else?") so the media plane tears down.
+          spoken = callingFarewellText(language, args.payload.sequence);
+          nextState = "farewell_committed";
         } else if (!records || !lease.turn) {
           recovery = "context_unavailable"; spoken = callingRecovery(language, "unavailable");
         } else {
