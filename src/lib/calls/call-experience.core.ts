@@ -135,9 +135,10 @@ export function isExplicitHangupCommand(transcript: string): boolean {
   const text = transcript.trim();
   if (!text) return false;
   if (HANGUP_NEGATED.test(text)) return false;
-  // A request about THIS call, including the founder's indirect prompt. A
-  // business object or a report about an earlier drop must never match.
-  if (/\b(?:tempahan|bayaran|jumlah|booking|payment|tadi|terputus)\b/i.test(text)) return false;
+  // A business object ("putuskan tempahan") is never a hangup. HANGUP_COMMAND
+  // already requires an explicit talian/panggilan/call object, so only the
+  // dropped-line report needs its own veto (handled by HANGUP_REPORT below).
+  if (/\b(?:putuskan|tamatkan)(?:lah)?\s+(?:tempahan|booking|jumlah|bayaran|payment)\b/i.test(text)) return false;
   if (/^(?:awak\s+tak\s+putuskan\s+ke|awak\s+boleh\s+putuskan|(?:boleh\s+)?(?:awak\s+)?putuskan)(?:\s+(?:sekarang|ya|lah))?[\s.!?]*$/i.test(text)) return true;
   if (HANGUP_REPORT.test(text) && !HANGUP_POLITE_REQUEST.test(text)) return false;
   return HANGUP_COMMAND.test(text);

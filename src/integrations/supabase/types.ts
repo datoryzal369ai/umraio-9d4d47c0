@@ -667,6 +667,263 @@ export type Database = {
           },
         ]
       }
+      calling_bridge_actions: {
+        Row: {
+          agency_id: string
+          cause: string | null
+          claimed_at: string
+          completed_at: string | null
+          dispatched_at: string | null
+          generation: string
+          id: string
+          quotation_id: string
+          receipt: Json | null
+          sequence: number
+          session_id: string
+          state: string
+        }
+        Insert: {
+          agency_id: string
+          cause?: string | null
+          claimed_at?: string
+          completed_at?: string | null
+          dispatched_at?: string | null
+          generation: string
+          id?: string
+          quotation_id: string
+          receipt?: Json | null
+          sequence: number
+          session_id: string
+          state: string
+        }
+        Update: {
+          agency_id?: string
+          cause?: string | null
+          claimed_at?: string
+          completed_at?: string | null
+          dispatched_at?: string | null
+          generation?: string
+          id?: string
+          quotation_id?: string
+          receipt?: Json | null
+          sequence?: number
+          session_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calling_bridge_actions_agency_id_session_id_sequence_fkey"
+            columns: ["agency_id", "session_id", "sequence"]
+            isOneToOne: false
+            referencedRelation: "calling_bridge_turns"
+            referencedColumns: ["agency_id", "session_id", "sequence"]
+          },
+        ]
+      }
+      calling_bridge_events: {
+        Row: {
+          agency_id: string
+          created_at: string
+          generation: string
+          id: string
+          kind: string
+          payload: Json
+          sequence: number
+          session_id: string
+        }
+        Insert: {
+          agency_id: string
+          created_at?: string
+          generation: string
+          id?: string
+          kind: string
+          payload: Json
+          sequence: number
+          session_id: string
+        }
+        Update: {
+          agency_id?: string
+          created_at?: string
+          generation?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          sequence?: number
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calling_bridge_events_agency_id_session_id_sequence_fkey"
+            columns: ["agency_id", "session_id", "sequence"]
+            isOneToOne: false
+            referencedRelation: "calling_bridge_turns"
+            referencedColumns: ["agency_id", "session_id", "sequence"]
+          },
+        ]
+      }
+      calling_bridge_sessions: {
+        Row: {
+          agency_id: string
+          call_id: string
+          closing_clarifications: number
+          closing_episode: string | null
+          closing_state: string
+          created_at: string
+          current_sequence: number
+          farewell_id: string | null
+          gateway_session_id: string
+          generation: string
+          memory: Json
+          revision: number
+          session_id: string
+          version: number
+        }
+        Insert: {
+          agency_id: string
+          call_id: string
+          closing_clarifications?: number
+          closing_episode?: string | null
+          closing_state?: string
+          created_at?: string
+          current_sequence?: number
+          farewell_id?: string | null
+          gateway_session_id: string
+          generation?: string
+          memory?: Json
+          revision?: number
+          session_id: string
+          version?: number
+        }
+        Update: {
+          agency_id?: string
+          call_id?: string
+          closing_clarifications?: number
+          closing_episode?: string | null
+          closing_state?: string
+          created_at?: string
+          current_sequence?: number
+          farewell_id?: string | null
+          gateway_session_id?: string
+          generation?: string
+          memory?: Json
+          revision?: number
+          session_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calling_bridge_sessions_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calling_bridge_sessions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "whatsapp_call_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calling_bridge_turns: {
+        Row: {
+          agency_id: string
+          generation: string
+          kind: string
+          received_at: string
+          request_digest: string
+          revision: number
+          sequence: number
+          session_id: string
+        }
+        Insert: {
+          agency_id: string
+          generation?: string
+          kind: string
+          received_at: string
+          request_digest: string
+          revision: number
+          sequence: number
+          session_id: string
+        }
+        Update: {
+          agency_id?: string
+          generation?: string
+          kind?: string
+          received_at?: string
+          request_digest?: string
+          revision?: number
+          sequence?: number
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calling_bridge_turns_agency_id_session_id_fkey"
+            columns: ["agency_id", "session_id"]
+            isOneToOne: false
+            referencedRelation: "calling_bridge_sessions"
+            referencedColumns: ["agency_id", "session_id"]
+          },
+        ]
+      }
+      calling_caller_turns: {
+        Row: {
+          agency_id: string
+          asr_completed_at: string
+          channel: string
+          confidence: string
+          duration_ms: number | null
+          generation: string
+          id: string
+          language: string | null
+          persisted_at: string
+          received_at: string
+          sequence: number
+          session_id: string
+          transcript: string
+        }
+        Insert: {
+          agency_id: string
+          asr_completed_at: string
+          channel?: string
+          confidence?: string
+          duration_ms?: number | null
+          generation: string
+          id?: string
+          language?: string | null
+          persisted_at?: string
+          received_at: string
+          sequence: number
+          session_id: string
+          transcript: string
+        }
+        Update: {
+          agency_id?: string
+          asr_completed_at?: string
+          channel?: string
+          confidence?: string
+          duration_ms?: number | null
+          generation?: string
+          id?: string
+          language?: string | null
+          persisted_at?: string
+          received_at?: string
+          sequence?: number
+          session_id?: string
+          transcript?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calling_caller_turns_agency_id_session_id_sequence_fkey"
+            columns: ["agency_id", "session_id", "sequence"]
+            isOneToOne: true
+            referencedRelation: "calling_bridge_turns"
+            referencedColumns: ["agency_id", "session_id", "sequence"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           agency_id: string
@@ -2292,6 +2549,100 @@ export type Database = {
     Functions: {
       accept_agency_invitation: {
         Args: { p_token_hash: string }
+        Returns: Json
+      }
+      calling_bridge_action: {
+        Args: {
+          p_agency: string
+          p_call: string
+          p_gateway: string
+          p_generation: string
+          p_operation: string
+          p_quotation: string
+          p_result?: Json
+          p_revision: number
+          p_sequence: number
+          p_session: string
+        }
+        Returns: Json
+      }
+      calling_bridge_begin: {
+        Args: {
+          p_agency: string
+          p_call: string
+          p_gateway: string
+          p_greeting: boolean
+          p_received_at: string
+          p_request_digest: string
+          p_sequence: number
+          p_session: string
+        }
+        Returns: Json
+      }
+      calling_bridge_observe_media: {
+        Args: {
+          p_agency: string
+          p_call: string
+          p_gateway: string
+          p_metrics: Json
+          p_sequence: number
+          p_session: string
+        }
+        Returns: Json
+      }
+      calling_bridge_output: {
+        Args: {
+          p_agency: string
+          p_call: string
+          p_gateway: string
+          p_generation: string
+          p_payload: Json
+          p_revision: number
+          p_sequence: number
+          p_session: string
+        }
+        Returns: Json
+      }
+      calling_bridge_persist_caller: {
+        Args: {
+          p_agency: string
+          p_asr_completed_at: string
+          p_call: string
+          p_duration_ms: number
+          p_gateway: string
+          p_generation: string
+          p_language: string
+          p_sequence: number
+          p_session: string
+          p_transcript: string
+        }
+        Returns: Json
+      }
+      calling_bridge_project: {
+        Args: { p_agency: string; p_session: string }
+        Returns: undefined
+      }
+      calling_bridge_record: {
+        Args: {
+          p_agency: string
+          p_call: string
+          p_gateway: string
+          p_generation: string
+          p_kind: string
+          p_payload: Json
+          p_revision: number
+          p_sequence: number
+          p_session: string
+        }
+        Returns: Json
+      }
+      calling_bridge_snapshot: {
+        Args: {
+          p_agency: string
+          p_call: string
+          p_gateway: string
+          p_session: string
+        }
         Returns: Json
       }
       claim_followup_job: {

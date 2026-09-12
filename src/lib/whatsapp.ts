@@ -1,5 +1,8 @@
-import { supabase } from "@/integrations/supabase/client";
-import { disconnectWhatsappFn, saveWhatsappConfigFn } from "@/lib/whatsapp/config.functions";
+import {
+  disconnectWhatsappFn,
+  getWhatsappConfigFn,
+  saveWhatsappConfigFn,
+} from "@/lib/whatsapp/config.functions";
 
 /**
  * SECURITY: `access_token` is never selected into the browser, and the browser
@@ -34,9 +37,10 @@ export const WHATSAPP_CLIENT_COLUMNS =
   "id, agency_id, display_phone_number, phone_number_id, business_account_id, has_access_token, is_connected, auto_reply, last_inbound_at";
 
 export async function fetchWhatsappConfig(): Promise<WhatsappConfig | null> {
-  const { data, error } = await supabase.from("whatsapp_configs").select(WHATSAPP_CLIENT_COLUMNS).maybeSingle();
-  if (error) throw error;
-  return (data as WhatsappConfig | null) ?? null;
+  // The browser has no privilege on this table (the credential column must
+  // stay unreadable), so the read goes through an authenticated server fn.
+  const data = await getWhatsappConfigFn();
+  return (data as unknown as WhatsappConfig | null) ?? null;
 }
 
 /**
