@@ -160,3 +160,41 @@ it("ends the call on an explicit hangup instruction without a model turn",async(
  expect(events.at(-1).speech_text).toMatch(/terima kasih|assalamualaikum/i);
  expect(f.model).not.toHaveBeenCalled();
 });
+
+it("answers an ordinary social follow-up instead of going silent",async()=>{
+ const f=await runtime();await f.wire(1);
+ f.setText("hello, apa khabar?");
+ f.setDecision(async p=>decisionFixture(p,{spoken_response:"Alhamdulillah, saya sihat."}));
+ const first=await f.wire(2);
+ expect(first.at(-1)).toMatchObject({type:"final",end_call:false});expect(first.at(-1).speech_text.length).toBeGreaterThan(0);
+ f.setText("saya khabar baik, awak apa khabar?");
+ f.setDecision(async p=>decisionFixture(p,{spoken_response:"Alhamdulillah, saya sihat juga. Dato' pula macam mana?"}));
+ const second=await f.wire(3);
+ expect(second.at(-1)).toMatchObject({type:"final",end_call:false});
+ expect(second.at(-1).speech_text.length).toBeGreaterThan(0);
+ expect(second.at(-1).speech_text).not.toMatch(/semak/i);
+});
+it("never ends an admitted live turn without speech when the decision is contract-blocked",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("saya khabar baik, awak apa khabar?");
+ // Every downstream contract fails: invented evidence, an unclassified question and an invented claim.
+ f.setDecision(async p=>decisionFixture(p,{interaction_mode:"ANSWER",authoritative_facts_used:["invented:fact"],
+  claim_requests:[{kind:"business_status",source_ref:"invented:fact",spoken_span:"Tempahan sudah disahkan"}],
+  spoken_response:"Tempahan sudah disahkan, betul tak?"}));
+ const events=await f.wire(2);
+ expect(events.at(-1)).toMatchObject({type:"final"});
+ expect(events.at(-1).speech_text.length).toBeGreaterThan(0);
+ expect(events.at(-1).speech_text).not.toContain("Tempahan sudah disahkan");
+});
+it("still speaks a final answer when the engine itself fails",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("saya khabar baik, awak apa khabar?");
+ f.setDecision(async()=>{throw new Error("engine down");});
+ const events=await f.wire(2);
+ expect(events.at(-1)).toMatchObject({type:"final"});expect(events.at(-1).speech_text.length).toBeGreaterThan(0);
+});
+it("delivers the final answer even after an acknowledgement was already handed off",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("saya khabar baik, awak apa khabar?");
+ f.setDecision(async p=>new Promise(r=>setTimeout(()=>r(decisionFixture(p,{spoken_response:"Alhamdulillah, saya sihat juga."})),400)));
+ const events=await f.wire(2);
+ expect(events.some(e=>e.type==="ack"&&e.speech_text.length>0)).toBe(true);
+ const final=events.at(-1);expect(final).toMatchObject({type:"final"});expect(final.speech_text.length).toBeGreaterThan(0);
+});
