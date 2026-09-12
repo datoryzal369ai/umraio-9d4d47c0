@@ -9,7 +9,7 @@ import { validateCallingDecision, callingValidationFields } from "./call-decisio
 import { callingRecovery, callingContractRecovery } from "./call-speech-claims.core";
 import { executeCallingDecision } from "./calling-action-lifecycle.server";
 import { quotationDeliveryReply } from "./call-quotation.server";
-import { acknowledgementOptions, contextualAcknowledgement } from "./call-executive.core";
+import { acknowledgementOptions, contextualAcknowledgement, waitingPhrase } from "./call-executive.core";
 import { buildCallOpening, callingFarewellText, isExplicitHangupCommand, reopensAfterFarewell } from "./call-experience.core";
 import { resolveAddress } from "./cognitive-router.core";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
@@ -127,6 +127,7 @@ export async function handleCognitiveVoiceTurn(args: {
           let pending = true;
           let ackWork: Promise<unknown> | undefined;
           let ackSent = false;
+          let waitingSent = false;
           // A neutral cached acknowledgement requires neither a classifier nor a fictitious lookup.
           // It now reflects what the caller just said and never repeats the previous turn's wording,
           // so the call keeps a natural rhythm instead of one canned "Baik." every turn.
