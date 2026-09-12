@@ -44,6 +44,11 @@ describe("authoritative Calling quotation continuity", () => {
     expect(result?.privateDataAuthorized).toBe(false);
   });
 
+  it("does not mistake the word quotation itself for a quotation reference", () => {
+    const result = resolve("Saya nak tanya quotation", [quote()]);
+    expect(result?.strategy).toBe("single_candidate");
+  });
+
   it("does not require a quotation number", () => {
     const result = resolve("Saya tak ada nombor quotation tu", [quote()]);
     expect(result?.strategy).toBe("single_candidate");
