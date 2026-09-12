@@ -69,3 +69,15 @@ describe("explicit hangup command", () => {
     expect(cont.action).toBe("continue");
   });
 });
+
+describe("callingFarewellText", () => {
+  it("speaks a farewell with no further question, in the caller's language", () => {
+    const ms = callingFarewellText("ms", 0);
+    const en = callingFarewellText("en", 0);
+    expect(ms).toMatch(/assalamualaikum/i);
+    expect(ms).not.toMatch(/\?/);
+    expect(en).toMatch(/thank/i);
+    expect(en).not.toMatch(/\?/);
+    expect(ms).not.toMatch(/\bsemak\b/i);
+  });
+});
