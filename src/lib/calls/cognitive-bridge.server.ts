@@ -219,9 +219,12 @@ export async function handleCognitiveVoiceTurn(args: {
             recovery = "engine_or_execution_unavailable";
             state = await snapshot();
             const safe = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
-            if (!safe.ok) return failure(safe.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
-            decision = safe.decision; spoken = decision.spoken_response; nextState = decision.next_state;
-            clarificationOffers = nextClarificationOffers(packet, decision);
+            if (!safe.ok && safe.reason === "stale_decision") return failure("cognitive_stale_turn");
+            if (!safe.ok) { recovery = `contract_blocked:${safe.reason}`; spoken = callingRecovery(language, "unavailable"); nextState = "active"; }
+            else {
+              decision = safe.decision; spoken = decision.spoken_response; nextState = decision.next_state;
+              clarificationOffers = nextClarificationOffers(packet, decision);
+            }
           } finally { pending = false; await ackWork; }
         }
         response.throwIfAborted();
