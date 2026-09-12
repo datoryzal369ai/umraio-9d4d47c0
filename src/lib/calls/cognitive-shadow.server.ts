@@ -99,96 +99,104 @@ function shadowSystem(): string {
   ].join("\n");
 }
 
-function parseResponse(raw: string, request: CognitiveRequest, startedAt: number, completedAt: number): CognitiveResponse | null {
+function responsePrompt(request: CognitiveRequest): string {
+  return JSON.stringify(request);
+}
+
+export async function runCallingCognitionShadow(
+  request: CognitiveRequest,
+  timeoutMs = 4_000,
+): Promise<ShadowResult> {
+  if (process.env["CALL_COGNITION_SHADOW"] !== "1") return { ok: false, reason: "disabled", reasoning_ms: 0 };
+  const started = Date.now();
+  const gateway = createIntelligenceGateway();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const candidate = {
+    const result = await Promise.race([
+      gateway.generate({
+        taskType: "customer_reply",
+        system: shadowSystem(),
+        prompt: responsePrompt(request),
+        context: {
+          agencyId: request.tenant_id,
+          correlationId: request.request_id,
+          locale: request.locale,
+          now: new Date().toISOString(),
+          facts: { channel: "calling_shadow", request },
+          allowedTools: [],
+        },
+      }),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); }),
+    ]);
+    const reasoningMs = Date.now() - started;
+    if (result === null) return { ok: false, reason: "timeout", reasoning_ms: reasoningMs };
+    if (!result.ok || !result.data) return { ok: false, reason: "model_failure", reasoning_ms: reasoningMs };
+    let parsed: unknown;
+    try { parsed = JSON.parse(result.data); }
+    catch { return { ok: false, reason: "invalid_response", reasoning_ms: reasoningMs }; }
+    if (!isCognitiveResponse(parsed)) return { ok: false, reason: "invalid_response", reasoning_ms: reasoningMs };
+    const response: CognitiveResponse = {
       ...parsed,
-      response_id: typeof parsed.response_id === "string" ? parsed.response_id : `response:${request.request_id}`,
+      response_id: typeof parsed.response_id === "string" && parsed.response_id ? parsed.response_id : `response:${request.request_id}`,
       timing: {
-        started_at: new Date(startedAt).toISOString(),
-        completed_at: new Date(completedAt).toISOString(),
-        reasoning_ms: Math.max(0, completedAt - startedAt),
+        started_at: new Date(started).toISOString(),
+        completed_at: new Date().toISOString(),
+        reasoning_ms: reasoningMs,
       },
     };
-    return isCognitiveResponse(candidate) ? candidate : null;
+    return { ok: true, response, reasoning_ms: reasoningMs };
   } catch {
-    return null;
+    return { ok: false, reason: "model_failure", reasoning_ms: Date.now() - started };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
-export async function runCallingCognitionShadow(request: CognitiveRequest, timeoutMs = 4_000): Promise<ShadowResult> {
-  if (process.env["CALL_COGNITION_SHADOW"] !== "1") return { ok: false, reason: "disabled", reasoning_ms: 0 };
-  const startedAt = Date.now();
-  const gateway = createIntelligenceGateway();
-  const work = gateway.generate({
-    taskType: "customer_reply",
-    taskClass: "reasoning",
-    system: shadowSystem(),
-    prompt: JSON.stringify(request),
-    context: {
-      agencyId: request.tenant_id,
-      correlationId: request.trace.turn_id,
-      locale: request.locale,
-      now: new Date().toISOString(),
-      facts: { channel: request.channel, shadow: true, privacy: request.privacy },
-      allowedTools: [],
-    },
-  }).then((result): ShadowResult => {
-    const completedAt = Date.now();
-    if (!result.ok || !result.data) return { ok: false, reason: "model_failure", reasoning_ms: completedAt - startedAt };
-    const response = parseResponse(result.data, request, startedAt, completedAt);
-    return response
-      ? { ok: true, response, reasoning_ms: completedAt - startedAt }
-      : { ok: false, reason: "invalid_response", reasoning_ms: completedAt - startedAt };
-  }).catch((): ShadowResult => ({ ok: false, reason: "model_failure", reasoning_ms: Date.now() - startedAt }));
-  const timeout = new Promise<ShadowResult>((resolve) => {
-    setTimeout(() => resolve({ ok: false, reason: "timeout", reasoning_ms: Date.now() - startedAt }), timeoutMs);
-  });
-  return Promise.race([work, timeout]);
+function normalize(value: string | null | undefined): string {
+  return (value ?? "").toLocaleLowerCase("ms").replace(/\s+/g, " ").trim();
 }
 
-function normalized(value: string | null | undefined): string {
-  return (value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+function nextStepFromAuthoritative(decision: CognitiveDecision): string | null {
+  return decision.clarification?.key ?? (decision.action_required ? decision.allowed_tool : null);
 }
 
-export function compareCallingCognition(args: {
+export function compareCognition(args: {
   request: CognitiveRequest;
   authoritative: CognitiveDecision;
-  authoritativeReasoningMs?: number | null;
+  authoritativeReasoningMs: number | null;
   shadow: ShadowResult;
 }): ShadowComparison {
-  const shadow = args.shadow.ok ? args.shadow.response : null;
-  const authoritativeNext = args.authoritative.clarification?.key ?? null;
-  const shadowNext = shadow?.required_next_step ?? null;
-  const authoritativeActions = args.authoritative.requested_action ? [args.authoritative.requested_action.name] : [];
-  const shadowActions = shadow?.action_intents ?? [];
+  const response = args.shadow.ok ? args.shadow.response : null;
+  const authoritativeIntent = args.authoritative.intent;
+  const shadowIntent = response?.conversational_intent[0] ?? null;
+  const authoritativeNext = nextStepFromAuthoritative(args.authoritative);
+  const shadowNext = response?.required_next_step ?? null;
   let semanticDifference: ShadowComparison["semantic_difference"] = "unavailable";
-  if (shadow) {
-    const intentMatch = shadow.conversational_intent.some((intent) => normalized(intent) === normalized(args.authoritative.intent));
-    const nextMatch = normalized(authoritativeNext) === normalized(shadowNext);
-    const answerMatch = normalized(shadow.semantic_answer) === normalized(args.authoritative.spoken_response);
-    semanticDifference = intentMatch && nextMatch && answerMatch ? "equivalent"
-      : !intentMatch ? "intent_changed"
-      : !nextMatch ? "next_step_changed"
-      : "meaning_changed";
+  if (response) {
+    if (normalize(authoritativeIntent) !== normalize(shadowIntent)) semanticDifference = "intent_changed";
+    else if (normalize(authoritativeNext) !== normalize(shadowNext)) semanticDifference = "next_step_changed";
+    else semanticDifference = "equivalent";
   }
   return {
     turn_id: args.request.trace.turn_id,
-    authoritative_intent: args.authoritative.intent,
-    shadow_intent: shadow?.conversational_intent[0] ?? null,
+    authoritative_intent: authoritativeIntent,
+    shadow_intent: shadowIntent,
     authoritative_identity: args.request.privacy.recognition,
-    shadow_identity: shadow ? (shadow.resolved_identity_refs.length ? "recognized" : "unrecognized") : null,
+    shadow_identity: response
+      ? (response.resolved_identity_refs.length > 0 ? "recognized" : "unrecognized")
+      : null,
     authoritative_clarification_required: args.authoritative.requires_clarification,
-    shadow_clarification_required: shadow?.clarification_required ?? null,
+    shadow_clarification_required: response?.clarification_required ?? null,
     history_coverage_count: args.request.history.length,
     relationship_evidence_count: args.request.relationship_memory.length,
-    shadow_facts_count: shadow?.facts_used.length ?? 0,
-    required_next_step_match: shadow ? normalized(authoritativeNext) === normalized(shadowNext) : null,
-    action_intent_match: shadow ? JSON.stringify([...authoritativeActions].sort()) === JSON.stringify([...shadowActions].sort()) : null,
+    shadow_facts_count: response?.facts_used.length ?? 0,
+    required_next_step_match: response ? normalize(authoritativeNext) === normalize(shadowNext) : null,
+    action_intent_match: response
+      ? normalize(args.authoritative.allowed_tool) === normalize(response.action_intents[0] ?? null)
+      : null,
     disclosure_result: args.request.privacy.disclosure,
     semantic_difference: semanticDifference,
-    authoritative_reasoning_ms: args.authoritativeReasoningMs ?? null,
+    authoritative_reasoning_ms: args.authoritativeReasoningMs,
     shadow_reasoning_ms: args.shadow.reasoning_ms,
     shadow_failure_reason: args.shadow.ok ? null : args.shadow.reason,
   };
