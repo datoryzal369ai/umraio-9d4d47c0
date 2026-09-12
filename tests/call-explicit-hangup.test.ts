@@ -40,6 +40,7 @@ describe("explicit hangup command", () => {
     "Awak putuskanlah.",
     "Putuskan talian ya.",
     "Boleh tamatkan panggilan?",
+    "Ok, jumlah bayaran tu saya faham — tamatkan panggilan.",
     "Can you end the call please?",
     "You can hang up now",
     "End the call please",
