@@ -135,10 +135,15 @@ export async function handleCognitiveVoiceTurn(args: {
             address, language, transcript: lease.turn.transcript,
             ...(typeof previousAck === "string" ? { previous: previousAck } : {}),
           }));
+          // Liveness for the acknowledgement is read in parallel with the model call, not at the
+          // moment we want to speak: the caller should not wait an extra database round-trip
+          // before hearing anything. Staleness within that window is still caught by the
+          // response signal and by the final speech-eligibility check.
+          const ackGuard = args.onAcknowledgement ? snapshot().catch(() => null) : null;
           const emit = args.onAcknowledgement ? () => {
             ackWork = (async () => {
-              const current = await snapshot();
-              if (ackSent || !pending || response.aborted || !current.live || current.generation !== lease!.generation) return;
+              const current = await ackGuard;
+              if (ackSent || !pending || response.aborted || !current?.live || current.generation !== lease!.generation) return;
               ackSent = true;
               args.onAcknowledgement?.({ text: acknowledgement, voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
               times["ack_handoff"] = Date.now();
