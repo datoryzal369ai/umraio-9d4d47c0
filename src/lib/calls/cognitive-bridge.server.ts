@@ -11,14 +11,43 @@ import { executeCallingDecision } from "./calling-action-lifecycle.server";
 import { quotationDeliveryReply } from "./call-quotation.server";
 import { acknowledgementOptions } from "./call-executive.core";
 import { buildCallOpening } from "./call-experience.core";
-import { resolveAddress } from "./cognitive-router.core";
+import { isBookingStatusTurn, resolveAddress, resolveBookingStatus, routeTurn } from "./cognitive-router.core";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
+import { resolveQuotationContinuity, type CallQuotationCandidate, type QuotationContinuityHistoryTurn } from "./quotation-continuity.core";
 import { detectSpokenLanguage, type VoiceTurnRequest } from "./voice-turn.core";
 import type { VoiceTurnResult } from "./voice-turn.server";
 import type { CallingAcknowledgement } from "./call-stream.server";
 
 type Presentation = { text: string; replyOggBase64: string | null; voiceId: string; languageBoost: string };
 const failure = (reason: string): VoiceTurnResult => ({ ok: false, reason });
+const ACTIVE_QUOTATION_STATUS = new Set(["ready", "sent", "viewed", "discussing", "accepted", "deposit_pending"]);
+
+type BridgeStage = "turn_admitted" | "context_ready" | "cognition_started" | "cognition_completed" | "policy_completed" | "output_committed";
+function traceBridgeTurn(callId: string, sequence: number, generation: string | null, stage: BridgeStage, reason = "ok") {
+  console.log(`[calls] bridge_stage turn_id=call:${callId}:seq:${sequence}:gen:${generation ?? "pending"} stage=${stage} reason=${reason}`);
+}
+
+function bridgeQuotationHistory(state: BridgeSnapshot): QuotationContinuityHistoryTurn[] {
+  return state.events
+    .filter(e => typeof e.payload?.text === "string")
+    .sort((a, b) => a.sequence - b.sequence)
+    .map(e => ({ role: "umraio" as const, text: String(e.payload.text) }));
+}
+
+function bridgeQuotationCandidates(records: { quotations: any[]; lead: any }): CallQuotationCandidate[] {
+  return records.quotations
+    .filter(q => !q.status || ACTIVE_QUOTATION_STATUS.has(String(q.status)))
+    .slice(0, 5)
+    .map(q => {
+      const snapshot = q.package_snapshot && typeof q.package_snapshot === "object" ? q.package_snapshot : {};
+      return {
+        quotationNumber: typeof q.quotation_number === "string" ? q.quotation_number : null,
+        packageName: snapshot.name ?? snapshot.package_name ?? records.lead?.package_interest ?? null,
+        travelDate: snapshot.travel_date ?? snapshot.departure_date ?? q.travel_month ?? null,
+        pax: Number(q.number_of_pilgrims ?? records.lead?.pax) || null,
+      };
+    });
+}
 
 /** Calling owns evidence, execution and speech eligibility; the engine owns none of them. */
 export async function handleCognitiveVoiceTurn(args: {
@@ -48,13 +77,11 @@ export async function handleCognitiveVoiceTurn(args: {
     const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify({
       kind: args.payload.kind, audio: args.payload.audio_ogg_base64, duration: args.payload.duration_ms,
     })));
-    // Neither audio nor digest is logged; it prevents conflicting retries silently overwriting a sequence.
     const digest = Array.from(new Uint8Array(hash), n => n.toString(16).padStart(2, "0")).join("");
     return await withinCallingBudget(args.signal, Math.max(1, 19_000 - (Date.now() - args.receivedAt)), async response => {
       const db = boundedCallingDb(args.db, response);
       const snapshot = () => callingRpc<BridgeSnapshot>(db, "calling_bridge_snapshot", base, response);
       times["context_start"] = Date.now();
-      // Handle the error in this same owned task even if ASR/caller persistence fails first.
       const recordsPromise = loadCallingRecords(db, { binding: args.binding, callerPhone: args.callerPhone, signal: response })
         .then(records => { times["context_end"] = Date.now(); return { records }; }, () => ({ records: null }));
       try {
@@ -72,6 +99,7 @@ export async function handleCognitiveVoiceTurn(args: {
         });
         if (lease.state === "legacy") return null;
         if (!lease.can_respond) return failure(`cognitive_${lease.state}`);
+        traceBridgeTurn(args.binding.callId, args.payload.sequence, lease.generation, "turn_admitted");
         response.throwIfAborted();
         if (args.payload.media_metrics) await callingRpc(db, "calling_bridge_observe_media", {
           ...base, p_sequence: args.payload.sequence, p_metrics: args.payload.media_metrics,
@@ -87,12 +115,14 @@ export async function handleCognitiveVoiceTurn(args: {
           if (reconciled.some(r => r.ok)) state = await snapshot();
         }
         let { records } = await recordsPromise;
+        traceBridgeTurn(args.binding.callId, args.payload.sequence, lease.generation, "context_ready", records ? "ready" : "unavailable");
         const language = lease.turn ? detectSpokenLanguage(lease.turn.transcript, args.language) : args.language;
         const address = resolveAddress(records?.lead?.full_name);
         let spoken: string;
         let decision: CognitiveDecision | null = null;
         let clarificationOffers: ClarificationOffer[] = priorClarificationOffers(state, args.payload.sequence);
         let nextState: "active" | "possible_completion" | "farewell_committed" = "active";
+        traceBridgeTurn(args.binding.callId, args.payload.sequence, lease.generation, "cognition_started");
         if (args.payload.kind === "greeting") {
           spoken = buildCallOpening({ agencyName: args.agencyName, language, disclosureAlreadySpoken: args.disclosureSpoken,
             knownName: address.spoken, variant: Array.from(args.binding.callId).reduce((sum, c) => sum + c.charCodeAt(0), 0) }).text;
@@ -102,58 +132,87 @@ export async function handleCognitiveVoiceTurn(args: {
           records = await continueCallingIdentity(db, records, args.binding, state, lease.turn, response);
           const requested = callingSelectionText(state, lease.turn.transcript);
           records = await includeRequestedQuotation(db, records, args.binding, requested, response);
-          const packet = buildCognitivePacket({ binding: args.binding, sequence: args.payload.sequence,
-            snapshot: state, caller: lease.turn, records, language });
-          packetId = packet.packet_id;
-          clarificationOffers = nextClarificationOffers(packet, null);
-          let pending = true;
-          let ackWork: Promise<unknown> | undefined;
-          let ackSent = false;
-          // A neutral cached acknowledgement requires neither a classifier nor a fictitious lookup.
-          const options = acknowledgementOptions(address, language).map(callingSpokenText);
-          const acknowledgement = options[language.startsWith("en") ? 1 : 0]!;
-          const previousAck = state.events.filter(e => e.kind === "acknowledgement").sort((a,b) => a.sequence - b.sequence).at(-1)?.payload.text;
-          const emit = args.onAcknowledgement && previousAck !== acknowledgement ? () => {
-            ackWork = (async () => {
-              const current = await snapshot();
-              if (ackSent || !pending || response.aborted || !current.live || current.generation !== lease!.generation) return;
-              ackSent = true;
-              args.onAcknowledgement?.({ text: acknowledgement, voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
-              times["ack_handoff"] = Date.now();
-              await record("acknowledgement", { text: acknowledgement, delivery: "handoff_only" });
-            })().catch(() => undefined);
-          } : undefined;
-          try {
-            enginePacket = packet;
-            times["model_start"] = Date.now();
-            const model = (args.engine ?? currentCallingEngine).decide({ packet, deadline: args.receivedAt + 16_000, signal: response })
-              .finally(() => { pending = false; times["model_end"] = Date.now(); });
-            const result = await withCallingBackchannel({ answer: model, signal: response, emit });
-            engineAnswerReceived = true;
-            metadata = result.answer.metadata;
-            state = await snapshot();
-            times["policy_start"] = Date.now();
-            let validated = validateCallingDecision(result.answer.decision, packet, { ...state, cancelled: response.aborted });
-            times["policy_end"] = Date.now();
-            if (!validated.ok) {
-              if (validated.reason === "stale_decision") return failure("cognitive_stale_turn");
-              recovery = validated.reason;
-              contractRepair = { attempts: 1, reason: validated.reason,
-                fields: callingValidationFields(result.answer.decision, packet, validated.reason), outcome: "blocked" };
-              times["contract_repair_start"] = Date.now();
-              // Exactly one bounded local repair. No second reasoning call, ASR, context query or action.
-              const reconstructed = reconstructCallingMemory(result.answer.decision, packet, validated.reason);
-              const repaired = reconstructed ? validateCallingDecision(reconstructed, packet, { ...state, cancelled: response.aborted }) : null;
-              if (repaired?.ok) { validated = repaired; contractRepair.outcome = "evidence_bound"; }
-              else {
-                // Failed repair does not release any unvalidated model speech. Construct a fresh, safe response.
-                validated = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
-                contractRepair.outcome = validated.ok ? "safe_response" : "blocked";
+          const route = routeTurn({ transcript: lease.turn.transcript, language, address, seed: args.payload.sequence });
+          const verificationAlreadyAsked = clarificationOffers.some(o => o.fact === "booking_reference");
+          const booking = records.bookings.length === 1 ? records.bookings[0] : null;
+          const bookingStatusReply = isBookingStatusTurn(lease.turn.transcript)
+            ? resolveBookingStatus({
+                knownCustomer: Boolean(records.lead),
+                authorized: Boolean(records.lead && records.conversations.length === 1 && booking),
+                recordFound: Boolean(booking),
+                status: typeof booking?.status === "string" ? booking.status : null,
+                retrievalFailed: false,
+                verificationAlreadyAsked,
+                language,
+              })
+            : null;
+          const quotationRecovery = resolveQuotationContinuity({
+            transcript: lease.turn.transcript,
+            history: bridgeQuotationHistory(state),
+            recognizedCaller: Boolean(records.lead),
+            leadResolved: Boolean(records.lead),
+            conversationLinked: records.conversations.length === 1,
+            candidates: bridgeQuotationCandidates(records),
+            packageInterest: typeof records.lead?.package_interest === "string" ? records.lead.package_interest : null,
+            pax: Number(records.lead?.pax) || null,
+          });
+
+          if (route.reflex && route.reflexText) {
+            spoken = route.reflexText;
+          } else if (bookingStatusReply) {
+            spoken = bookingStatusReply;
+          } else if (quotationRecovery) {
+            spoken = quotationRecovery.reply;
+          } else {
+            const packet = buildCognitivePacket({ binding: args.binding, sequence: args.payload.sequence,
+              snapshot: state, caller: lease.turn, records, language });
+            packetId = packet.packet_id;
+            clarificationOffers = nextClarificationOffers(packet, null);
+            let pending = true;
+            let ackWork: Promise<unknown> | undefined;
+            let ackSent = false;
+            const options = acknowledgementOptions(address, language).map(callingSpokenText);
+            const acknowledgement = options[language.startsWith("en") ? 1 : 0]!;
+            const previousAck = state.events.filter(e => e.kind === "acknowledgement").sort((a,b) => a.sequence - b.sequence).at(-1)?.payload.text;
+            const emit = args.onAcknowledgement && previousAck !== acknowledgement ? () => {
+              ackWork = (async () => {
+                const current = await snapshot();
+                if (ackSent || !pending || response.aborted || !current.live || current.generation !== lease!.generation) return;
+                ackSent = true;
+                args.onAcknowledgement?.({ text: acknowledgement, voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
+                times["ack_handoff"] = Date.now();
+                await record("acknowledgement", { text: acknowledgement, delivery: "handoff_only" });
+              })().catch(() => undefined);
+            } : undefined;
+            try {
+              enginePacket = packet;
+              times["model_start"] = Date.now();
+              const model = (args.engine ?? currentCallingEngine).decide({ packet, deadline: args.receivedAt + 16_000, signal: response })
+                .finally(() => { pending = false; times["model_end"] = Date.now(); });
+              const result = await withCallingBackchannel({ answer: model, signal: response, emit });
+              engineAnswerReceived = true;
+              metadata = result.answer.metadata;
+              state = await snapshot();
+              times["policy_start"] = Date.now();
+              let validated = validateCallingDecision(result.answer.decision, packet, { ...state, cancelled: response.aborted });
+              times["policy_end"] = Date.now();
+              traceBridgeTurn(args.binding.callId, args.payload.sequence, lease.generation, "policy_completed", validated.ok ? "ok" : validated.reason);
+              if (!validated.ok) {
+                if (validated.reason === "stale_decision") return failure("cognitive_stale_turn");
+                recovery = validated.reason;
+                contractRepair = { attempts: 1, reason: validated.reason,
+                  fields: callingValidationFields(result.answer.decision, packet, validated.reason), outcome: "blocked" };
+                times["contract_repair_start"] = Date.now();
+                const reconstructed = reconstructCallingMemory(result.answer.decision, packet, validated.reason);
+                const repaired = reconstructed ? validateCallingDecision(reconstructed, packet, { ...state, cancelled: response.aborted }) : null;
+                if (repaired?.ok) { validated = repaired; contractRepair.outcome = "evidence_bound"; }
+                else {
+                  validated = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
+                  contractRepair.outcome = validated.ok ? "safe_response" : "blocked";
+                }
+                times["contract_repair_end"] = Date.now();
               }
-              times["contract_repair_end"] = Date.now();
-            }
-            if (!validated.ok) return failure(validated.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
-            {
+              if (!validated.ok) return failure(validated.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
               decision = validated.decision;
               spoken = decision.spoken_response; nextState = decision.next_state;
               clarificationOffers = nextClarificationOffers(packet, decision);
@@ -164,18 +223,19 @@ export async function handleCognitiveVoiceTurn(args: {
                 const outcome = await withCallingBackchannel({ answer: executing, signal: response, emit });
                 spoken = quotationDeliveryReply(outcome.answer, language);
               }
-            }
-          } catch (error) {
-            if (error instanceof CallingEngineFailure) { metadata = error.metadata; engineFailure = error.failure; }
-            response.throwIfAborted();
-            recovery = "engine_or_execution_unavailable";
-            state = await snapshot();
-            const safe = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
-            if (!safe.ok) return failure(safe.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
-            decision = safe.decision; spoken = decision.spoken_response; nextState = decision.next_state;
-            clarificationOffers = nextClarificationOffers(packet, decision);
-          } finally { pending = false; await ackWork; }
+            } catch (error) {
+              if (error instanceof CallingEngineFailure) { metadata = error.metadata; engineFailure = error.failure; }
+              response.throwIfAborted();
+              recovery = "engine_or_execution_unavailable";
+              state = await snapshot();
+              const safe = validateCallingDecision(callingContractRecovery(packet), packet, { ...state, cancelled: response.aborted });
+              if (!safe.ok) return failure(safe.reason === "stale_decision" ? "cognitive_stale_turn" : "cognitive_contract_blocked");
+              decision = safe.decision; spoken = decision.spoken_response; nextState = decision.next_state;
+              clarificationOffers = nextClarificationOffers(packet, decision);
+            } finally { pending = false; await ackWork; }
+          }
         }
+        traceBridgeTurn(args.binding.callId, args.payload.sequence, lease.generation, "cognition_completed", packetId ? "model" : "deterministic");
         response.throwIfAborted();
         const presentation = await args.present(spoken, language);
         response.throwIfAborted();
@@ -197,6 +257,7 @@ export async function handleCognitiveVoiceTurn(args: {
         }, response);
         if (!output.ok) return failure(output.reason ?? "cognitive_stale_output");
         times["output_commit_end"] = Date.now();
+        traceBridgeTurn(args.binding.callId, args.payload.sequence, lease.generation, "output_committed");
         return { ok: true, ...presentation, endCall: nextState === "farewell_committed",
           ...(nextState === "farewell_committed" ? { reason: "conversation_complete" } : {}),
           ...(args.payload.kind === "greeting" ? { backchannelTexts: acknowledgementOptions(address, language).map(callingSpokenText) } : {}),
@@ -211,8 +272,6 @@ export async function handleCognitiveVoiceTurn(args: {
     });
   } catch (error) {
     cancellation = args.signal.aborted ? "response_cancelled" : error instanceof DOMException && error.name === "TimeoutError" ? "processing_timeout" : null;
-    // The response budget can reject before the engine's abort handler settles. Retain that known boundary
-    // without delaying teardown for the model or pretending the provider itself reported an error.
     if (!engineFailure && cancellation && enginePacket && !engineAnswerReceived) {
       engineFailure = await callingEngineFailureEvidence(error, "engine_wait", enginePacket, args.signal,
         Date.now() - times["model_start"]!);
@@ -221,7 +280,6 @@ export async function handleCognitiveVoiceTurn(args: {
   } finally {
     if (lease?.state === "admitted") {
       times["response_complete"] = Date.now();
-      // Media timings describe the previous sequence. Absence is unknown, never inferred playback.
       void record("telemetry", { version: BRIDGE_VERSION, packet_id: packetId, revision: lease.revision,
         generation: lease.generation, timings: times, engine: metadata, engine_failure: engineFailure,
         asr_runtime: asrRuntime, recovery, cancellation, contract_repair: contractRepair,
