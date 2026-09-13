@@ -198,3 +198,14 @@ it("delivers the final answer even after an acknowledgement was already handed o
  expect(events.some(e=>e.type==="ack"&&e.speech_text.length>0)).toBe(true);
  const final=events.at(-1);expect(final).toMatchObject({type:"final"});expect(final.speech_text.length).toBeGreaterThan(0);
 });
+
+it("keeps answering when the caller interrupts the farewell with plain new business",async()=>{
+ const f=await runtime();await f.wire(1);f.setText("Itu sahaja, terima kasih.");
+ f.setDecision(async p=>decisionFixture(p,{interaction_mode:"CLOSE",completion_intent:"confirmed",next_state:"farewell_committed",spoken_response:"Baik, terima kasih. Assalamualaikum."}));
+ await f.wire(2);
+ f.setText("Ok, hantar ke WhatsApp saya.");f.setDecision(async p=>decisionFixture(p,{spoken_response:"Baik, saya hantarkan ke WhatsApp Dato'."}));
+ const events=await f.wire(3);
+ expect(events.at(-1)).toMatchObject({end_call:false});
+ expect(events.at(-1).speech_text).toContain("WhatsApp");
+ expect(f.model).toHaveBeenCalledTimes(2);
+});
