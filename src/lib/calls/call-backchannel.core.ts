@@ -35,7 +35,7 @@ export async function withCallingBackchannel<T>(args: {
   try {
     const answer = await args.answer;
     args.signal?.throwIfAborted();
-    return { answer, emitted };
+    return { answer, emitted, emittedLate };
   } finally {
     cancel();
     args.signal?.removeEventListener("abort", cancel);
