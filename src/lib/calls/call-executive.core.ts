@@ -23,13 +23,28 @@ export function acknowledgementOptions(address: CallerAddress, language: string)
 }
 
 /**
- * Spoken while a real lookup or dispatch is running, so a multi-second wait is
- * not silent. It promises attention, never a completed action, and never uses
- * the written-register word "semak".
+ * Spoken while a real lookup or reasoning step is running, so a multi-second
+ * wait is not silent. It promises attention, never a completed action, and
+ * never uses the written-register word "semak".
+ *
+ * `avoid` is the short acknowledgement already spoken this turn: the waiting
+ * phrase must not stack the same opener ("Baik ... Baik ..."), which is what
+ * made the live rhythm feel robotic.
  */
-export function waitingPhrase(address: CallerAddress, language: string): string {
+export function waitingPhrase(address: CallerAddress, language: string,
+  options?: { seed?: number; avoid?: string }): string {
   const title = address.honorific ? ` ${address.honorific}` : "";
-  return language.startsWith("en") ? `Okay${title}, one moment while I check.` : `Okay${title}, kejap ya, saya cek dulu.`;
+  const list = language.startsWith("en")
+    ? [`Okay${title}, one moment while I check.`,
+       `Sure${title}, give me a second, I'm looking this up now.`,
+       `Alright${title}, just a moment while I check this.`]
+    : [`Baik${title}, tunggu sebentar ya, saya cek dulu.`,
+       `Faham${title}, kejap ya, saya periksa dulu.`,
+       `Okay${title}, sekejap ya, saya tengok dulu.`];
+  const opener = (text: string) => text.trim().split(/[\s,.]+/)[0]?.toLowerCase() ?? "";
+  let index = Math.abs(options?.seed ?? 0) % list.length;
+  if (options?.avoid && opener(list[index]!) === opener(options.avoid)) index = (index + 1) % list.length;
+  return list[index]!;
 }
 
 export function contextualAcknowledgement(args: { address: CallerAddress; language: string; transcript: string; previous?: string }): string {
