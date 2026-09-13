@@ -155,12 +155,21 @@ export function isExplicitHangupCommand(transcript: string): boolean {
  * picked up while the farewell was playing) must let the call end, otherwise
  * the line stays alive after the conversation is over.
  */
+/**
+ * Plain new-business statements carry no question mark and no catalogue keyword,
+ * but they are unmistakably fresh intent: "saya nak tambah seorang lagi",
+ * "ok, hantar ke WhatsApp saya", "nama saya Ahmad". Treating them as noise
+ * cuts the caller off mid-request, so they reopen the call.
+ */
+const NEW_BUSINESS_INTENT =
+  /\b(?:saya\s+nak|nak\s+(?:tambah|tukar|buat|minta|hantar|tanya|cakap|check|cek|pastikan)|tambah\b|hantar(?:kan)?\b|minta\b|tolong\b|boleh\s+(?:tak|awak|anda|saya)|macam\s+mana|bagaimana|nama\s+saya|whatsapp\b|yang\s+tadi|sebenarnya\b|actually\b|i\s+(?:want|need|would)\b|can\s+(?:you|i)\b|could\s+you\b|please\s+(?:send|check|add))\b/i;
+
 export function reopensAfterFarewell(transcript: string): boolean {
   const text = transcript.trim();
   if (!text) return false;
   if (isExplicitHangupCommand(text)) return false;
   if (NATURAL_FAREWELL.test(text) || semanticFarewell(text)) return false;
-  return /\?/.test(text) || CONTINUES.test(text)
+  return /\?/.test(text) || CONTINUES.test(text) || NEW_BUSINESS_INTENT.test(text)
     || /\b(?:harga|pakej|package|tempahan|booking|bayaran|payment|quotation|sebut\s*harga|tarikh|visa|hotel|penerbangan|flight)\b/i.test(text);
 }
 

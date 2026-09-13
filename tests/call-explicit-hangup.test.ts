@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceClosing, callingFarewellText, isExplicitHangupCommand } from "@/lib/calls/call-experience.core";
+import { advanceClosing, callingFarewellText, isExplicitHangupCommand, reopensAfterFarewell } from "@/lib/calls/call-experience.core";
 
 const base = { language: "ms", turnCount: 3, maxTurns: 40 } as const;
 
@@ -79,5 +79,32 @@ describe("callingFarewellText", () => {
     expect(en).toMatch(/thank/i);
     expect(en).not.toMatch(/\?/);
     expect(ms).not.toMatch(/\bsemak\b/i);
+  });
+});
+
+describe("reopensAfterFarewell", () => {
+  it.each([
+    "Saya nak tambah seorang lagi.",
+    "Ok, hantar ke WhatsApp saya.",
+    "Nama saya Ahmad.",
+    "Boleh tak saya tukar tarikh?",
+    "Macam mana nak buat bayaran?",
+    "Tolong check penerbangan saya.",
+    "Sebenarnya saya nak tanya satu lagi.",
+    "Can you send the quotation?",
+  ])("reopens the call for new business: %s", (phrase) => {
+    expect(reopensAfterFarewell(phrase)).toBe(true);
+  });
+
+  it.each([
+    "Ok.",
+    "Terima kasih.",
+    "Baik, itu sahaja.",
+    "Dah tak ada apa-apa lagi.",
+    "Selamat tinggal.",
+    "Putuskan talian ya.",
+    "",
+  ])("does not reopen for: %s", (phrase) => {
+    expect(reopensAfterFarewell(phrase)).toBe(false);
   });
 });
