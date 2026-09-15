@@ -956,18 +956,20 @@ async function processInboundMessage(
                     .filter(Boolean)
                     .join("\n\n");
 
-                  const ackSent = await sendWhatsappText(
+                  const ackSend = await sendWhatsappTextDetailed(
                     phoneNumberId,
                     config.access_token,
                     from,
                     ack,
                   );
+                  const ackSent = ackSend.ok;
                   await supabaseAdmin.from("messages").insert({
                     agency_id: agencyId,
                     conversation_id: conversationId,
                     sender: "ai",
                     body: ack,
                     modality: "text",
+                    provider_message_id: ackSend.providerMessageId,
                     delivery_status: ackSent ? "sent" : "send_failed",
                   });
                   await supabaseAdmin
