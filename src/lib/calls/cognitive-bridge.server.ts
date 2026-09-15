@@ -129,6 +129,7 @@ export async function handleCognitiveVoiceTurn(args: {
           let ackWork: Promise<unknown> | undefined;
           let ackSent = false;
           let waitingSent = false;
+          let lateSent = false;
           // A neutral cached acknowledgement requires neither a classifier nor a fictitious lookup.
           // It now reflects what the caller just said and never repeats the previous turn's wording,
           // so the call keeps a natural rhythm instead of one canned "Baik." every turn.
