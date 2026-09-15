@@ -25,6 +25,23 @@ export const Route = createFileRoute("/api/public/payments/stripe-webhook")({
         }
 
         try {
+          // Commercial payment ledger (deposit / full). Resolved first; it only
+          // matches fully attributed UMRAIO payment sessions, so the legacy
+          // deposit path below and the subscription path never double-handle.
+          const { resolveStripePaymentEvent } = await import("@/lib/payments/payment.core");
+          const resolvedPayment = resolveStripePaymentEvent(envelope as never);
+          if (resolvedPayment.ok) {
+            const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+            const { applyStripePaymentEvent } = await import("@/lib/payments/payment.server");
+            const outcome = await applyStripePaymentEvent(supabaseAdmin as never, resolvedPayment);
+            console.log(
+              `[stripe] event=${resolvedPayment.eventType} label=${
+                outcome.applied ? `payment_${outcome.status}` : `payment_ignored_${outcome.reason}`
+              } agency=${resolvedPayment.agencyId} kind=${resolvedPayment.kind}`,
+            );
+            return Response.json({ received: true });
+          }
+
           // Y-2 — verified deposit payment (one-off, `mode: payment`). Handled
           // before subscription normalization; unrelated sessions fall through.
           if (envelope["type"] === "checkout.session.completed") {

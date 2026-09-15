@@ -380,6 +380,9 @@ export function toPublicQuotation(row: Record<string, any>) {
     discount: row["discount"],
     total: row["total"],
     deposit_amount: row["deposit_amount"],
+    // Server-derived deposit for the payment action when the quotation row has
+    // no explicit figure. Never supplied by, or trusted from, the browser.
+    deposit_due: row["deposit_due"] ?? row["deposit_amount"],
     balance_amount: row["balance_amount"],
     package_snapshot: publicSnapshot(row["package_snapshot"]),
     valid_until: row["valid_until"],
@@ -416,6 +419,21 @@ export async function readQuotationByToken(supabase: Db, token: string) {
       actor: "customer",
       leadId: row.lead_id,
       quotationId: row.id,
+    });
+  }
+
+  if (row.deposit_amount === null || Number(row.deposit_amount) <= 0) {
+    const { data: settings } = await supabase
+      .from("agency_settings")
+      .select("deposit_rule, deposit_fixed_myr, deposit_percent")
+      .eq("agency_id", row.agency_id)
+      .maybeSingle();
+    const { resolveDepositMyr } = await import("@/lib/bookings/deposit.core");
+    (row as Record<string, unknown>)["deposit_due"] = resolveDepositMyr({
+      totalMyr: Number(row.total),
+      rule: (settings?.deposit_rule ?? "none") as never,
+      fixedMyr: settings?.deposit_fixed_myr ?? null,
+      percent: settings?.deposit_percent ?? null,
     });
   }
 

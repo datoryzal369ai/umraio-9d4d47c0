@@ -2047,6 +2047,158 @@ export type Database = {
           },
         ]
       }
+      payment_events: {
+        Row: {
+          agency_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          outcome: string | null
+          payload: Json
+          payment_id: string | null
+          provider: string
+          provider_event_id: string
+        }
+        Insert: {
+          agency_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          outcome?: string | null
+          payload?: Json
+          payment_id?: string | null
+          provider?: string
+          provider_event_id: string
+        }
+        Update: {
+          agency_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          outcome?: string | null
+          payload?: Json
+          payment_id?: string | null
+          provider?: string
+          provider_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_events_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_events_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          agency_id: string
+          amount_minor: number
+          amount_myr: number
+          booking_id: string
+          checkout_session_id: string | null
+          checkout_url: string | null
+          created_at: string
+          currency: string
+          expired_at: string | null
+          failed_at: string | null
+          failure_reason: string | null
+          id: string
+          kind: string
+          lead_id: string | null
+          metadata: Json
+          paid_at: string | null
+          payment_intent_id: string | null
+          provider: string
+          quotation_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          amount_minor: number
+          amount_myr: number
+          booking_id: string
+          checkout_session_id?: string | null
+          checkout_url?: string | null
+          created_at?: string
+          currency?: string
+          expired_at?: string | null
+          failed_at?: string | null
+          failure_reason?: string | null
+          id?: string
+          kind: string
+          lead_id?: string | null
+          metadata?: Json
+          paid_at?: string | null
+          payment_intent_id?: string | null
+          provider?: string
+          quotation_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          amount_minor?: number
+          amount_myr?: number
+          booking_id?: string
+          checkout_session_id?: string | null
+          checkout_url?: string | null
+          created_at?: string
+          currency?: string
+          expired_at?: string | null
+          failed_at?: string | null
+          failure_reason?: string | null
+          id?: string
+          kind?: string
+          lead_id?: string | null
+          metadata?: Json
+          paid_at?: string | null
+          payment_intent_id?: string | null
+          provider?: string
+          quotation_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           agency_id: string | null
