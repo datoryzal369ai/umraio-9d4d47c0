@@ -13,6 +13,7 @@ import { acknowledgementOptions, contextualAcknowledgement, waitingPhrase } from
 import { buildCallOpening, callingFarewellText, isExplicitHangupCommand, reopensAfterFarewell } from "./call-experience.core";
 import { resolveAddress } from "./cognitive-router.core";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
+import { forwardMovingResponse, repeatsPreviousSpeech, requestsRepetition } from "./call-repetition.core";
 import { detectSpokenLanguage, type VoiceTurnRequest } from "./voice-turn.core";
 import type { VoiceTurnResult } from "./voice-turn.server";
 import type { CallingAcknowledgement } from "./call-stream.server";
