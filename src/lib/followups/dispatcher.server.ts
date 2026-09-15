@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { sendWhatsappText } from "../whatsapp-send.server";
+import { sendWhatsappTextDetailed } from "../whatsapp-send.server";
 import { QuotaError, assertQuota, recordUsageEvent } from "../billing/usage.server";
 import { logConversionEvent } from "../quotations/quotations.server";
 
