@@ -1031,7 +1031,8 @@ async function processInboundMessage(
               // Nothing in the voice/presentation layer may run before the
               // text answer has been sent AND persisted.
               console.log("[whatsapp] text_send_started");
-              const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
+              const send = await sendWhatsappTextDetailed(phoneNumberId, config.access_token, from, reply);
+              const sent = send.ok;
               console.log(`[whatsapp] ${sent ? "text_send_succeeded" : "text_send_failed"}`);
 
               // B-3.2 — AI_GENERATED is NOT the same as WHATSAPP_SENT. A failed
@@ -1043,6 +1044,8 @@ async function processInboundMessage(
                 sender: "ai",
                 body: reply,
                 modality: "text",
+                // Required for delivery callbacks (delivered/read/failed) to match this row.
+                provider_message_id: send.providerMessageId,
                 delivery_status: sent ? "sent" : "send_failed",
               });
               const responseMs = Date.now() - inboundAt.getTime();
