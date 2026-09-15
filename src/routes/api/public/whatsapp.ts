@@ -48,7 +48,7 @@ type WebhookBody = {
   entry?: Array<{ changes?: Array<{ value?: WebhookValue }> }>;
 };
 
-import { sendWhatsappText } from "@/lib/whatsapp-send.server";
+import { sendWhatsappText, sendWhatsappTextDetailed } from "@/lib/whatsapp-send.server";
 
 /** P0-1 — defensive cap on how many inbound messages one delivery may process. */
 const MAX_MESSAGES_PER_REQUEST = 10;
