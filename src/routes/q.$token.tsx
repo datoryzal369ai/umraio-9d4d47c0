@@ -121,9 +121,7 @@ function PublicQuotationPage() {
   const payable =
     ["accepted", "deposit_pending"].includes(status) && Number(q["total"]) > 0;
   const depositAmount =
-    q["deposit_amount"] !== null && Number(q["deposit_amount"]) > 0
-      ? Number(q["deposit_amount"])
-      : null;
+    q["deposit_due"] !== null && Number(q["deposit_due"]) > 0 ? Number(q["deposit_due"]) : null;
   const paymentNotice =
     paymentReturn === "processing"
       ? copy.paymentProcessing
