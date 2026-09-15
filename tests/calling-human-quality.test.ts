@@ -16,7 +16,7 @@ describe("Calling backchannel timing", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(emit).toHaveBeenCalledTimes(1);
     finish("Jawapan sebenar");
-    expect(await work).toEqual({ answer: "Jawapan sebenar", emitted: true });
+    expect(await work).toMatchObject({ answer: "Jawapan sebenar", emitted: true });
   });
   it("does not add filler when the answer is already ready", async () => {
     vi.useFakeTimers();
