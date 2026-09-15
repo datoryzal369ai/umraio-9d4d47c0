@@ -363,6 +363,10 @@ export async function dispatchDueFollowups(
         conversation_id: conversation.id,
         sender: "ai",
         body,
+        // Delivery callbacks match on this id; without it delivered/failed
+        // notices for follow-ups are discarded as message_not_found.
+        provider_message_id: send.providerMessageId,
+        delivery_status: "sent",
       });
       await supabase
         .from("conversations")
