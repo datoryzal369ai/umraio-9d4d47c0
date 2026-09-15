@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { getPublicQuotation, respondPublicQuotation } from "@/lib/quotations.functions";
+import { startQuotationPaymentFn } from "@/lib/payments.functions";
 import {
   QUOTATION_STATUS_LABELS,
   formatMyrAmount,
@@ -62,11 +63,31 @@ function PublicQuotationPage() {
   const { token } = Route.useParams();
   const queryClient = useQueryClient();
   const [reason, setReason] = useState("");
+  // Informational only: Stripe's browser return can never confirm a payment.
+  const paymentReturn =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("payment");
   const copy = useCopy(accountCopy).quotation;
 
   const { data, isLoading } = useQuery({
     queryKey: ["public-quotation", token],
     queryFn: () => getPublicQuotation({ data: { token } }),
+  });
+
+  /**
+   * Commercial payment. The browser sends only the KIND; the server derives the
+   * amount and creates the Stripe-hosted Checkout. Returning to this page never
+   * marks anything paid — only the verified Stripe webhook does.
+   */
+  const pay = useMutation({
+    mutationFn: (kind: "deposit" | "full") =>
+      startQuotationPaymentFn({ data: { token, kind } }),
+    onSuccess: (result: { url: string }) => {
+      toast.success(copy.paymentStarting);
+      window.location.href = result.url;
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const respond = useMutation({
@@ -97,6 +118,18 @@ function PublicQuotationPage() {
   const snap = (q["package_snapshot"] ?? {}) as Record<string, any>;
   const status = q["status"] as QuotationStatus;
   const open = ["ready", "sent", "viewed", "discussing"].includes(status);
+  const payable =
+    ["accepted", "deposit_pending"].includes(status) && Number(q["total"]) > 0;
+  const depositAmount =
+    q["deposit_amount"] !== null && Number(q["deposit_amount"]) > 0
+      ? Number(q["deposit_amount"])
+      : null;
+  const paymentNotice =
+    paymentReturn === "processing"
+      ? copy.paymentProcessing
+      : paymentReturn === "cancelled"
+        ? copy.paymentCancelled
+        : null;
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-10 sm:py-16">
@@ -160,6 +193,32 @@ function PublicQuotationPage() {
           </p>
         ) : null}
       </section>
+
+      {payable ? (
+        <section className="panel mt-6 space-y-4 p-6">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <ShieldCheck className="h-4 w-4 text-primary" aria-hidden /> {copy.securePayment}
+          </h2>
+          <p className="text-sm text-muted-foreground">{copy.paymentDescription}</p>
+          {paymentNotice ? (
+            <p className="text-sm font-medium text-primary">{paymentNotice}</p>
+          ) : null}
+          <div className="flex flex-wrap gap-3">
+            {depositAmount ? (
+              <Button disabled={pay.isPending} onClick={() => pay.mutate("deposit")}>
+                {copy.payDeposit.replace("{amount}", formatMyrAmount(depositAmount))}
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              disabled={pay.isPending}
+              onClick={() => pay.mutate("full")}
+            >
+              {copy.payInFull.replace("{amount}", formatMyrAmount(Number(q["total"])))}
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {open ? (
         <section className="panel mt-6 space-y-4 p-6">

@@ -164,6 +164,15 @@ export const accountCopy = createDict({
       acceptQuotation: "Accept quotation",
       notNow: "Not now",
       closedNotice: "This quotation is {status}. Contact the agency if you need an updated offer.",
+      securePayment: "Secure payment",
+      paymentDescription:
+        "Pay securely by card through Stripe. Your booking is confirmed only after the payment is verified.",
+      payDeposit: "Pay deposit {amount}",
+      payInFull: "Pay in full {amount}",
+      paymentProcessing:
+        "Thank you. Your payment is being verified — the agency will confirm your booking shortly.",
+      paymentCancelled: "Payment was cancelled. You can try again whenever you are ready.",
+      paymentStarting: "Opening secure payment…",
     },
   },
   bm: {
@@ -323,6 +332,15 @@ export const accountCopy = createDict({
       acceptQuotation: "Terima sebut harga",
       notNow: "Bukan sekarang",
       closedNotice: "Sebut harga ini {status}. Hubungi agensi jika anda memerlukan tawaran terkini.",
+      securePayment: "Pembayaran selamat",
+      paymentDescription:
+        "Bayar dengan selamat menggunakan kad melalui Stripe. Tempahan hanya disahkan selepas pembayaran disahkan.",
+      payDeposit: "Bayar deposit {amount}",
+      payInFull: "Bayar penuh {amount}",
+      paymentProcessing:
+        "Terima kasih. Pembayaran anda sedang disahkan — agensi akan mengesahkan tempahan anda sebentar lagi.",
+      paymentCancelled: "Pembayaran dibatalkan. Anda boleh cuba semula bila-bila masa.",
+      paymentStarting: "Membuka pembayaran selamat…",
     },
   },
 });
