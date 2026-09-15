@@ -834,18 +834,22 @@ async function processInboundMessage(
                     outcome.mismatch.card,
                     outcome.mismatch.requested,
                   );
-                  const mismatchSent = await sendWhatsappText(
+                  const mismatchSend = await sendWhatsappTextDetailed(
                     phoneNumberId,
                     config.access_token,
                     from,
                     mismatchReply,
                   );
+                  const mismatchSent = mismatchSend.ok;
                   await supabaseAdmin.from("messages").insert({
                     agency_id: agencyId,
                     conversation_id: conversationId,
                     sender: "ai",
                     body: mismatchReply,
                     modality: "text",
+                    // Delivery callbacks are matched on this id; without it every
+                    // failed/delivered notice is discarded as message_not_found.
+                    provider_message_id: mismatchSend.providerMessageId,
                     delivery_status: mismatchSent ? "sent" : "send_failed",
                   });
                   await supabaseAdmin
