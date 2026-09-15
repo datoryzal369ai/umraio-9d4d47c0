@@ -429,7 +429,7 @@ export async function readQuotationByToken(supabase: Db, token: string) {
       .eq("agency_id", row.agency_id)
       .maybeSingle();
     const { resolveDepositMyr } = await import("@/lib/bookings/deposit.core");
-    row.deposit_due = resolveDepositMyr({
+    (row as Record<string, unknown>)["deposit_due"] = resolveDepositMyr({
       totalMyr: Number(row.total),
       rule: (settings?.deposit_rule ?? "none") as never,
       fixedMyr: settings?.deposit_fixed_myr ?? null,
