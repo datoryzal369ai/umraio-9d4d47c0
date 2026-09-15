@@ -325,7 +325,8 @@ export async function dispatchDueFollowups(
     const attempt = (job.attempts ?? 0) + 1;
 
     const to = conversation?.external_id || lead.phone;
-    const ok = await sendWhatsappText(config.phone_number_id, config.access_token, to, body);
+    const send = await sendWhatsappTextDetailed(config.phone_number_id, config.access_token, to, body);
+    const ok = send.ok;
     if (!ok) {
       // Transport failure only — business refusals never reach this branch.
       const retryAt = nextRetryAt(attempt);
