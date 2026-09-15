@@ -48,7 +48,7 @@ type WebhookBody = {
   entry?: Array<{ changes?: Array<{ value?: WebhookValue }> }>;
 };
 
-import { sendWhatsappText } from "@/lib/whatsapp-send.server";
+import { sendWhatsappText, sendWhatsappTextDetailed } from "@/lib/whatsapp-send.server";
 
 /** P0-1 — defensive cap on how many inbound messages one delivery may process. */
 const MAX_MESSAGES_PER_REQUEST = 10;
@@ -834,18 +834,22 @@ async function processInboundMessage(
                     outcome.mismatch.card,
                     outcome.mismatch.requested,
                   );
-                  const mismatchSent = await sendWhatsappText(
+                  const mismatchSend = await sendWhatsappTextDetailed(
                     phoneNumberId,
                     config.access_token,
                     from,
                     mismatchReply,
                   );
+                  const mismatchSent = mismatchSend.ok;
                   await supabaseAdmin.from("messages").insert({
                     agency_id: agencyId,
                     conversation_id: conversationId,
                     sender: "ai",
                     body: mismatchReply,
                     modality: "text",
+                    // Delivery callbacks are matched on this id; without it every
+                    // failed/delivered notice is discarded as message_not_found.
+                    provider_message_id: mismatchSend.providerMessageId,
                     delivery_status: mismatchSent ? "sent" : "send_failed",
                   });
                   await supabaseAdmin
@@ -952,18 +956,20 @@ async function processInboundMessage(
                     .filter(Boolean)
                     .join("\n\n");
 
-                  const ackSent = await sendWhatsappText(
+                  const ackSend = await sendWhatsappTextDetailed(
                     phoneNumberId,
                     config.access_token,
                     from,
                     ack,
                   );
+                  const ackSent = ackSend.ok;
                   await supabaseAdmin.from("messages").insert({
                     agency_id: agencyId,
                     conversation_id: conversationId,
                     sender: "ai",
                     body: ack,
                     modality: "text",
+                    provider_message_id: ackSend.providerMessageId,
                     delivery_status: ackSent ? "sent" : "send_failed",
                   });
                   await supabaseAdmin
@@ -1025,7 +1031,8 @@ async function processInboundMessage(
               // Nothing in the voice/presentation layer may run before the
               // text answer has been sent AND persisted.
               console.log("[whatsapp] text_send_started");
-              const sent = await sendWhatsappText(phoneNumberId, config.access_token, from, reply);
+              const send = await sendWhatsappTextDetailed(phoneNumberId, config.access_token, from, reply);
+              const sent = send.ok;
               console.log(`[whatsapp] ${sent ? "text_send_succeeded" : "text_send_failed"}`);
 
               // B-3.2 — AI_GENERATED is NOT the same as WHATSAPP_SENT. A failed
@@ -1037,6 +1044,8 @@ async function processInboundMessage(
                 sender: "ai",
                 body: reply,
                 modality: "text",
+                // Required for delivery callbacks (delivered/read/failed) to match this row.
+                provider_message_id: send.providerMessageId,
                 delivery_status: sent ? "sent" : "send_failed",
               });
               const responseMs = Date.now() - inboundAt.getTime();

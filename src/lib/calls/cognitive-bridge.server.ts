@@ -13,6 +13,7 @@ import { acknowledgementOptions, contextualAcknowledgement, waitingPhrase } from
 import { buildCallOpening, callingFarewellText, isExplicitHangupCommand, reopensAfterFarewell } from "./call-experience.core";
 import { resolveAddress } from "./cognitive-router.core";
 import { callingSpokenText, withCallingBackchannel } from "./call-backchannel.core";
+import { forwardMovingResponse, repeatsPreviousSpeech, requestsRepetition } from "./call-repetition.core";
 import { detectSpokenLanguage, type VoiceTurnRequest } from "./voice-turn.core";
 import type { VoiceTurnResult } from "./voice-turn.server";
 import type { CallingAcknowledgement } from "./call-stream.server";
@@ -128,6 +129,7 @@ export async function handleCognitiveVoiceTurn(args: {
           let ackWork: Promise<unknown> | undefined;
           let ackSent = false;
           let waitingSent = false;
+          let lateSent = false;
           // A neutral cached acknowledgement requires neither a classifier nor a fictitious lookup.
           // It now reflects what the caller just said and never repeats the previous turn's wording,
           // so the call keeps a natural rhythm instead of one canned "Baik." every turn.
@@ -193,26 +195,51 @@ export async function handleCognitiveVoiceTurn(args: {
               decision = validated.decision;
               spoken = decision.spoken_response; nextState = decision.next_state;
               clarificationOffers = nextClarificationOffers(packet, decision);
+              // "Pusing-pusing": the same substantive answer returned turn after turn. A genuine
+              // repeat request is honoured; otherwise one forward-moving question replaces it.
+              if (!decision.action_required && !requestsRepetition(lease.turn.transcript)) {
+                const priorSpeech = [...state.events]
+                  .filter(e => e.kind === "proposal" && e.sequence < args.payload.sequence)
+                  .sort((a, b) => b.sequence - a.sequence).slice(0, 3)
+                  .map(e => (typeof e.payload?.text === "string" ? e.payload.text : ""))
+                  .filter(Boolean);
+                if (repeatsPreviousSpeech(spoken, priorSpeech)) {
+                  spoken = forwardMovingResponse(language, address.honorific, args.payload.sequence);
+                  recovery = recovery ?? "repetition_guard";
+                }
+              }
               if (decision.action_required) {
                 pending = true;
                 const executing = executeCallingDecision({ db: args.db, binding: args.binding, packet, decision,
                   lifetime: args.lifetime, responseSignal: response, timings: times }).finally(() => { pending = false; });
-                // A dispatch takes seconds. One waiting phrase keeps that gap natural; the
-                // short acknowledgement already spoken does not suppress it, and it is the
-                // only extra utterance the turn may produce.
-                const waiting = args.onAcknowledgement ? () => {
+                // A dispatch takes seconds. The waiting phrase keeps that gap natural, varies with
+                // the turn, and never stacks the same opener as the acknowledgement just spoken.
+                // A genuinely slow dispatch earns one later reassurance, never more.
+                const speakWaiting = (seed: number, avoid: string) => {
+                  const text = callingSpokenText(waitingPhrase(address, language, { seed, avoid }));
                   ackWork = (async () => {
-                    if (waitingSent || !pending || response.aborted) return;
-                    waitingSent = true;
-                    args.onAcknowledgement?.({ text: callingSpokenText(waitingPhrase(address, language)),
-                      voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
-                    await record("acknowledgement", { text: callingSpokenText(waitingPhrase(address, language)), delivery: "handoff_only" });
+                    args.onAcknowledgement?.({ text, voiceId: args.voiceId, languageBoost: args.languageBoost(language) });
+                    await record("acknowledgement", { text, delivery: "handoff_only" });
                   })().catch(() => undefined);
+                  return text;
+                };
+                let waitingText = "";
+                const waiting = args.onAcknowledgement ? () => {
+                  if (waitingSent || !pending || response.aborted) return;
+                  waitingSent = true;
+                  waitingText = speakWaiting(args.payload.sequence, acknowledgement);
                 } : undefined;
-                const outcome = await withCallingBackchannel({ answer: executing, signal: response, emit: waiting, delayMs: 600 });
+                const waitingLate = args.onAcknowledgement ? () => {
+                  if (!waitingSent || lateSent || !pending || response.aborted) return;
+                  lateSent = true;
+                  speakWaiting(args.payload.sequence + 1, waitingText);
+                } : undefined;
+                const outcome = await withCallingBackchannel({ answer: executing, signal: response,
+                  emit: waiting, emitLate: waitingLate, delayMs: 600, lateDelayMs: 4000 });
                 spoken = quotationDeliveryReply(outcome.answer, language);
               }
             }
+
           } catch (error) {
             if (error instanceof CallingEngineFailure) { metadata = error.metadata; engineFailure = error.failure; }
             response.throwIfAborted();

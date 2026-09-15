@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { sendWhatsappText } from "../whatsapp-send.server";
+import { sendWhatsappTextDetailed } from "../whatsapp-send.server";
 import { QuotaError, assertQuota, recordUsageEvent } from "../billing/usage.server";
 import { logConversionEvent } from "../quotations/quotations.server";
 
@@ -325,7 +325,8 @@ export async function dispatchDueFollowups(
     const attempt = (job.attempts ?? 0) + 1;
 
     const to = conversation?.external_id || lead.phone;
-    const ok = await sendWhatsappText(config.phone_number_id, config.access_token, to, body);
+    const send = await sendWhatsappTextDetailed(config.phone_number_id, config.access_token, to, body);
+    const ok = send.ok;
     if (!ok) {
       // Transport failure only — business refusals never reach this branch.
       const retryAt = nextRetryAt(attempt);
@@ -362,6 +363,10 @@ export async function dispatchDueFollowups(
         conversation_id: conversation.id,
         sender: "ai",
         body,
+        // Delivery callbacks match on this id; without it delivered/failed
+        // notices for follow-ups are discarded as message_not_found.
+        provider_message_id: send.providerMessageId,
+        delivery_status: "sent",
       });
       await supabase
         .from("conversations")
