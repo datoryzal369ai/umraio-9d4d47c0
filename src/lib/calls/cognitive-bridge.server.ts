@@ -196,8 +196,10 @@ export async function handleCognitiveVoiceTurn(args: {
               spoken = decision.spoken_response; nextState = decision.next_state;
               clarificationOffers = nextClarificationOffers(packet, decision);
               // "Pusing-pusing": the same substantive answer returned turn after turn. A genuine
-              // repeat request is honoured; otherwise one forward-moving question replaces it.
-              if (!decision.action_required && !requestsRepetition(lease.turn.transcript)) {
+              // repeat request is honoured, and an outstanding clarification must never be
+              // replaced by a second question — otherwise one forward-moving question replaces it.
+              if (!decision.action_required && !decision.requires_clarification && !clarificationOffers.length
+                && !requestsRepetition(lease.turn.transcript)) {
                 const priorSpeech = [...state.events]
                   .filter(e => e.kind === "proposal" && e.sequence < args.payload.sequence)
                   .sort((a, b) => b.sequence - a.sequence).slice(0, 3)
