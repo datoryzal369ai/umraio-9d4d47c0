@@ -209,3 +209,20 @@ it("keeps answering when the caller interrupts the farewell with plain new busin
  expect(events.at(-1).speech_text).toContain("WhatsApp");
  expect(f.model).toHaveBeenCalledTimes(2);
 });
+it("does not repeat the same substantive answer turn after turn",async()=>{
+ const f=await runtime();await f.wire(1);
+ const answer="Pakej Umrah kami bermula dari RM 9,800 seorang, termasuk penerbangan, visa dan hotel berdekatan Masjidil Haram.";
+ f.setText("Berapa harga pakej?");f.setDecision(async p=>decisionFixture(p,{spoken_response:answer}));
+ const first=await f.wire(2);expect(first.at(-1).speech_text).toBe(answer);
+ f.setText("Pakej tu macam mana ya?");
+ const second=await f.wire(3);
+ expect(second.at(-1).speech_text).not.toBe(answer);
+ expect(second.at(-1).speech_text).toContain("?");
+});
+it("still repeats when the caller explicitly asks for a repeat",async()=>{
+ const f=await runtime();await f.wire(1);
+ const answer="Pakej Umrah kami bermula dari RM 9,800 seorang, termasuk penerbangan, visa dan hotel berdekatan Masjidil Haram.";
+ f.setText("Berapa harga pakej?");f.setDecision(async p=>decisionFixture(p,{spoken_response:answer}));
+ await f.wire(2);f.setText("Boleh ulang sekali lagi?");
+ expect((await f.wire(3)).at(-1).speech_text).toBe(answer);
+});
