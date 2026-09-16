@@ -6,6 +6,11 @@ const hoisted = vi.hoisted(() => ({
 const sent = hoisted.sent;
 
 vi.mock("../src/lib/whatsapp-send.server", () => ({
+  sendWhatsappTextDetailed: async (_pid: string, _token: string, to: string, body: string) => {
+    if ((hoisted as { sendOk?: { value: boolean } }).sendOk?.value === false) return { ok: false, providerMessageId: null };
+    hoisted.sent.push({ to, body });
+    return { ok: true, providerMessageId: `wamid.${hoisted.sent.length}` };
+  },
   sendWhatsappText: async (_pid: string, _token: string, to: string, body: string) => {
     hoisted.sent.push({ to, body });
     return true;
@@ -294,6 +299,15 @@ describe("follow-up dispatcher head-of-line blocking (P0-1)", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.body).toBe("Assalamualaikum, masih berminat?");
     expect(result.sent).toBe(1);
+  });
+
+  test("dispatched follow-up persists the WhatsApp provider message id and delivery status", async () => {
+    await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    const messages = (inserted["messages"] ?? []) as Array<Record<string, unknown>>;
+    expect(messages).toHaveLength(1);
+    // Without this id every delivered/failed callback is discarded as message_not_found.
+    expect(messages[0]!["provider_message_id"]).toBeTruthy();
+    expect(messages[0]!["delivery_status"]).toBe("sent");
   });
 
   test("body-less pending jobs become terminal skipped/Left for human follow-up", async () => {
