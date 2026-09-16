@@ -15,6 +15,11 @@ const hoisted = vi.hoisted(() => ({
 const sent = hoisted.sent;
 
 vi.mock("../src/lib/whatsapp-send.server", () => ({
+  sendWhatsappTextDetailed: async (_pid: string, _token: string, to: string, body: string) => {
+    if (hoisted.sendOk && hoisted.sendOk.value === false) return { ok: false, providerMessageId: null };
+    hoisted.sent.push({ to, body });
+    return { ok: true, providerMessageId: `wamid.${hoisted.sent.length}` };
+  },
   sendWhatsappText: async (_pid: string, _token: string, to: string, body: string) => {
     if (!hoisted.sendOk.value) return false;
     hoisted.sent.push({ to, body });
