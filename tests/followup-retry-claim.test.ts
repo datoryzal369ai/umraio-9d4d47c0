@@ -95,6 +95,16 @@ function tableRows(table: string): Row[] {
     ];
   if (table === "leads") return leads;
   if (table === "conversations") return conversations;
+  // Recent inbound reply — the WhatsApp 24-hour service window is open.
+  if (table === "messages")
+    return conversations.map((c) => ({
+      id: `msg-${c["id"]}`,
+      agency_id: c["agency_id"],
+      conversation_id: c["id"],
+      sender: "customer",
+      body: "Salam",
+      created_at: past(90),
+    }));
   return [];
 }
 
