@@ -294,6 +294,45 @@ export async function applyStripePaymentEvent(
   if (!payment) return { applied: false, reason: "payment_not_found" };
   if (payment.status !== "pending") return { applied: false, reason: "already_final" };
 
+  // A second successful charge on the same booking (e.g. a deposit page and a
+  // full-payment page both completed) must never apply another commercial
+  // transition. It is recorded as an overpayment for the agency to refund.
+  if (event.outcome === "succeeded") {
+    const settled = await settledPaymentFor(supabase, {
+      agencyId: event.agencyId,
+      bookingId: event.bookingId,
+    });
+    if (settled && String(settled["id"]) !== String(payment.id)) {
+      await supabase
+        .from("payments")
+        .update({
+          status: "failed",
+          failed_at: new Date().toISOString(),
+          failure_reason: "booking_already_settled",
+        })
+        .eq("id", payment.id)
+        .eq("agency_id", event.agencyId)
+        .eq("status", "pending");
+      await supabase.from("activity_log").insert({
+        agency_id: event.agencyId,
+        actor: "system",
+        action: "Duplicate payment received — refund required",
+        entity: "payment",
+        entity_id: payment.id,
+        meta: {
+          kind: payment.kind,
+          booking_id: event.bookingId,
+          quotation_id: event.quotationId,
+          settled_payment_id: settled["id"],
+          payment_ref: event.paymentRef,
+          amount_myr: event.amountMyr,
+        },
+      });
+      return { applied: false, reason: "booking_already_settled" };
+    }
+  }
+
+
   // The charged amount must match the server-derived amount exactly.
   if (
     event.outcome === "succeeded" &&
