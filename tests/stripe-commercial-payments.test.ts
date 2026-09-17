@@ -353,3 +353,38 @@ describe("ledger application", () => {
     expect(outcome).toEqual({ applied: false, reason: "already_final" });
   });
 });
+
+describe("deposit and full payment are mutually exclusive", () => {
+  it("refuses a second successful charge on a booking that is already settled", async () => {
+    const db = makeDb({
+      payments: [
+        {
+          id: "settled-full",
+          agency_id: AGENCY,
+          quotation_id: QUOTATION,
+          booking_id: BOOKING,
+          kind: "full",
+          status: "succeeded",
+          amount_minor: 2940000,
+          amount_myr: 29400,
+        },
+        pendingPayment(),
+      ],
+      bookings: [
+        { id: BOOKING, agency_id: AGENCY, quotation_id: QUOTATION, deposit_paid: true, status: "booked" },
+      ],
+    });
+
+    const outcome = await applyStripePaymentEvent(db.client, resolved());
+
+    expect(outcome).toEqual({ applied: false, reason: "booking_already_settled" });
+    const deposit = db.tables["payments"]!.find((r) => r["id"] === PAYMENT)!;
+    expect(deposit["status"]).toBe("failed");
+    expect(deposit["failure_reason"]).toBe("booking_already_settled");
+    expect(
+      db.tables["activity_log"]!.some((r) =>
+        String(r["action"]).includes("Duplicate payment received"),
+      ),
+    ).toBe(true);
+  });
+});
