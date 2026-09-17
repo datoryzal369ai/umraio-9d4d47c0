@@ -94,6 +94,30 @@ export function withinSendWindow(hour: number) {
   return hour >= QUIET_START_HOUR && hour < QUIET_END_HOUR;
 }
 
+/**
+ * WhatsApp customer service window.
+ *
+ * Meta only accepts free-form text within 24 hours of the customer's last
+ * inbound message (error 131047 otherwise). Outside it the Graph API still
+ * answers 200 with a wamid, so a follow-up would be recorded as "sent" while
+ * the customer receives nothing. A follow-up outside the window is therefore
+ * never claimed as sent — it is skipped with an explicit reason until an
+ * approved template path exists.
+ */
+export const SERVICE_WINDOW_HOURS = 24;
+export const OUTSIDE_WINDOW_SKIP_REASON =
+  "Outside WhatsApp 24-hour reply window — needs an approved template";
+
+export function withinServiceWindow(
+  lastInboundAt: string | Date | null | undefined,
+  now = new Date(),
+): boolean {
+  if (!lastInboundAt) return false;
+  const at = new Date(lastInboundAt).getTime();
+  if (!Number.isFinite(at)) return false;
+  return now.getTime() - at < SERVICE_WINDOW_HOURS * 3_600_000;
+}
+
 export type DispatchResult = {
   sent: number;
   skipped: number;
