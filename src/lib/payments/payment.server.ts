@@ -122,6 +122,21 @@ export async function startQuotationPayment(
   });
   if (!booking.ok) return { ok: false, reason: "booking_unavailable" };
 
+  // This booking has already been paid for. Never open a second checkout.
+  if (await settledPaymentFor(supabase, { agencyId: quotation.agency_id, bookingId: booking.booking.id })) {
+    return { ok: false, reason: "already_paid" };
+  }
+
+  // Deposit and full payment are mutually exclusive: the other kind's open
+  // checkout is cancelled and expired so it can never be completed as well.
+  await retirePendingPayments(supabase, {
+    agencyId: quotation.agency_id,
+    bookingId: booking.booking.id,
+    kind: input.kind === "deposit" ? "full" : "deposit",
+    reason: "superseded_by_other_payment_kind",
+  });
+
+
   const amountMyr = resolvePayableAmountMyr({
     kind: input.kind,
     totalMyr: num(quotation.total),
