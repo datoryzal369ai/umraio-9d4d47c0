@@ -355,6 +355,12 @@ describe("ledger application", () => {
 });
 
 describe("deposit and full payment are mutually exclusive", () => {
+  const resolved = () => {
+    const r = resolveStripePaymentEvent(envelope("checkout.session.completed", session()) as never);
+    if (!r.ok) throw new Error("expected resolvable event");
+    return r;
+  };
+
   it("refuses a second successful charge on a booking that is already settled", async () => {
     const db = makeDb({
       payments: [
