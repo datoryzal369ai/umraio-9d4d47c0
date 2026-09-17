@@ -37,9 +37,64 @@ export type StartPaymentResult =
         | "quotation_not_found"
         | "not_payable"
         | "no_amount"
+        | "already_paid"
         | "booking_unavailable"
         | "provider_unavailable";
     };
+
+/**
+ * A booking may only ever have ONE live checkout. Starting a deposit while a
+ * full-payment page is still open (or the reverse) would allow the customer to
+ * complete both and be charged twice. The superseded attempt is cancelled here
+ * and its Stripe session is expired so the abandoned tab can no longer pay.
+ */
+async function retirePendingPayments(
+  supabase: Db,
+  input: { agencyId: string; bookingId: string; kind: PaymentKind; reason: string },
+): Promise<void> {
+  const { data: rows } = await supabase
+    .from("payments")
+    .select("id, checkout_session_id")
+    .eq("agency_id", input.agencyId)
+    .eq("booking_id", input.bookingId)
+    .eq("kind", input.kind)
+    .eq("status", "pending");
+
+  for (const row of (rows ?? []) as Array<Record<string, any>>) {
+    const { data: cancelled } = await supabase
+      .from("payments")
+      .update({ status: "cancelled", failure_reason: input.reason })
+      .eq("id", row["id"])
+      .eq("agency_id", input.agencyId)
+      .eq("status", "pending")
+      .select("id");
+    if (!((cancelled ?? []) as unknown[]).length) continue;
+
+    const sessionId = row["checkout_session_id"];
+    if (!sessionId) continue;
+    try {
+      const { stripeFetch } = await import("@/lib/stripe.server");
+      await stripeFetch(`/checkout/sessions/${String(sessionId)}/expire`, { method: "POST" });
+    } catch (error) {
+      console.error("[payment] expire_session_failed", (error as Error).message);
+    }
+  }
+}
+
+/** Any settled payment on the booking closes the booking to further checkouts. */
+async function settledPaymentFor(
+  supabase: Db,
+  input: { agencyId: string; bookingId: string },
+): Promise<Record<string, any> | null> {
+  const { data } = await supabase
+    .from("payments")
+    .select("id, kind, status")
+    .eq("agency_id", input.agencyId)
+    .eq("booking_id", input.bookingId)
+    .eq("status", "succeeded")
+    .limit(1);
+  return ((data ?? []) as Array<Record<string, any>>)[0] ?? null;
+}
 
 /**
  * Create (or resume) a Stripe Checkout for a quotation identified by its
@@ -66,6 +121,21 @@ export async function startQuotationPayment(
     actor: "customer",
   });
   if (!booking.ok) return { ok: false, reason: "booking_unavailable" };
+
+  // This booking has already been paid for. Never open a second checkout.
+  if (await settledPaymentFor(supabase, { agencyId: quotation.agency_id, bookingId: booking.booking.id })) {
+    return { ok: false, reason: "already_paid" };
+  }
+
+  // Deposit and full payment are mutually exclusive: the other kind's open
+  // checkout is cancelled and expired so it can never be completed as well.
+  await retirePendingPayments(supabase, {
+    agencyId: quotation.agency_id,
+    bookingId: booking.booking.id,
+    kind: input.kind === "deposit" ? "full" : "deposit",
+    reason: "superseded_by_other_payment_kind",
+  });
+
 
   const amountMyr = resolvePayableAmountMyr({
     kind: input.kind,
@@ -180,7 +250,12 @@ export type ApplyPaymentEventResult =
   | { applied: true; paymentId: string; status: string; kind: PaymentKind }
   | {
       applied: false;
-      reason: "duplicate" | "payment_not_found" | "already_final" | "amount_mismatch";
+      reason:
+        | "duplicate"
+        | "payment_not_found"
+        | "already_final"
+        | "amount_mismatch"
+        | "booking_already_settled";
     };
 
 /**
@@ -218,6 +293,45 @@ export async function applyStripePaymentEvent(
 
   if (!payment) return { applied: false, reason: "payment_not_found" };
   if (payment.status !== "pending") return { applied: false, reason: "already_final" };
+
+  // A second successful charge on the same booking (e.g. a deposit page and a
+  // full-payment page both completed) must never apply another commercial
+  // transition. It is recorded as an overpayment for the agency to refund.
+  if (event.outcome === "succeeded") {
+    const settled = await settledPaymentFor(supabase, {
+      agencyId: event.agencyId,
+      bookingId: event.bookingId,
+    });
+    if (settled && String(settled["id"]) !== String(payment.id)) {
+      await supabase
+        .from("payments")
+        .update({
+          status: "failed",
+          failed_at: new Date().toISOString(),
+          failure_reason: "booking_already_settled",
+        })
+        .eq("id", payment.id)
+        .eq("agency_id", event.agencyId)
+        .eq("status", "pending");
+      await supabase.from("activity_log").insert({
+        agency_id: event.agencyId,
+        actor: "system",
+        action: "Duplicate payment received — refund required",
+        entity: "payment",
+        entity_id: payment.id,
+        meta: {
+          kind: payment.kind,
+          booking_id: event.bookingId,
+          quotation_id: event.quotationId,
+          settled_payment_id: settled["id"],
+          payment_ref: event.paymentRef,
+          amount_myr: event.amountMyr,
+        },
+      });
+      return { applied: false, reason: "booking_already_settled" };
+    }
+  }
+
 
   // The charged amount must match the server-derived amount exactly.
   if (
