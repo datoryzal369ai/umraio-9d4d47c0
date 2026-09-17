@@ -322,6 +322,29 @@ export async function dispatchDueFollowups(
       continue;
     }
 
+    // 3b. WhatsApp only delivers free-form text inside the 24-hour service
+    //     window. Outside it Meta accepts the call and then fails delivery, so
+    //     the job must not be recorded as sent.
+    if (conversation?.id) {
+      const { data: lastInbound } = await supabase
+        .from("messages")
+        .select("created_at")
+        .eq("agency_id", agencyId)
+        .eq("conversation_id", conversation.id)
+        .eq("sender", "customer")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!withinServiceWindow(lastInbound?.created_at)) {
+        console.warn(
+          `[followups] followup_skipped reason=outside_service_window job_id=${maskId(job.id)}`,
+        );
+        await skip(OUTSIDE_WINDOW_SKIP_REASON);
+        continue;
+      }
+    }
+
+
     if (!config?.access_token || !config.phone_number_id) {
       await skip("WhatsApp is not connected");
       continue;
