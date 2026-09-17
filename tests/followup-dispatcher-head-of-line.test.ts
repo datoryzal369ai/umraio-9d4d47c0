@@ -158,6 +158,18 @@ function tableRows(table: string): Record<string, unknown>[] {
         last_message_at: past(30),
       },
     ];
+  // The customer replied recently, so the WhatsApp 24-hour service window is open.
+  if (table === "messages")
+    return [
+      {
+        id: "msg-in-1",
+        agency_id: AGENCY,
+        conversation_id: "conv-1",
+        sender: "customer",
+        body: "Salam",
+        created_at: past(90),
+      },
+    ];
   return [];
 }
 
