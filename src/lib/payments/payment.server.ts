@@ -37,9 +37,64 @@ export type StartPaymentResult =
         | "quotation_not_found"
         | "not_payable"
         | "no_amount"
+        | "already_paid"
         | "booking_unavailable"
         | "provider_unavailable";
     };
+
+/**
+ * A booking may only ever have ONE live checkout. Starting a deposit while a
+ * full-payment page is still open (or the reverse) would allow the customer to
+ * complete both and be charged twice. The superseded attempt is cancelled here
+ * and its Stripe session is expired so the abandoned tab can no longer pay.
+ */
+async function retirePendingPayments(
+  supabase: Db,
+  input: { agencyId: string; bookingId: string; kind: PaymentKind; reason: string },
+): Promise<void> {
+  const { data: rows } = await supabase
+    .from("payments")
+    .select("id, checkout_session_id")
+    .eq("agency_id", input.agencyId)
+    .eq("booking_id", input.bookingId)
+    .eq("kind", input.kind)
+    .eq("status", "pending");
+
+  for (const row of (rows ?? []) as Array<Record<string, any>>) {
+    const { data: cancelled } = await supabase
+      .from("payments")
+      .update({ status: "cancelled", failure_reason: input.reason })
+      .eq("id", row["id"])
+      .eq("agency_id", input.agencyId)
+      .eq("status", "pending")
+      .select("id");
+    if (!((cancelled ?? []) as unknown[]).length) continue;
+
+    const sessionId = row["checkout_session_id"];
+    if (!sessionId) continue;
+    try {
+      const { stripeFetch } = await import("@/lib/stripe.server");
+      await stripeFetch(`/checkout/sessions/${String(sessionId)}/expire`, { method: "POST" });
+    } catch (error) {
+      console.error("[payment] expire_session_failed", (error as Error).message);
+    }
+  }
+}
+
+/** Any settled payment on the booking closes the booking to further checkouts. */
+async function settledPaymentFor(
+  supabase: Db,
+  input: { agencyId: string; bookingId: string },
+): Promise<Record<string, any> | null> {
+  const { data } = await supabase
+    .from("payments")
+    .select("id, kind, status")
+    .eq("agency_id", input.agencyId)
+    .eq("booking_id", input.bookingId)
+    .eq("status", "succeeded")
+    .limit(1);
+  return ((data ?? []) as Array<Record<string, any>>)[0] ?? null;
+}
 
 /**
  * Create (or resume) a Stripe Checkout for a quotation identified by its
