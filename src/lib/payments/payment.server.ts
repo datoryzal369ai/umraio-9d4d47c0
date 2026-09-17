@@ -250,7 +250,12 @@ export type ApplyPaymentEventResult =
   | { applied: true; paymentId: string; status: string; kind: PaymentKind }
   | {
       applied: false;
-      reason: "duplicate" | "payment_not_found" | "already_final" | "amount_mismatch";
+      reason:
+        | "duplicate"
+        | "payment_not_found"
+        | "already_final"
+        | "amount_mismatch"
+        | "booking_already_settled";
     };
 
 /**
