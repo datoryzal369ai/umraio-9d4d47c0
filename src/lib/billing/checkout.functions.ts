@@ -113,7 +113,8 @@ export const prepareCheckout = createServerFn({ method: "POST" })
           );
       }
 
-      const origin = process.env["PUBLIC_SITE_URL"] ?? "https://umraio.com";
+      const { resolvePublicSiteUrl } = await import("@/lib/quotations/public-url.core");
+      const origin = resolvePublicSiteUrl(process.env["PUBLIC_SITE_URL"]);
       const session = await stripeFetch<{ url?: string }>("/checkout/sessions", {
         method: "POST",
         body: {
@@ -195,7 +196,8 @@ export const openBillingPortal = createServerFn({ method: "POST" })
 
     if (!customerId) return { error: "no_customer" };
 
-    const origin = process.env["PUBLIC_SITE_URL"] ?? "https://umraio.com";
+    const { resolvePublicSiteUrl } = await import("@/lib/quotations/public-url.core");
+    const origin = resolvePublicSiteUrl(process.env["PUBLIC_SITE_URL"]);
     try {
       const session = await stripeFetch<{ url?: string }>("/billing_portal/sessions", {
         method: "POST",
