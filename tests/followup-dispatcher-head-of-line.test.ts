@@ -112,6 +112,8 @@ function makeJobs(): Job[] {
 
 let jobs: Job[];
 const inserted: Record<string, unknown[]> = {};
+/** Per-test override for the messages table; null = default recent inbound. */
+let messagesOverride: Record<string, unknown>[] | null = null;
 
 function tableRows(table: string): Record<string, unknown>[] {
   if (table === "followup_jobs") return jobs as unknown as Record<string, unknown>[];
@@ -160,7 +162,8 @@ function tableRows(table: string): Record<string, unknown>[] {
     ];
   // The customer replied recently, so the WhatsApp 24-hour service window is open.
   if (table === "messages")
-    return [
+    return (
+      messagesOverride ?? [
       {
         id: "msg-in-1",
         agency_id: AGENCY,
