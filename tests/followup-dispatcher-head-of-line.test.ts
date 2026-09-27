@@ -172,7 +172,8 @@ function tableRows(table: string): Record<string, unknown>[] {
         body: "Salam",
         created_at: past(90),
       },
-    ];
+      ]
+    );
   return [];
 }
 
@@ -306,6 +307,7 @@ describe("follow-up dispatcher head-of-line blocking (P0-1)", () => {
   beforeEach(() => {
     jobs = makeJobs();
     sent.length = 0;
+    messagesOverride = null;
     for (const k of Object.keys(inserted)) delete inserted[k];
   });
 
