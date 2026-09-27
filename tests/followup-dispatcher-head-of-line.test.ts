@@ -380,6 +380,72 @@ describe("follow-up dispatcher head-of-line blocking (P0-1)", () => {
     expect(job.dispatched_at).toBeTruthy();
   });
 
+  test("outside the 24h window the job is RESCHEDULED, not terminally skipped", async () => {
+    // Customer last replied 3 days ago — the classic "lead went quiet" follow-up.
+    messagesOverride = [
+      {
+        id: "msg-old",
+        agency_id: AGENCY,
+        conversation_id: "conv-1",
+        sender: "customer",
+        body: "Salam",
+        created_at: past(72 * 60),
+      },
+    ];
+    const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    expect(sent).toHaveLength(0);
+    const job = jobs.find((j) => j.id === "sendable-1")!;
+    expect(job.status).toBe("pending");
+    expect(job.attempts).toBe(1);
+    expect(new Date(job.run_at).getTime()).toBeGreaterThan(Date.now());
+    expect(result.retried).toBe(1);
+    expect(result.skipped).toBe(20); // only the body-less human tasks
+  });
+
+  test("outside the window with no customer reply ever: still rescheduled, never falsely sent", async () => {
+    messagesOverride = [];
+    const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    expect(sent).toHaveLength(0);
+    const job = jobs.find((j) => j.id === "sendable-1")!;
+    expect(job.status).toBe("pending");
+    expect(result.retried).toBe(1);
+  });
+
+  test("after MAX_ATTEMPTS reschedules with no reply the job ends with an explicit reason", async () => {
+    messagesOverride = [];
+    const job = jobs.find((j) => j.id === "sendable-1")!;
+    job.attempts = 2; // next reschedule would be attempt 3 = MAX_ATTEMPTS
+    const result = await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    expect(sent).toHaveLength(0);
+    expect(job.status).toBe("skipped");
+    expect(job.skip_reason).toContain("24-hour reply window");
+    expect(result.skipped).toBe(21);
+  });
+
+  test("a customer reply reopens the window and the rescheduled nudge goes out", async () => {
+    // First cycle: outside window → rescheduled.
+    messagesOverride = [];
+    await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    const job = jobs.find((j) => j.id === "sendable-1")!;
+    expect(job.status).toBe("pending");
+    // Customer replies; the follow-up is now due again and the window is open.
+    messagesOverride = [
+      {
+        id: "msg-new",
+        agency_id: AGENCY,
+        conversation_id: "conv-1",
+        sender: "customer",
+        body: "Ya, saya berminat",
+        created_at: past(10),
+      },
+    ];
+    job.run_at = past(1);
+    const second = await dispatchDueFollowups(fakeDb, AGENCY, 5);
+    expect(second.sent).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(job.status).toBe("sent");
+  });
+
   test("unsendable-but-bodied jobs are skipped with a reason, not silently dropped", async () => {
     jobs.push({
       id: "dnc-1",
