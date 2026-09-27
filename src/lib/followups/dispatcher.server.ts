@@ -324,7 +324,13 @@ export async function dispatchDueFollowups(
 
     // 3b. WhatsApp only delivers free-form text inside the 24-hour service
     //     window. Outside it Meta accepts the call and then fails delivery, so
-    //     the job must not be recorded as sent.
+    //     the job must not be recorded as sent. Most follow-ups are scheduled
+    //     beyond 24h by design ("lead quiet for 48h+"), so a terminal skip
+    //     would silently kill the whole feature: instead the job is
+    //     RESCHEDULED to the next send window. If the customer replies in the
+    //     meantime the window reopens and the nudge goes out; after
+    //     MAX_ATTEMPTS reschedules with no reply it ends with an explicit
+    //     reason (an approved template path does not exist yet).
     if (conversation?.id) {
       const { data: lastInbound } = await supabase
         .from("messages")
@@ -336,10 +342,27 @@ export async function dispatchDueFollowups(
         .limit(1)
         .maybeSingle();
       if (!withinServiceWindow(lastInbound?.created_at)) {
-        console.warn(
-          `[followups] followup_skipped reason=outside_service_window job_id=${maskId(job.id)}`,
-        );
-        await skip(OUTSIDE_WINDOW_SKIP_REASON);
+        const windowAttempt = (job.attempts ?? 0) + 1;
+        const retryAt = nextRetryAt(windowAttempt);
+        if (retryAt) {
+          await markJob(supabase, job.id, "pending", {
+            run_at: retryAt.toISOString(),
+            attempts: windowAttempt,
+            claimed_at: null,
+            last_error: OUTSIDE_WINDOW_SKIP_REASON,
+          });
+          result.retried += 1;
+          result.details.push({
+            id: job.id,
+            outcome: "rescheduled",
+            reason: OUTSIDE_WINDOW_SKIP_REASON,
+          });
+        } else {
+          console.warn(
+            `[followups] followup_skipped reason=outside_service_window job_id=${maskId(job.id)}`,
+          );
+          await skip(OUTSIDE_WINDOW_SKIP_REASON);
+        }
         continue;
       }
     }
