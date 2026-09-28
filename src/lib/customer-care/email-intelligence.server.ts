@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { buildContext, createIntelligenceGateway } from "@/lib/ai/index.server";
+import { buildContext, createIntelligenceGateway, redactAndCap } from "@/lib/ai/index.server";
 import { classifyCustomerCarePolicy } from "./policy.core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -16,7 +16,7 @@ export type SupportEmailDraft = {
 };
 
 const SYSTEM = `
-You are UMRAIO® Autonomous Customer Care for a licensed Umrah agency.
+You are UMRAIO® Autonomous Customer Care for an Umrah agency.
 Handle routine customer care, onboarding, package questions, after-sales support, booking-status questions,
 document guidance, itinerary questions, payment guidance and UMRAIO platform support using only the
 verified context supplied by the application.
@@ -57,9 +57,9 @@ export async function draftSupportEmailReply(
     taskClass: "reasoning",
     system: SYSTEM,
     prompt: [
-      `Subject: ${input.subject.slice(0, 500)}`,
+      `Subject: ${redactAndCap(input.subject, 500) ?? ""}`,
       "Customer email:",
-      input.body.slice(0, 8000),
+      redactAndCap(input.body, 8000) ?? "",
       "",
       `Policy category: ${policy.category}`,
       `Policy decision: ${policy.decision}`,
@@ -80,8 +80,21 @@ export async function draftSupportEmailReply(
     };
   }
 
+  const reply = result.data.response.trim();
+  if (!reply) {
+    return {
+      reply:
+        "Thank you for contacting us. I’m unable to verify a safe answer automatically, so this has been marked for human follow-up.",
+      confidence: 0,
+      escalationRequired: true,
+      requiresApproval: true,
+      reasonCode: "EMPTY_MODEL_REPLY",
+      category: policy.category,
+    };
+  }
+
   return {
-    reply: result.data.response.trim(),
+    reply,
     confidence: result.data.confidence,
     escalationRequired: result.data.escalation_required,
     requiresApproval:
