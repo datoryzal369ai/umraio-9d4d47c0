@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { readAutonomySettings } from "@/lib/executive-autonomy.server";
 import { notify } from "@/lib/task-engine.server";
 import { draftSupportEmailReply } from "./email-intelligence.server";
 import { sendSupportEmail } from "./email-transport.server";
@@ -84,7 +85,9 @@ export async function processInboundSupportEmail(
   if (inboundError) throw new Error(inboundError.message);
 
   const draft = await draftSupportEmailReply(supabase, input);
+  const { autonomyMode } = await readAutonomySettings(supabase, input.agencyId);
   const mayAutoSend =
+    autonomyMode === "autonomous" &&
     isAutonomousEmailCareEnabled() &&
     !draft.requiresApproval &&
     !draft.escalationRequired &&
