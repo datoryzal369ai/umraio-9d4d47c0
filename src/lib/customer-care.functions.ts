@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
@@ -41,7 +42,10 @@ export const approveAndSendSupportEmail = createServerFn({ method: "POST" })
 
     // Read through the caller's RLS client first. This proves agency ownership
     // before service-role access is used for the delivery-status update.
-    const { data: draft } = await context.supabase
+    // These migration tables are cast locally until generated Database types
+    // are refreshed after the migration is applied.
+    const callerDb = context.supabase as any;
+    const { data: draft } = await callerDb
       .from("support_email_messages")
       .select(
         "id, agency_id, thread_id, body, direction, delivery_status, requires_approval, created_at",
@@ -56,7 +60,7 @@ export const approveAndSendSupportEmail = createServerFn({ method: "POST" })
       return { ok: false, reason: "DRAFT_NOT_SENDABLE" };
     }
 
-    const { data: thread } = await context.supabase
+    const { data: thread } = await callerDb
       .from("support_email_threads")
       .select("id, agency_id, customer_email, subject")
       .eq("id", draft.thread_id)
@@ -77,7 +81,8 @@ export const approveAndSendSupportEmail = createServerFn({ method: "POST" })
         return { ok: false, reason: "EMAIL_PROVIDER_NOT_CONFIGURED" };
       }
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      await supabaseAdmin
+      const admin = supabaseAdmin as any;
+      await admin
         .from("support_email_messages")
         .update({ delivery_status: "send_failed" })
         .eq("id", draft.id)
@@ -86,7 +91,8 @@ export const approveAndSendSupportEmail = createServerFn({ method: "POST" })
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin
+    const admin = supabaseAdmin as any;
+    await admin
       .from("support_email_messages")
       .update({
         delivery_status: "sent",
@@ -96,13 +102,13 @@ export const approveAndSendSupportEmail = createServerFn({ method: "POST" })
       .eq("id", draft.id)
       .eq("agency_id", draft.agency_id);
 
-    await supabaseAdmin
+    await admin
       .from("support_email_threads")
       .update({ status: "open", last_message_at: new Date().toISOString() })
       .eq("id", draft.thread_id)
       .eq("agency_id", draft.agency_id);
 
-    await supabaseAdmin.from("activity_log").insert({
+    await admin.from("activity_log").insert({
       agency_id: draft.agency_id,
       actor: "human",
       action: "Approved customer-care email sent",
