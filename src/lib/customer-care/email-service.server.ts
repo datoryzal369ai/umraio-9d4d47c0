@@ -115,7 +115,7 @@ export async function processInboundSupportEmail(
     body: draft.reply,
     provider_message_id: outboundProviderId,
     delivery_status: deliveryStatus,
-    requires_approval: !mayAutoSend,
+    requires_approval: deliveryStatus !== "sent",
     confidence: draft.confidence,
     reason_code: draft.reasonCode,
     category: draft.category,
