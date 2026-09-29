@@ -17,11 +17,14 @@ const rows = (result: any): any[] => { if (result.error) throw new Error(`callin
 /** Read only, tenant-scoped and bounded. No imports from any Voice Note implementation. */
 export async function loadCallingRecords(db: CallingDb, input: { binding: CallingBinding; callerPhone: string; signal: AbortSignal }): Promise<CallingRecords> {
   const scoped = (table: string, columns: string) => db.from(table).select(columns).eq("agency_id", input.binding.agencyId);
+  // Active agency catalogue: general package facts are not private and need no caller identity.
+  const packagesQuery = Promise.resolve(scoped("packages", "id,name,nights,price_myr,hotel_makkah,hotel_madinah,departure_date,updated_at")
+    .eq("is_active", true).order("price_myr", { ascending: true }).limit(6).abortSignal(input.signal)).then(rows).catch(() => [] as any[]);
   const contacts = rows(await scoped("leads", "id,full_name,phone,stage,preferred_language,conversational_style,package_interest,pax,do_not_contact,updated_at")
     .ilike("phone", `%${phone(input.callerPhone).slice(-9)}`).limit(3).abortSignal(input.signal));
   const matches = contacts.filter(lead => phone(lead.phone ?? "") === phone(input.callerPhone));
   const lead = matches.length === 1 ? matches[0] : null;
-  if (!lead) return { lead: null, conversations: [], quotations: [], bookings: [], messages: [], previousCalls: [], identityConflict: matches.length > 1,
+  if (!lead) return { lead: null, conversations: [], quotations: [], bookings: [], messages: [], previousCalls: [], packages: await packagesQuery, identityConflict: matches.length > 1,
     identityKey: matches.map(m => String(m.id)).sort().join("|") || "unmatched", identityCandidates: matches,
     recognition: await loadCallingRecognition(db, input, matches) };
   const results = await Promise.all([
@@ -37,10 +40,10 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
   const conversation = conversations.length === 1 ? conversations[0] : null;
   const messages = conversation ? rows(await scoped("messages", "id,sender,body,modality,delivery_status,provider_message_id,created_at")
     .eq("conversation_id", conversation.id).order("created_at", { ascending: false }).limit(8).abortSignal(input.signal)) : [];
-  return { lead, conversations, quotations, bookings, messages, previousCalls, identityConflict: false };
+  return { lead, conversations, quotations, bookings, messages, previousCalls, packages: await packagesQuery, identityConflict: false };
 }
 export type CallingRecords = { lead: any; conversations: any[]; quotations: any[]; bookings: any[]; messages: any[];
-  previousCalls: any[]; identityConflict: boolean; identityKey?: string; identityCandidates?: any[];
+  previousCalls: any[]; packages?: any[]; identityConflict: boolean; identityKey?: string; identityCandidates?: any[];
   identityContinuation?: IdentityContinuation; nameEvidence?: { text: string; caller: CallerTurn };
   recognition?: CallingRecognition | null };
 
@@ -282,6 +285,8 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
   const packageRefs = quotationRows.filter(q => q.package_snapshot && typeof q.package_snapshot.name === "string").map(q =>
     add(`quotations:${q.id}:package_name`, String(q.package_snapshot.name).slice(0,200), "quotations", q.id, "package_snapshot.name",
       "business_record", "verified", q.updated_at ?? null));
+  const catalogueRefs = (r.packages ?? []).slice(0, 6).flatMap(p => record("packages", p,
+    ["name", "nights", "price_myr", "hotel_makkah", "hotel_madinah", "departure_date"]));
   const relationshipRefs = r.lead ? record("leads", r.lead, ["stage", "package_interest", "pax"]) : [];
   const crossRefs = r.messages.slice(0, 6).filter(m => m.sender === "customer" || m.modality === "call_summary"
     || ["sent", "delivered", "read"].includes(m.delivery_status)).map(m => add(`messages:${m.id}`, { text: String(m.body ?? "").slice(0, 320),
@@ -326,7 +331,7 @@ export function buildCognitivePacket(input: { binding: CallingBinding; sequence:
     person: { identity_refs: identityRefs, honorific_ref: honorificRef, language: input.language, register: r.lead?.conversational_style ?? "warm conversational BM/Manglish", relationship_refs: relationshipRefs },
     business: { booking_refs: bookingRefs, quotation_refs: quotationRefs,
       traveller_refs: [...bookingRefs, ...quotationRefs].filter(id => /:(?:pax|number_of_pilgrims|customer_name)$/.test(id)),
-      package_refs: [...packageRefs, ...bookingRefs, ...relationshipRefs].filter(id => /:package_/.test(id)),
+      package_refs: [...[...packageRefs, ...bookingRefs, ...relationshipRefs].filter(id => /:package_/.test(id)), ...catalogueRefs],
       selected_booking: booking?.id ?? null, selected_quotation: selectedQuote?.id ?? null, state_complete: true },
     current_call: { current_caller: caller, caller_refs: callerRefs, delivered_assistant_refs: deliveredRefs,
       objective: s.memory.objective?.text ?? null, objective_ref: objectiveRef, open_question_refs: questionRefs, correction_refs: correctionRefs, open_questions: (s.memory.open_questions ?? []).map(q => q.text).slice(-4),

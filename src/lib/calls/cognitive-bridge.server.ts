@@ -6,7 +6,7 @@ import { buildCognitivePacket, includeRequestedQuotation, loadCallingRecords, co
 import { currentCallingEngine, CallingEngineFailure, callingEngineFailureEvidence, reconstructCallingMemory, type CallingEngineFailureEvidence } from "./cognitive-engine.server";
 import { BRIDGE_VERSION, type CognitiveDecision, type CognitiveEngine, type CognitivePacket, type EngineMetadata, type ClarificationOffer } from "./cognitive-bridge.contract";
 import { validateCallingDecision, callingValidationFields } from "./call-decision-policy.core";
-import { callingRecovery, callingContractRecovery } from "./call-speech-claims.core";
+import { callingRecovery, callingContractRecovery, PACKAGE_TOPIC } from "./call-speech-claims.core";
 import { executeCallingDecision } from "./calling-action-lifecycle.server";
 import { quotationDeliveryReply } from "./call-quotation.server";
 import { acknowledgementOptions, contextualAcknowledgement, waitingPhrase } from "./call-executive.core";
@@ -37,7 +37,8 @@ export async function handleCognitiveVoiceTurn(args: {
   let packetId: string | null = null;
   let recovery: string | null = null;
   let cancellation: string | null = null;
-  let contractRepair: { attempts: number; reason: string; fields: string[]; outcome: string } | null = null;
+  let contractRepair: { attempts: number; reason: string; fields: string[]; outcome: string;
+    sequence?: number; topic?: string; decision_mode?: string | null; intent?: string | null } | null = null;
   let engineFailure: CallingEngineFailureEvidence | null = null;
   let enginePacket: CognitivePacket | null = null;
   let engineAnswerReceived = false;
@@ -169,7 +170,12 @@ export async function handleCognitiveVoiceTurn(args: {
               if (validated.reason === "stale_decision") return failure("cognitive_stale_turn");
               recovery = validated.reason;
               contractRepair = { attempts: 1, reason: validated.reason,
-                fields: callingValidationFields(result.answer.decision, packet, validated.reason), outcome: "blocked" };
+                fields: callingValidationFields(result.answer.decision, packet, validated.reason), outcome: "blocked",
+                sequence: args.payload.sequence,
+                topic: PACKAGE_TOPIC.test(lease.turn.transcript) ? "package" : packet.dialogue?.topic ?? "general",
+                decision_mode: typeof (result.answer.decision as any)?.interaction_mode === "string" ? String((result.answer.decision as any).interaction_mode).slice(0, 16) : null,
+                intent: typeof (result.answer.decision as any)?.intent === "string" ? String((result.answer.decision as any).intent).slice(0, 48) : null };
+              console.log(`[calls] calling_response_rejected sequence=${args.payload.sequence} reason=${validated.reason} topic=${contractRepair.topic} mode=${contractRepair.decision_mode ?? "none"}`);
               times["contract_repair_start"] = Date.now();
               // Exactly one bounded local repair. No second reasoning call, ASR, context query or action.
               const reconstructed = reconstructCallingMemory(result.answer.decision, packet, validated.reason);
@@ -189,7 +195,10 @@ export async function handleCognitiveVoiceTurn(args: {
               // plays no audio at all and the caller hears the line die. Speak one safe,
               // claim-free line instead; the blocked reason is still recorded as telemetry.
               recovery = `contract_blocked:${validated.reason}`;
-              spoken = callingRecovery(language, "unavailable");
+              spoken = PACKAGE_TOPIC.test(lease.turn.transcript)
+                ? (language.startsWith("en") ? "About the Umrah packages, I cannot confirm the package details right now."
+                  : "Tentang pakej Umrah, butiran pakej belum dapat saya pastikan sekarang.")
+                : callingRecovery(language, "unavailable");
               nextState = "active";
             } else {
               decision = validated.decision;
