@@ -1,4 +1,5 @@
 import { agencyIdentityInstruction } from "@/lib/sales/unified-identity.core";
+import { UMRAIO_CUSTOMER_CARE_INSTRUCTION } from "@/lib/customer-care/policy.core";
 import { ISLAMIC_ELITE_PERSONA_AGENCY_INSTRUCTION } from "@/lib/sales/islamic-elite-persona.core";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -522,6 +523,7 @@ function systemPrompt(
   return [
     `You are ${aiName}, the AI Autonomous Business Executive for ${agencyName}, a Malaysian Umrah travel agency.`,
     DOMAIN_ISOLATION_INSTRUCTION,
+    UMRAIO_CUSTOMER_CARE_INSTRUCTION,
     suppression,
     intentAnchorInstruction(
       lastCustomer?.body,
