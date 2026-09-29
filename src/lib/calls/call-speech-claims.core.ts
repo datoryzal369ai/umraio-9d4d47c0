@@ -42,7 +42,7 @@ export function callingRecovery(language: string, reason: "ambiguity" | "unavail
   return reason === "unavailable" ? "Maaf, maklumat itu belum dapat saya pastikan sekarang." : "Maaf, jawapan itu belum dapat saya pastikan.";
 }
 
-export const PACKAGE_TOPIC = /\b(?:pakej|package|packages|umrah|umrah|harga|price|hotel|berapa hari)\b/i;
+export const PACKAGE_TOPIC = /\b(?:pakej|package|packages|harga|price|hotel|berapa hari)\b/i;
 
 /** Topic-aware recovery for a package question: active catalogue names only, never WhatsApp history. */
 export function packageRecovery(packet: CognitivePacket): { spoken: string; used: string[]; claims: CognitiveDecision["claim_requests"] } | null {
@@ -112,7 +112,7 @@ export function callingContractRecovery(packet: CognitivePacket): CognitiveDecis
     }
   } else if (dialogue?.correction) spoken = apology + (en ? "I will not ask you to repeat the same explanation." : "Tidak perlu ulang penjelasan yang sama.");
   else if (/\b(?:assalamualaikum|salam|hello|hi)\b/i.test(current)) spoken = en ? "Hello, I am here to help." : "Salam, saya sedia membantu.";
-  const pkg = !ask && !social ? packageRecovery(packet) : null;
+  const pkg = !ask && !social && dialogue?.topic !== "booking" ? packageRecovery(packet) : null;
   if (pkg) { spoken = pkg.spoken; used.push(...pkg.used); claims.push(...pkg.claims); }
   if (recognition && !pkg) {
     if (!spoken.includes(recognitionIntro)) spoken = recognitionIntro + spoken;

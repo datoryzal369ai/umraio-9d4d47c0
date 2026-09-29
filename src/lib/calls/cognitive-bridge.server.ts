@@ -195,7 +195,10 @@ export async function handleCognitiveVoiceTurn(args: {
               // plays no audio at all and the caller hears the line die. Speak one safe,
               // claim-free line instead; the blocked reason is still recorded as telemetry.
               recovery = `contract_blocked:${validated.reason}`;
-              spoken = callingRecovery(language, "unavailable");
+              spoken = PACKAGE_TOPIC.test(lease.turn.transcript)
+                ? (language.startsWith("en") ? "About the Umrah packages, I cannot confirm the package details right now."
+                  : "Tentang pakej Umrah, butiran pakej belum dapat saya pastikan sekarang.")
+                : callingRecovery(language, "unavailable");
               nextState = "active";
             } else {
               decision = validated.decision;
