@@ -12,7 +12,7 @@ export const MAX_TURN_AUDIO_BASE64 = 3 * 1024 * 1024;
 /** Ceiling for one call's stored transcript (turns), keeps the row bounded. */
 export const MAX_STORED_TURNS = 60;
 
-export type VoiceTurnKind = "greeting" | "utterance";
+export type VoiceTurnKind = "greeting" | "utterance" | "continuation";
 
 /**
  * Additive, sanitized media-plane instrumentation sent by the gateway.
@@ -70,11 +70,12 @@ export function parseVoiceTurnRequest(input: unknown): VoiceTurnRequest | null {
   const record = input as Record<string, unknown>;
   const callId = typeof record["call_id"] === "string" ? record["call_id"].trim() : "";
   const kind = record["kind"];
-  if (!callId || (kind !== "greeting" && kind !== "utterance")) return null;
+  if (!callId || (kind !== "greeting" && kind !== "utterance" && kind !== "continuation")) return null;
 
   const audio = typeof record["audio_ogg_base64"] === "string" ? record["audio_ogg_base64"] : "";
   if (audio.length > MAX_TURN_AUDIO_BASE64) return null;
   if (kind === "utterance" && audio.length === 0) return null;
+  if (kind === "continuation" && audio.length > 0) return null;
 
   const sequence = Number(record["sequence"]);
   const durationMs = Number(record["duration_ms"]);
@@ -181,6 +182,11 @@ export function classifyVoiceIntents(transcript: string): VoiceIntentKey[] {
   const text = transcript.trim();
   if (!text) return [];
   return VOICE_INTENT_KEYS.filter((key) => INTENT_PATTERNS[key].test(text));
+}
+
+/** Explicit buying intent that may enter the tightly governed voice fast lane. */
+export function isVoiceCommercialExecutionIntent(transcript: string): boolean {
+  return /\b(?:nak|mahu|buat|keluarkan|send|hantar|give|create|proceed|teruskan|setuju|pay|bayar)\b[^.?!]{0,45}\b(?:quotation|quote|sebut\s?harga|booking|tempah|deposit|payment\s*link|link\s*(?:payment|bayaran))\b|\b(?:payment\s*link|quotation\s*(?:now|sekarang))\b/i.test(transcript);
 }
 
 export function mergeIntents(existing: unknown, next: VoiceIntentKey[]): VoiceIntentKey[] {

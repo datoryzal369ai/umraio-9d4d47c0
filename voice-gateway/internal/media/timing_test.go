@@ -77,9 +77,7 @@ func TestMediaMetricsTravelOnNextTurnRequest(t *testing.T) {
 		t.Fatalf("playback anchors invalid: %+v", m)
 	}
 
-	pushSpeech(p, 10)
-	pushSilence(p, 5)
-	waitFor(t, "second turn request", func() bool { return len(client.seen()) >= 2 })
+	pushUtteranceUntil(t, p, "second turn request", func() bool { return len(client.seen()) >= 2 })
 	second := client.seen()[1]
 	if second.MediaMetrics == nil {
 		t.Fatal("second turn request must carry media metrics")

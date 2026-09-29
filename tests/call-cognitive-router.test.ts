@@ -45,6 +45,16 @@ describe("cognitive complexity router", () => {
     expect(route.acknowledgement).toBeTruthy();
   });
 
+  it("routes explicit quotation execution through the acknowledged deep lane", () => {
+    const route = routeTurn({
+      transcript: "Saya nak quotation untuk 3 orang sekarang",
+      language: "ms-MY",
+      address,
+    });
+    expect(route.level).toBeGreaterThanOrEqual(3);
+    expect(route.acknowledgement).toBeTruthy();
+  });
+
   it("acknowledgement is a short natural sentence, never a codename", () => {
     const ack = buildAcknowledgement({ address, language: "ms-MY", seed: 1 });
     expect(ack.length).toBeLessThan(140);

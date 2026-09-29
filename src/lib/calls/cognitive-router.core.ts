@@ -133,7 +133,7 @@ const LEVEL4 =
 
 /** LEVEL 3 — comparison, objection, pricing strategy, multi-constraint. */
 const LEVEL3 =
-  /\b(banding|compare|berbeza|beza|kenapa mahal|lebih mahal|cheaper|diskaun|discount|nego|rundingan|pilih yang mana|which one|cadangkan|recommend|itinerary|jadual penuh|multi|3 bilik|kumpulan besar|group|tak pasti nak pilih|susah nak pilih|objection|risau|ragu)\b/i;
+  /\b(banding|compare|berbeza|beza|kenapa mahal|lebih mahal|cheaper|diskaun|discount|nego|rundingan|pilih yang mana|which one|cadangkan|recommend|itinerary|jadual penuh|multi|3 bilik|kumpulan besar|group|tak pasti nak pilih|susah nak pilih|objection|risau|ragu|nak quotation|buat quotation|keluarkan quotation|quotation sekarang|nak booking|saya setuju|nak teruskan|bayar deposit|payment link|bayar sekarang|send (?:me )?(?:a )?quote|book now|pay (?:the )?deposit)\b/i;
 
 /** LEVEL 2 — references earlier conversation / relationship state. */
 const LEVEL2 =
@@ -170,6 +170,7 @@ const ACK_MS = [
   "sekejap ya, saya semak yang itu dulu.",
   "beri saya sedikit masa ya, saya nak pastikan maklumat ini betul.",
   "saya semak perkara itu sekejap ya.",
+  "saya uruskan sekarang.",
 ];
 const ACK_EN = [
   "one moment please, let me check that first.",

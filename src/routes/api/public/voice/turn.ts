@@ -45,10 +45,13 @@ export const Route = createFileRoute("/api/public/voice/turn")({
         if (!payload) return new Response("invalid_payload", { status: 400 });
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { handleVoiceTurn } = await import("@/lib/calls/voice-turn.server");
+        const { handleVoiceTurn, prepareVoiceTurn } = await import("@/lib/calls/voice-turn.server");
 
         try {
-          const result = await handleVoiceTurn({ db: supabaseAdmin as never, payload });
+          const result =
+            payload.kind === "utterance"
+              ? await prepareVoiceTurn({ db: supabaseAdmin as never, payload })
+              : await handleVoiceTurn({ db: supabaseAdmin as never, payload });
           // A failed stage is an honest, audio-free 200: the gateway stays
           // silent instead of replaying an utterance that can never succeed.
           return Response.json(
@@ -61,6 +64,7 @@ export const Route = createFileRoute("/api/public/voice/turn")({
                   voice_id: result.voiceId ?? "",
                   language_boost: result.languageBoost ?? "",
                   end_call: result.endCall,
+                  continue_turn: result.continueTurn ?? false,
                   reason: result.reason ?? "",
                 }
               : {
@@ -70,7 +74,6 @@ export const Route = createFileRoute("/api/public/voice/turn")({
                   reason: result.reason,
                 },
           );
-
         } catch (error) {
           console.error(
             `[calls] voice_turn_failed call_id=${payload.call_id} reason=${error instanceof Error ? error.name : "unknown"}`,

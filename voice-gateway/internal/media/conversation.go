@@ -17,8 +17,9 @@ import (
 
 // TurnKind distinguishes the opening greeting from a caller utterance.
 const (
-	TurnKindGreeting  = "greeting"
-	TurnKindUtterance = "utterance"
+	TurnKindGreeting     = "greeting"
+	TurnKindUtterance    = "utterance"
+	TurnKindContinuation = "continuation"
 )
 
 // TurnRequest is what the gateway asks the control plane to resolve.
@@ -69,6 +70,7 @@ type TurnResponse struct {
 	VoiceID        string `json:"voice_id,omitempty"`
 	LanguageBoost  string `json:"language_boost,omitempty"`
 	EndCall        bool   `json:"end_call"`
+	ContinueTurn   bool   `json:"continue_turn,omitempty"`
 	Reason         string `json:"reason,omitempty"`
 }
 
@@ -358,9 +360,13 @@ func (p *ConversationPipeline) startTurn(req TurnRequest) {
 
 // turnState carries the per-turn instrumentation anchors.
 type turnState struct {
-	startedAt   time.Time
-	speechEndAt time.Time
-	sequence    int
+	startedAt    time.Time
+	speechEndAt  time.Time
+	sequence     int
+	// continuation marks STAGE TWO of the SAME caller utterance. It reuses the
+	// stage-one anchors and is never re-anchored, so the zero-silence metrics
+	// keep describing the first audio the caller actually heard.
+	continuation bool
 }
 
 func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st turnState) {
@@ -423,6 +429,15 @@ func (p *ConversationPipeline) runTurn(ctx context.Context, req TurnRequest, st 
 		if t != nil {
 			t.Terminate(orDefault(resp.Reason, "conversation_complete"))
 		}
+	}
+	if resp.ContinueTurn && !st.continuation {
+		// Stage two is requested only after acknowledgement playback completes.
+		// It carries no audio: the signed control-plane checkpoint owns the ASR
+		// transcript, so customer content is never reflected through the gateway.
+		// It reuses the stage-one sequence and anchors (no second turn counted,
+		// no VAD finalize consumed twice) and cannot itself chain further.
+		p.runTurn(ctx, TurnRequest{CallID: req.CallID, Sequence: st.sequence, Kind: TurnKindContinuation},
+			turnState{startedAt: st.startedAt, speechEndAt: st.speechEndAt, sequence: st.sequence, continuation: true})
 	}
 }
 
@@ -497,6 +512,22 @@ func (p *ConversationPipeline) recordTurnMetrics(st turnState, timing SpeechTimi
 		m.SpeechEndToFirstAudioMs = int(firstAudioAt.Sub(st.speechEndAt).Milliseconds())
 	}
 	p.mu.Lock()
+	// ONE metrics record per sequence. A continuation MERGES into the stage-one
+	// record instead of replacing it: first-audio latency stays anchored to the
+	// acknowledgement the caller actually heard, and synthesis cost is the sum
+	// of both stages — never two competing records for one utterance.
+	if st.continuation && p.lastMetrics != nil && p.lastMetrics.PrevSequence == st.sequence {
+		merged := *p.lastMetrics
+		merged.TTSMs += m.TTSMs
+		merged.TTSEncodeMs += m.TTSEncodeMs
+		if merged.PlaybackStartMs == 0 {
+			merged.PlaybackStartMs = m.PlaybackStartMs
+		}
+		if merged.SpeechEndToFirstAudioMs == 0 {
+			merged.SpeechEndToFirstAudioMs = m.SpeechEndToFirstAudioMs
+		}
+		m = &merged
+	}
 	p.lastMetrics = m
 	p.mu.Unlock()
 	p.logger.Info("turn_media_timing",
