@@ -29,8 +29,10 @@ describe("Calling package answers", () => {
   it("still rejects an unsupported claim", () => {
     const packet = packetFixture("Nak tanya pakej Umrah", withPackages());
     const d = decisionFixture(packet, { interaction_mode: "ANSWER", spoken_response: "Harganya RM1,000.",
-      claim_requests: [{ kind: "business_status", source_ref: "packages:p1:price_myr", spoken_span: "RM1,000" }] });
+      claim_requests: [{ kind: "business_status", source_ref: "packages:invented:price_myr", spoken_span: "RM1,000" }] });
     expect(validateCallingDecision(d, packet, state(packet)).ok).toBe(false);
+    const promise = decisionFixture(packet, { interaction_mode: "ANSWER", spoken_response: "Saya akan hantar quotation pakej itu sekarang." });
+    expect(validateCallingDecision(promise, packet, state(packet))).toMatchObject({ ok: false });
   });
   it("keeps recovery on the package topic, never WhatsApp history", () => {
     const packet = packetFixture("Senarai pakej Umrah", withPackages());
