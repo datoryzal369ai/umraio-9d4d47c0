@@ -19,7 +19,7 @@ export async function loadCallingRecords(db: CallingDb, input: { binding: Callin
   const scoped = (table: string, columns: string) => db.from(table).select(columns).eq("agency_id", input.binding.agencyId);
   // Active agency catalogue: general package facts are not private and need no caller identity.
   const packagesQuery = Promise.resolve(scoped("packages", "id,name,nights,price_myr,hotel_makkah,hotel_madinah,departure_date,updated_at")
-    .eq("is_active", true).order("price_myr", { ascending: true }).limit(6).abortSignal(input.signal)).then(rows, () => [] as any[]);
+    .eq("is_active", true).order("price_myr", { ascending: true }).limit(6).abortSignal(input.signal)).then(rows).catch(() => [] as any[]);
   const contacts = rows(await scoped("leads", "id,full_name,phone,stage,preferred_language,conversational_style,package_interest,pax,do_not_contact,updated_at")
     .ilike("phone", `%${phone(input.callerPhone).slice(-9)}`).limit(3).abortSignal(input.signal));
   const matches = contacts.filter(lead => phone(lead.phone ?? "") === phone(input.callerPhone));
