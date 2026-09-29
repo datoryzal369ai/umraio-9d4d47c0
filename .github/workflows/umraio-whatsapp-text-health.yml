@@ -1,0 +1,55 @@
+name: UMRAIO WhatsApp Text Health
+
+on:
+  pull_request:
+    paths:
+      - "src/routes/api/public/whatsapp.ts"
+      - "src/lib/whatsapp/**"
+      - "src/lib/sales/**"
+      - "tests/whatsapp-*.test.ts"
+      - "tests/p0-1-duplicate-suppression.test.ts"
+      - "tests/whatsapp-batch-p0-p1.test.ts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/umraio-whatsapp-text-health.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-whatsapp-text:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact PR merge candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Frozen dependency install
+        run: bun install --frozen-lockfile
+
+      - name: WhatsApp Text focused regressions
+        run: >-
+          bunx vitest run
+          tests/whatsapp-batch-p0-p1.test.ts
+          tests/whatsapp-incident-reply-reliability.test.ts
+          tests/whatsapp-composer.test.ts
+          tests/whatsapp-webhook-security.test.ts
+          tests/whatsapp-outbound-timeout.test.ts
+          tests/p0-1-duplicate-suppression.test.ts
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Production build
+        run: bun run build
+
+      - name: Full regression suite
+        run: bunx vitest run

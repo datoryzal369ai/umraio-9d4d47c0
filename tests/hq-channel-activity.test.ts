@@ -1,12 +1,39 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 
 import {
+  buildCallObservability,
   buildChannelActivity,
   maskPhone,
   normalizeCallStatus,
   normalizeMessageChannel,
   normalizeMessageStatus,
 } from "@/lib/hq/hq.core";
+
+const callRow = (overrides: Record<string, unknown> = {}) => ({
+  id: "call-id",
+  agency_id: "a1",
+  lead_id: null,
+  conversation_id: null,
+  caller_phone: "+60123456789",
+  direction: "inbound",
+  status: "ringing",
+  termination_reason: null,
+  received_at: "2026-09-01T12:00:00Z",
+  answer_requested_at: null,
+  meta_accepted_at: null,
+  media_negotiated_at: null,
+  media_ready_at: null,
+  answered_at: null,
+  ended_at: null,
+  turn_count: 0,
+  detected_language: null,
+  voice_outcome: null,
+  closing_state: null,
+  call_summary: null,
+  voice_latency: [],
+  ...overrides,
+});
 
 const agencyNames = new Map([["a1", "Alpha Travel"]]);
 
@@ -130,6 +157,13 @@ describe("HQ channel normalization", () => {
       normalizeCallStatus({ status: "failed", termination_reason: "failed", answered_at: null }),
     ).toBe("FAILED");
     expect(
+      normalizeCallStatus({
+        status: "missed",
+        termination_reason: "caller_hangup",
+        answered_at: null,
+      }),
+    ).toBe("FAILED");
+    expect(
       normalizeCallStatus({ status: "weird", termination_reason: null, answered_at: null }),
     ).toBe("UNKNOWN");
   });
@@ -156,6 +190,22 @@ describe("HQ channel activity feed", () => {
     expect(orphan.contactName).toBe("Unresolved");
     expect(orphan.contactPhone).toBe("Unresolved");
     expect(items.find((i) => i.id === "msg:m3")!.contactName).toBe("Unresolved");
+  });
+
+  it("resolves call attribution through its linked conversation when lead_id is absent", () => {
+    const result = buildChannelActivity({
+      messages: [],
+      conversations,
+      calls: [callRow({ conversation_id: "c1" }) as never],
+      leads,
+      agencyNames,
+    });
+
+    expect(result[0]).toMatchObject({
+      contactName: "Ahmad",
+      leadId: "l1",
+      callObservability: { leadLinked: true, conversationLinked: true },
+    });
   });
 
   it("never exposes message bodies and respects limits", () => {
@@ -196,5 +246,140 @@ describe("HQ channel activity feed", () => {
     });
     expect(result[0]!.interactionStatus).toBe("SUCCESS");
     expect(result[0]!.interactionStatus).not.toBe("HUMAN_REQUIRED");
+  });
+});
+
+describe("Founder HQ call observability", () => {
+  it.each([
+    ["received/ringing", { status: "ringing" }, "RECEIVED"],
+    [
+      "negotiating",
+      { status: "media_negotiating", meta_accepted_at: "2026-09-01T12:00:02Z" },
+      "NEGOTIATING",
+    ],
+    [
+      "media ready",
+      { status: "media_negotiating", media_ready_at: "2026-09-01T12:00:03Z" },
+      "MEDIA_READY",
+    ],
+    ["answered", { status: "answered", answered_at: "2026-09-01T12:00:04Z" }, "ANSWERED"],
+    [
+      "normally ended",
+      { status: "terminated", termination_reason: "completed", ended_at: "2026-09-01T12:01:00Z" },
+      "ENDED",
+    ],
+    ["missed", { status: "missed", termination_reason: "caller_hangup" }, "FAILED"],
+    ["failed", { status: "failed", termination_reason: "gateway_error" }, "FAILED"],
+    ["unknown/incomplete", { status: "unexpected" }, "UNKNOWN"],
+  ])("represents %s calls", (_label, patch, expected) => {
+    expect(buildCallObservability(callRow(patch) as never).operationalState).toBe(expected);
+  });
+
+  it("reports call-side summary evidence without claiming cross-channel persistence", () => {
+    const absent = buildCallObservability(callRow() as never);
+    expect(absent).toMatchObject({
+      leadLinked: false,
+      conversationLinked: false,
+      callSummaryPresent: false,
+      memoryEvidence: "NO SUMMARY",
+    });
+    const linked = buildCallObservability(
+      callRow({
+        lead_id: "lead-1",
+        conversation_id: "conv-1",
+        call_summary: "private summary",
+      }) as never,
+    );
+    expect(linked).toMatchObject({
+      leadLinked: true,
+      conversationLinked: true,
+      callSummaryPresent: true,
+      memoryEvidence: "SUMMARY READY",
+    });
+    expect(
+      buildCallObservability(callRow({ conversation_id: "conv-1" }) as never).memoryEvidence,
+    ).toBe("INCOMPLETE");
+    expect(JSON.stringify(linked)).not.toContain("private summary");
+  });
+
+  it("derives duration only from valid answered and ended timestamps", () => {
+    expect(
+      buildCallObservability(
+        callRow({ answered_at: "2026-09-01T12:00:05Z", ended_at: "2026-09-01T12:01:00Z" }) as never,
+      ).durationSeconds,
+    ).toBe(55);
+    expect(
+      buildCallObservability(
+        callRow({ answered_at: "bad", ended_at: "2026-09-01T12:01:00Z" }) as never,
+      ).durationSeconds,
+    ).toBeNull();
+  });
+
+  it("summarizes valid latency and fails safely for absent or malformed telemetry", () => {
+    const observed = buildCallObservability(
+      callRow({
+        voice_latency: [
+          { asr_ms: 100, context_ms: 20, reasoning_ms: 200, tts_ms: 80, total_ms: 400 },
+          { asr_ms: 300, context_ms: 40, reasoning_ms: 600, tts_ms: 160, total_ms: 1100 },
+        ],
+      }) as never,
+    );
+    expect(observed.latency.asr).toEqual({ p50: 100, p95: 300, samples: 2 });
+    expect(observed.latency.total?.p95).toBe(1100);
+    expect(
+      buildCallObservability(callRow({ voice_latency: null }) as never).latency.total,
+    ).toBeNull();
+    expect(
+      buildCallObservability(
+        callRow({ voice_latency: [{ total_ms: "secret" }, null, -1] }) as never,
+      ).latency.total,
+    ).toBeNull();
+  });
+
+  it("exposes metadata only: no transcript, summary text, message body, audio, or full phone", () => {
+    const raw = callRow({
+      caller_phone: "+60123456789",
+      call_summary: "PRIVATE SUMMARY",
+      transcript: [{ text: "PRIVATE TRANSCRIPT" }],
+      audio: "RAW AUDIO",
+      message_body: "PRIVATE MESSAGE",
+    });
+    const publicItem = buildChannelActivity({
+      messages: [],
+      conversations: [],
+      calls: [raw as never],
+      leads: [],
+      agencyNames,
+    })[0]!;
+    const serialized = JSON.stringify(publicItem);
+    expect(publicItem.contactPhone).toBe("••••6789");
+    expect(serialized).not.toMatch(
+      /60123456789|PRIVATE SUMMARY|PRIVATE TRANSCRIPT|RAW AUDIO|PRIVATE MESSAGE/,
+    );
+  });
+});
+
+describe("Founder HQ call observability boundary", () => {
+  const source = readFileSync("src/lib/hq/hq.functions.ts", "utf8");
+  const handler = source.slice(source.indexOf("export const getHqChannelActivity"));
+
+  it("keeps platform_owner authorization on the server before privileged reads", () => {
+    expect(handler).toContain('createServerFn({ method: "GET" })');
+    expect(handler).toContain(".middleware([requireSupabaseAuth])");
+    expect(handler.indexOf("await assertPlatformOwner")).toBeGreaterThan(-1);
+    expect(handler.indexOf("await assertPlatformOwner")).toBeLessThan(
+      handler.indexOf("supabaseAdmin"),
+    );
+  });
+
+  it("remains read-only and does not select private payload columns", () => {
+    expect(handler).not.toMatch(/\.(insert|update|upsert|delete)\s*\(/);
+    expect(handler).not.toMatch(/select\([^)]*(transcript|audio|message_body)/s);
+  });
+
+  it("fails visibly when an existing telemetry read fails", () => {
+    expect(handler).toContain("messagesRes.error || callsRes.error || agenciesRes.error");
+    expect(handler).toContain("if (convRes.error)");
+    expect(handler).toContain("if (leadsRes.error)");
   });
 });

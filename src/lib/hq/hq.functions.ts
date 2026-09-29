@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
 
 import {
   buildAgencySummaries,
@@ -28,7 +30,7 @@ import {
  * session (RLS: "Users can view own roles"), never from client input.
  */
 async function assertPlatformOwner(
-  supabase: { from: (t: string) => any },
+  supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<void> {
   const { data, error } = await supabase
@@ -48,7 +50,7 @@ export const getHqOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    await assertPlatformOwner(supabase as never, userId);
+    await assertPlatformOwner(supabase, userId);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -89,7 +91,7 @@ export const getHqAgencyDetail = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     // Authorization never depends on the requested agency id.
-    await assertPlatformOwner(supabase as never, userId);
+    await assertPlatformOwner(supabase, userId);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -136,7 +138,7 @@ export const getHqPlatform = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    await assertPlatformOwner(supabase as never, userId);
+    await assertPlatformOwner(supabase, userId);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -225,7 +227,7 @@ export const getHqChannelActivity = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    await assertPlatformOwner(supabase as never, userId);
+    await assertPlatformOwner(supabase, userId);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -238,23 +240,35 @@ export const getHqChannelActivity = createServerFn({ method: "GET" })
       supabaseAdmin
         .from("whatsapp_call_sessions")
         .select(
-          "id, agency_id, lead_id, caller_phone, direction, status, termination_reason, received_at, answered_at, ended_at, turn_count",
+          "id, agency_id, lead_id, conversation_id, caller_phone, direction, status, termination_reason, received_at, answer_requested_at, meta_accepted_at, media_negotiated_at, media_ready_at, answered_at, ended_at, turn_count, detected_language, voice_outcome, closing_state, call_summary, voice_latency",
         )
         .order("received_at", { ascending: false })
         .limit(100),
       supabaseAdmin.from("agencies").select("id, name").limit(500),
     ]);
 
+    if (messagesRes.error || callsRes.error || agenciesRes.error) {
+      throw new Error("Founder HQ channel activity is unavailable");
+    }
+
     const messages = (messagesRes.data ?? []) as HqMessageRow[];
     const calls = (callsRes.data ?? []) as HqCallSessionRow[];
 
-    const conversationIds = [...new Set(messages.map((m) => m.conversation_id))];
+    const conversationIds = [
+      ...new Set(
+        [...messages.map((m) => m.conversation_id), ...calls.map((c) => c.conversation_id)].filter(
+          (id): id is string => Boolean(id),
+        ),
+      ),
+    ];
     const convRes = conversationIds.length
       ? await supabaseAdmin
           .from("conversations")
           .select("id, lead_id, channel, human_attention_required")
           .in("id", conversationIds)
-      : { data: [] as HqConversationRow[] };
+      : { data: [] as HqConversationRow[], error: null };
+
+    if (convRes.error) throw new Error("Founder HQ channel activity is unavailable");
 
     const conversations = (convRes.data ?? []) as HqConversationRow[];
     const leadIds = [
@@ -269,7 +283,9 @@ export const getHqChannelActivity = createServerFn({ method: "GET" })
           .from("leads")
           .select("id, full_name, phone, do_not_contact")
           .in("id", leadIds)
-      : { data: [] as HqLeadRow[] };
+      : { data: [] as HqLeadRow[], error: null };
+
+    if (leadsRes.error) throw new Error("Founder HQ channel activity is unavailable");
 
     const agencyNames = new Map(
       ((agenciesRes.data ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]),
