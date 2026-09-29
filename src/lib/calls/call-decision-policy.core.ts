@@ -33,7 +33,10 @@ export function validateCallingDecision(raw: unknown, packet: CognitivePacket, c
   }
   if (/\b(?:maksudnya macam mana|what did you mean|could you clarify what you need)\b/i.test(d.spoken_response))
     return { ok: false, reason: "generic_clarification" };
-  if (d.spoken_response.includes("?") && (d.interaction_mode !== "SOCIAL" || packet.dialogue?.correction)
+  // A factual answer may end with exactly ONE relevant closing question; anything else stays blocked.
+  const closingQuestionOnly = (d.spoken_response.match(/\?/g) ?? []).length === 1 && d.spoken_response.trim().endsWith("?")
+    && d.interaction_mode === "ANSWER" && !packet.dialogue?.correction;
+  if (d.spoken_response.includes("?") && !closingQuestionOnly && (d.interaction_mode !== "SOCIAL" || packet.dialogue?.correction)
     && !d.requires_clarification && d.interaction_mode !== "CLOSE")
     return { ok: false, reason: "unclassified_question" };
   if (d.requires_clarification && d.interaction_mode !== "CLARIFY") return { ok: false, reason: "clarification_required" };

@@ -42,6 +42,21 @@ export function callingRecovery(language: string, reason: "ambiguity" | "unavail
   return reason === "unavailable" ? "Maaf, maklumat itu belum dapat saya pastikan sekarang." : "Maaf, jawapan itu belum dapat saya pastikan.";
 }
 
+export const PACKAGE_TOPIC = /\b(?:pakej|package|packages|umrah|umrah|harga|price|hotel|berapa hari)\b/i;
+
+/** Topic-aware recovery for a package question: active catalogue names only, never WhatsApp history. */
+export function packageRecovery(packet: CognitivePacket): { spoken: string; used: string[]; claims: CognitiveDecision["claim_requests"] } | null {
+  if (!PACKAGE_TOPIC.test(packet.current_call.current_caller.transcript)) return null;
+  const en = packet.person.language.startsWith("en");
+  const names = packet.evidence.filter(e => /^packages:[^:]+:name$/.test(e.id) && e.verification === "verified"
+    && e.authority === "business_record" && typeof e.value === "string").slice(0, 3);
+  if (!names.length) return { spoken: en ? "About the Umrah packages, I cannot confirm the package details right now."
+    : "Tentang pakej Umrah, butiran pakej belum dapat saya pastikan sekarang.", used: [], claims: [] };
+  const list = names.map(n => String(n.value)).join(", ");
+  return { spoken: (en ? `Our current Umrah packages are ${list}. Which one interests you?` : `Pakej Umrah yang ada sekarang ialah ${list}. Pakej mana yang menarik minat?`),
+    used: names.map(n => n.id), claims: names.map(n => ({ kind: "business_status" as const, source_ref: n.id, spoken_span: String(n.value) })) };
+}
+
 /** A fresh non-action response from packet evidence, never salvaged unvalidated model speech. */
 export function callingContractRecovery(packet: CognitivePacket): CognitiveDecision {
   const en = packet.person.language.startsWith("en");
@@ -97,7 +112,9 @@ export function callingContractRecovery(packet: CognitivePacket): CognitiveDecis
     }
   } else if (dialogue?.correction) spoken = apology + (en ? "I will not ask you to repeat the same explanation." : "Tidak perlu ulang penjelasan yang sama.");
   else if (/\b(?:assalamualaikum|salam|hello|hi)\b/i.test(current)) spoken = en ? "Hello, I am here to help." : "Salam, saya sedia membantu.";
-  if (recognition) {
+  const pkg = !ask && !social ? packageRecovery(packet) : null;
+  if (pkg) { spoken = pkg.spoken; used.push(...pkg.used); claims.push(...pkg.claims); }
+  if (recognition && !pkg) {
     if (!spoken.includes(recognitionIntro)) spoken = recognitionIntro + spoken;
     used.push(recognition.id);
     if (name && honorific) used.push(name.id);
