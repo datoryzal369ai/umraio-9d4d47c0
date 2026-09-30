@@ -152,6 +152,9 @@ export function callingSelectionText(s: BridgeSnapshot, current: string): string
 }
 
 const bookingTopic = /\b(?:tempahan|tembahan|booking|quotation|sebut harga|deposit|status saya|my (?:booking|status))\b/i;
+/** A NEW booking request is a sales step, never an existing-booking identity lookup. */
+export const newBookingRequest = /\b(?:(?:saya\s+)?nak\s+(?:tempah|booking|book|daftar|teruskan)|tempah(?:\s+pakej)?|pilih\s+pakej)\b(?!an)/i;
+const existingBooking = (t: string) => bookingTopic.test(t) && !newBookingRequest.test(t);
 const socialTurn = /\b(?:apa khabar|sihat|how are you)\b/i;
 
 export function priorClarificationOffers(s: BridgeSnapshot, sequence: number): ClarificationOffer[] {
@@ -167,7 +170,7 @@ function callingDialogue(s: BridgeSnapshot, caller: CallerTurn, records: Calling
   const en = language.startsWith("en");
   const ordered = [...s.callers].sort((a,b) => a.sequence-b.sequence);
   const current = caller.transcript;
-  const objective = [...ordered].reverse().find(c => bookingTopic.test(c.transcript));
+  const objective = [...ordered].reverse().find(c => existingBooking(c.transcript));
   const topic = objective || bookingTopic.test(s.memory.objective?.text ?? "") ? "booking" : "general";
   const correction = /\b(?:tadi|bukan itu|salah faham|tak faham|takfaham|tanya.*(?:banyak|ulang)|keeps? asking|already (?:said|told)|misunderst[ao]nd)\b/i.test(current);
   const offered = priorClarificationOffers(s, caller.sequence);
@@ -178,7 +181,7 @@ function callingDialogue(s: BridgeSnapshot, caller: CallerTurn, records: Calling
     // The identity gate belongs to turns that actually touch the private
     // booking, or to a reply continuing that verification. A later unrelated
     // turn (pricing, thanks) must not be overwritten by the identity script.
-    const aboutBooking = bookingTopic.test(current)
+    const aboutBooking = existingBooking(current)
       || /\bQ-[A-Z0-9]+-[A-Z0-9]+\b/i.test(current)
       || (offered.some(o => o.fact === "caller_identity") && extractCallingName(current, true) !== null);
     if (!records.lead) { if (aboutBooking) fact = "caller_identity"; }
