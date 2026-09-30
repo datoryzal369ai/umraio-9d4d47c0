@@ -162,6 +162,7 @@ type ConversationPipeline struct {
 	speaking    bool
 	cancelTTS   chan struct{}
 	bargeIns    int
+	paused      bool // possible caller speech: hold playback, do not cancel
 
 	// Instrumentation only — never influences conversational behaviour.
 	now          func() time.Time
@@ -311,19 +312,34 @@ func (p *ConversationPipeline) OnInbound(frame OpusFrame) {
 	event, utterance := p.seg.Push(frame)
 	switch event {
 	case VADSpeechStart:
+		// Possible speech only: pause (never talk over the caller) but keep the
+		// prepared reply and in-flight turn until a real utterance completes.
+		if p.speaking {
+			p.paused = true
+			p.mu.Unlock()
+			p.logger.Info("playback_paused_possible_speech", "call_id", p.callID)
+			return
+		}
+	case VADDiscarded:
+		// Cough/noise/too short: resume the existing reply where it paused.
+		if p.paused {
+			p.paused = false
+			p.mu.Unlock()
+			p.logger.Info("playback_resumed_after_noise", "call_id", p.callID)
+			return
+		}
+	case VADUtteranceEnd:
+		// A real completed utterance: now the caller genuinely owns the turn.
 		p.generation++
 		if p.cancelTurn != nil {
 			p.cancelTurn()
 		}
+		p.paused = false
 		if p.speaking {
-			// BARGE-IN: stop talking over the caller, immediately.
 			p.stopPlaybackLocked("barge_in")
 			p.bargeIns++
-			p.mu.Unlock()
 			p.logger.Info("barge_in", "call_id", p.callID)
-			return
 		}
-	case VADUtteranceEnd:
 		if p.client == nil || !p.accepted || p.turns >= p.cfg.MaxTurns {
 			p.mu.Unlock()
 			return
@@ -549,7 +565,7 @@ func (p *ConversationPipeline) playTurn(ctx context.Context, packets [][]byte, g
 	interval := time.Duration(frameMs) * time.Millisecond
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for _, packet := range packets {
+	for i := 0; i < len(packets); {
 		select {
 		case <-ctx.Done():
 			return firstAudioAt, false
@@ -557,6 +573,21 @@ func (p *ConversationPipeline) playTurn(ctx context.Context, packets [][]byte, g
 			return firstAudioAt, false
 		default:
 		}
+		p.mu.Lock()
+		paused := p.paused
+		p.mu.Unlock()
+		if paused { // hold position until noise is dismissed or speech is confirmed
+			select {
+			case <-ctx.Done():
+				return firstAudioAt, false
+			case <-cancelCh:
+				return firstAudioAt, false
+			case <-ticker.C:
+			}
+			continue
+		}
+		packet := packets[i]
+		i++
 		if err := t.SendOpus(OpusFrame{Data: packet, Duration: interval}); err != nil {
 			return firstAudioAt, false
 		}

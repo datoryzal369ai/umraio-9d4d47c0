@@ -94,3 +94,24 @@ func TestCallingStreamFailsClosedOnTruncationAndInvalidFrames(t *testing.T) {
 		}
 	}
 }
+
+// Acknowledgement + waiting + late waiting frames must not break a valid turn.
+func TestCallingStreamInterimFramesDoNotDropFinal(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"type":"ack","speech_text":"Okay Dato'.","end_call":false}`)
+		fmt.Fprintln(w, `{"type":"ack","speech_text":"Kejap ya, saya cek dulu.","end_call":false}`)
+		fmt.Fprintln(w, `{"type":"ack","speech_text":"Sekejap lagi ya.","end_call":false}`)
+		fmt.Fprintln(w, `{"type":"final","speech_text":"Jawapan sebenar.","end_call":false}`)
+	}))
+	defer server.Close()
+	c := NewTurnClient(server.URL, "synthetic-test-secret", time.Second)
+	acks := 0
+	response, err := c.TurnStream(context.Background(), media.TurnRequest{}, func(media.TurnResponse) { acks++ })
+	if err != nil || response == nil || response.SpeechText != "Jawapan sebenar." {
+		t.Fatalf("valid turn treated as broken: %v", err)
+	}
+	if acks != 1 {
+		t.Fatalf("expected exactly one acknowledgement played, got %d", acks)
+	}
+}
