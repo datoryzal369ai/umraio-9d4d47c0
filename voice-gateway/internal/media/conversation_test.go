@@ -244,21 +244,54 @@ func TestBargeInStopsPlaybackAndCapturesNextUtterance(t *testing.T) {
 	waitFor(t, "playback started", func() bool { return p.Speaking() })
 	sentAtInterrupt := tr.count()
 
-	pushSpeech(p, 4) // caller interrupts
+	pushSpeech(p, 4) // possible speech: pause, never talk over the caller
+	time.Sleep(20 * time.Millisecond)
+	held := tr.count()
+	time.Sleep(30 * time.Millisecond)
+	if tr.count() > held+1 {
+		t.Fatalf("playback continued over possible caller speech (%d -> %d)", held, tr.count())
+	}
+	pushSpeech(p, 2)
+	pushSilence(p, 5) // genuine completed interruption
 	waitFor(t, "playback cancelled", func() bool { return !p.Speaking() })
 	if p.BargeIns() != 1 {
 		t.Fatalf("expected 1 barge-in, got %d", p.BargeIns())
 	}
 	time.Sleep(40 * time.Millisecond)
-	if tr.count() > sentAtInterrupt+2 {
+	if tr.count() > sentAtInterrupt+4 {
 		t.Fatalf("remaining TTS audio was not discarded (%d -> %d)", sentAtInterrupt, tr.count())
 	}
-
-	pushSpeech(p, 6)
-	pushSilence(p, 5)
 	waitFor(t, "second utterance", func() bool { return len(client.seen()) == 2 })
 	if client.seen()[1].Kind != TurnKindUtterance {
 		t.Fatal("second turn must be the interrupting utterance")
+	}
+}
+
+// A cough/noise blip pauses the reply, then it resumes; it is never cancelled.
+func TestNoiseBlipPausesThenResumesReply(t *testing.T) {
+	client := &fakeTurns{reply: func(req TurnRequest) (*TurnResponse, error) {
+		return &TurnResponse{ReplyOggBase64: oggReply(60)}, nil
+	}}
+	cfg := fastCfg()
+	cfg.VAD.FrameMs = 5
+	cfg.VAD.MinUtteranceMs = 40
+	p, tr := newPipeline(t, client, cfg)
+	defer p.Close("test")
+
+	pushSpeech(p, 10)
+	pushSilence(p, 5)
+	waitFor(t, "playback started", func() bool { return p.Speaking() })
+	pushSpeech(p, 2) // cough
+	pushSilence(p, 2)
+	waitFor(t, "reply completed", func() bool { return !p.Speaking() })
+	if p.BargeIns() != 0 {
+		t.Fatalf("noise must not barge in, got %d", p.BargeIns())
+	}
+	if tr.count() < 60 {
+		t.Fatalf("reply did not resume to completion: %d frames", tr.count())
+	}
+	if len(client.seen()) != 1 {
+		t.Fatal("noise must not create a turn")
 	}
 }
 
