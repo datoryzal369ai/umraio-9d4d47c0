@@ -95,15 +95,19 @@ func (c *TurnClient) turn(ctx context.Context, in media.TurnRequest, onAck func(
 			}
 			switch frame.Type {
 			case "ack":
+				// Interim ack/waiting frames never invalidate the turn: play at most
+				// one, silently skip extras or malformed ones, and wait for "final".
 				if acknowledged || frame.EndCall || len(frame.SpeechText) > 140 || frame.ReplyOggBase64 != "" {
-					return nil, errors.New("turn: invalid acknowledgement")
+					continue
 				}
 				acknowledged = true
 				onAck(frame.TurnResponse)
 			case "final":
 				return &frame.TurnResponse, nil
-			default:
+			case "error":
 				return nil, errors.New("turn: failed stream")
+			default:
+				continue // unknown interim frame
 			}
 		}
 		if scanner.Err() != nil {
